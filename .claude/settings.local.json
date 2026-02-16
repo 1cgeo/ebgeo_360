@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init:*)",
+      "Bash(npm install:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx knip:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npm test:*)",
+      "Bash(dir:*)",
+      "Bash(powershell.exe:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npm rebuild:*)",
+      "Bash(node -e:*)",
+      "Bash(docker build:*)",
+      "Bash(node scripts/migrate.js:*)",
+      "Bash(docker:*)",
+      "Bash(tasklist:*)",
+      "Bash(npm run lint:*)",
+      "Bash(node scripts/generate-pmtiles.js:*)",
+      "Bash(node scripts/recalculate-targets.js:*)",
+      "Bash(docker-compose exec:*)",
+      "Bash(git stash:*)",
+      "Bash(node --test:*)",
+      "Bash(npm run knip:*)"
+    ]
+  }
+}

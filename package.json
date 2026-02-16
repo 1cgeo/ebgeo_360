@@ -1,0 +1,37 @@
+{
+  "name": "ebgeo-360-service",
+  "version": "1.0.0",
+  "description": "360 image service for EBGeo",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --env-file=.env src/server.js",
+    "dev": "node --env-file=.env --watch src/server.js",
+    "migrate": "node scripts/migrate.js",
+    "recalculate-targets": "node scripts/recalculate-targets.js",
+    "generate-pmtiles": "node scripts/generate-pmtiles.js",
+    "verify": "node scripts/verify.js",
+    "test": "node --test tests/**/*.test.js",
+    "knip": "knip",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.2",
+    "@fastify/static": "^8.0.0",
+    "better-sqlite3": "^11.8.1",
+    "fastify": "^5.2.1",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "eslint": "^9.39.2",
+    "globals": "^15.15.0",
+    "knip": "^5.83.1"
+  },
+  "author": "1º Centro de Geoinformação",
+  "license": "ISC",
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

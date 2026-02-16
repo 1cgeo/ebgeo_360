@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "entry": ["scripts/*.js"],
+  "project": ["src/**/*.js", "scripts/**/*.js"],
+  "ignore": ["src/db/connection.js"],
+  "ignoreExportsUsedInFile": true,
+  "rules": {
+    "duplicates": "off"
+  }
+}
