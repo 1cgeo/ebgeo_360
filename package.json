@@ -9,6 +9,7 @@
     "dev": "node --env-file=.env --watch src/server.js",
     "migrate": "node scripts/migrate.js",
     "recalculate-targets": "node scripts/recalculate-targets.js",
+    "estimate-slope-roll": "node scripts/estimate-slope-roll.js",
     "generate-pmtiles": "node scripts/generate-pmtiles.js",
     "verify": "node scripts/verify.js",
     "test": "node --test tests/**/*.test.js",

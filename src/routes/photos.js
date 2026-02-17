@@ -68,6 +68,7 @@ export default async function photoRoutes(fastify) {
         bearing: t.bearing_deg,
         override_bearing: t.override_bearing ?? null,
         override_distance: t.override_distance ?? null,
+        override_height: t.override_height ?? null,
         ...(includeHidden ? { hidden: Boolean(t.hidden) } : {}),
       })),
     };

@@ -58,7 +58,7 @@ function stmts() {
     // ---- Targets ----
     targetsBySourceId: db.prepare(`
       SELECT t.target_id, t.distance_m, t.bearing_deg, t.is_next, t.is_original,
-             t.override_bearing, t.override_distance, t.hidden,
+             t.override_bearing, t.override_distance, t.override_height, t.hidden,
              ph.lat, ph.lon, ph.ele, ph.display_name
       FROM targets t
       JOIN photos ph ON ph.id = t.target_id
@@ -68,7 +68,7 @@ function stmts() {
 
     visibleTargetsBySourceId: db.prepare(`
       SELECT t.target_id, t.distance_m, t.bearing_deg, t.is_next, t.is_original,
-             t.override_bearing, t.override_distance,
+             t.override_bearing, t.override_distance, t.override_height,
              ph.lat, ph.lon, ph.ele, ph.display_name
       FROM targets t
       JOIN photos ph ON ph.id = t.target_id
@@ -86,11 +86,11 @@ function stmts() {
     ),
 
     updateTargetOverride: db.prepare(
-      'UPDATE targets SET override_bearing = ?, override_distance = ? WHERE source_id = ? AND target_id = ?'
+      'UPDATE targets SET override_bearing = ?, override_distance = ?, override_height = ? WHERE source_id = ? AND target_id = ?'
     ),
 
     clearTargetOverride: db.prepare(
-      'UPDATE targets SET override_bearing = NULL, override_distance = NULL WHERE source_id = ? AND target_id = ?'
+      'UPDATE targets SET override_bearing = NULL, override_distance = NULL, override_height = NULL WHERE source_id = ? AND target_id = ?'
     ),
 
     updateTargetVisibility: db.prepare(
@@ -279,15 +279,16 @@ export function updatePhotoCameraHeight(photoId, cameraHeight) {
 }
 
 /**
- * Sets override bearing/distance for a target.
+ * Sets override bearing/distance/height for a target.
  * @param {string} sourceId - Source photo UUID
  * @param {string} targetId - Target photo UUID
  * @param {number|null} overrideBearing - Bearing 0-360 degrees or null
  * @param {number|null} overrideDistance - Ground distance 0.5-500 meters or null
+ * @param {number|null} [overrideHeight=null] - Vertical offset in meters or null (0 = ground)
  * @returns {Object} Run result with changes count
  */
-export function updateTargetOverride(sourceId, targetId, overrideBearing, overrideDistance) {
-  return stmts().updateTargetOverride.run(overrideBearing, overrideDistance, sourceId, targetId);
+export function updateTargetOverride(sourceId, targetId, overrideBearing, overrideDistance, overrideHeight = null) {
+  return stmts().updateTargetOverride.run(overrideBearing, overrideDistance, overrideHeight, sourceId, targetId);
 }
 
 /**

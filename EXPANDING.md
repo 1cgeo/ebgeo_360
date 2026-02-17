@@ -208,7 +208,7 @@ curl -o test_preview.webp "http://localhost:8081/api/v1/photos/<entryPhotoId>/im
 curl -o test_full.webp "http://localhost:8081/api/v1/photos/<entryPhotoId>/image?quality=full"
 ```
 
-### Testar calibracao
+### Testar Calibração
 
 Abra `http://localhost:8081/calibration/` no navegador e selecione o novo projeto no seletor.
 

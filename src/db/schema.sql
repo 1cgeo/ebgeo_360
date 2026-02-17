@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS targets (
     is_original      INTEGER DEFAULT 1,
     override_bearing  REAL,   -- NULL = use calculated projection; bearing degrees 0-360 (0=North)
     override_distance REAL,   -- NULL = use calculated projection; ground distance in meters
+    override_height   REAL,   -- NULL = 0 (ground level); vertical offset in meters (positive = above camera)
     hidden           INTEGER DEFAULT 0,
     PRIMARY KEY (source_id, target_id)
 );

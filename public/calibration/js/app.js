@@ -105,7 +105,7 @@ async function showProjectSelector() {
         });
 
         projectSelector.innerHTML = `
-            <h1 class="project-selector__title">Street View 360 — Calibracao</h1>
+            <h1 class="project-selector__title">Street View 360 — Calibração</h1>
             <p class="project-selector__subtitle">Selecione um projeto para iniciar</p>
             <div class="project-selector__grid">
                 ${projects.map(p => {
@@ -498,8 +498,9 @@ async function handleSave() {
             const original = state.originalTargetOverrides.get(targetId);
             const origB = original?.bearing ?? null;
             const origD = original?.distance ?? null;
+            const origH = original?.height ?? 0;
 
-            if (edited.bearing !== origB || edited.distance !== origD) {
+            if (edited.bearing !== origB || edited.distance !== origD || (edited.height ?? 0) !== origH) {
                 if (edited.bearing === null && edited.distance === null) {
                     // Override cleared
                     promises.push(
@@ -510,7 +511,8 @@ async function handleSave() {
                     promises.push(
                         saveTargetOverride(
                             state.currentPhotoId, targetId,
-                            edited.bearing, edited.distance
+                            edited.bearing, edited.distance,
+                            edited.height ?? 0
                         )
                     );
                 }

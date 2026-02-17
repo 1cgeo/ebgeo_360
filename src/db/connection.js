@@ -69,6 +69,12 @@ export function getIndexDb() {
     indexDb.exec('ALTER TABLE targets ADD COLUMN hidden INTEGER DEFAULT 0');
   }
 
+  // Migrate: add override_height column to targets table
+  const targetCols3 = indexDb.pragma('table_info(targets)');
+  if (!targetCols3.some(c => c.name === 'override_height')) {
+    indexDb.exec('ALTER TABLE targets ADD COLUMN override_height REAL');
+  }
+
   return indexDb;
 }
 

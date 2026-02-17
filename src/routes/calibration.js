@@ -215,10 +215,10 @@ export default async function calibrationRoutes(fastify) {
     return { ok: true, marker_scale };
   });
 
-  // PUT /api/v1/targets/:sourceId/:targetId/override — set override bearing/distance
+  // PUT /api/v1/targets/:sourceId/:targetId/override — set override bearing/distance/height
   fastify.put('/api/v1/targets/:sourceId/:targetId/override', async (request, reply) => {
     const { sourceId, targetId } = request.params;
-    const { override_bearing, override_distance } = request.body || {};
+    const { override_bearing, override_distance, override_height } = request.body || {};
 
     // Validate bearing (degrees 0-360)
     if (override_bearing !== null && override_bearing !== undefined) {
@@ -244,6 +244,18 @@ export default async function calibrationRoutes(fastify) {
       }
     }
 
+    // Validate height (vertical offset in meters, -10 to +10)
+    if (override_height !== null && override_height !== undefined) {
+      if (typeof override_height !== 'number' || Number.isNaN(override_height)) {
+        reply.code(400);
+        return { error: 'override_height must be a number or null' };
+      }
+      if (override_height < -10 || override_height > 10) {
+        reply.code(400);
+        return { error: 'override_height must be between -10 and 10' };
+      }
+    }
+
     // Check source photo and target exist
     const photo = getPhotoById(sourceId);
     if (!photo) {
@@ -260,14 +272,15 @@ export default async function calibrationRoutes(fastify) {
 
     const bearing = override_bearing ?? null;
     const distance = override_distance ?? null;
+    const height = override_height ?? null;
 
-    const result = updateTargetOverride(sourceId, targetId, bearing, distance);
+    const result = updateTargetOverride(sourceId, targetId, bearing, distance, height);
     if (result.changes === 0) {
       reply.code(500);
       return { error: 'Failed to update' };
     }
 
-    return { ok: true, override_bearing: bearing, override_distance: distance };
+    return { ok: true, override_bearing: bearing, override_distance: distance, override_height: height };
   });
 
   // DELETE /api/v1/targets/:sourceId/:targetId/override — clear overrides

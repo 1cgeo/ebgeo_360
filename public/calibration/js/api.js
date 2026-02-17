@@ -83,18 +83,23 @@ export async function saveCameraHeight(photoId, cameraHeight) {
 }
 
 /**
- * Saves a target bearing/distance override.
+ * Saves a target bearing/distance/height override.
  * @param {string} sourceId - Source photo UUID
  * @param {string} targetId - Target photo UUID
  * @param {number} bearing - Override bearing in degrees (0-360)
  * @param {number} distance - Override ground distance in meters (0.5-500)
+ * @param {number} [height=0] - Vertical offset in meters (-10 to +10)
  * @returns {Promise<Object>} Server response
  */
-export async function saveTargetOverride(sourceId, targetId, bearing, distance) {
+export async function saveTargetOverride(sourceId, targetId, bearing, distance, height = 0) {
     const response = await fetch(`${BASE}/targets/${sourceId}/${targetId}/override`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ override_bearing: bearing, override_distance: distance }),
+        body: JSON.stringify({
+            override_bearing: bearing,
+            override_distance: distance,
+            override_height: height || null,
+        }),
     });
     if (!response.ok) {
         const text = await response.text().catch(() => '');

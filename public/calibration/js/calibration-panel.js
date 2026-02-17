@@ -7,7 +7,7 @@ import {
     state, onChange, isDirty,
     setMeshRotationY, setCameraHeight,
     setMeshRotationX, setMeshRotationZ, setDistanceScale, setMarkerScale,
-    setTargetOverride, clearTargetOverrideEdit,
+    setTargetOverride, setTargetOverrideHeight, clearTargetOverrideEdit,
     selectTarget, deselectTarget, setSetFromClickMode,
     setTargetHidden, isTargetHidden,
     getCurrentPhotoIndex, resetAllReviewedState,
@@ -372,7 +372,7 @@ function renderSlidersSection(s) {
         </div>
     `;
 
-    return renderCollapsibleSection('sliders', 'Parametros de Calibracao', content);
+    return renderCollapsibleSection('sliders', 'Parametros de Calibração', content);
 }
 
 function renderBatchSection(s) {
@@ -464,15 +464,16 @@ function renderTargetItem(target, s) {
 function renderOverrideEditor(target, s) {
     const edited = s.editedTargetOverrides.get(target.id);
     const original = s.originalTargetOverrides.get(target.id);
-    const effective = edited || original || { bearing: null, distance: null };
+    const effective = edited || original || { bearing: null, distance: null, height: 0 };
 
     const hasEffectiveOverride = effective.bearing !== null;
     const hidden = isTargetHidden(target.id);
     const isManual = target.is_original === false;
 
-    // bearing (degrees), distance = ground distance (meters)
+    // bearing (degrees), distance = ground distance (meters), height = vertical offset (meters)
     const bearingVal = effective.bearing ?? 0;
     const distanceVal = effective.distance ?? 5;
+    const heightVal = effective.height ?? 0;
 
     return `
         <div class="cal-panel__section cal-panel__section--override">
@@ -497,6 +498,16 @@ function renderOverrideEditor(target, s) {
                     <input type="number" id="override-distance-input" class="cal-panel__input cal-panel__input--narrow"
                         min="0.5" max="500" step="0.1"
                         value="${distanceVal.toFixed(1)}" />
+                </div>
+
+                <div class="cal-panel__slider-group">
+                    <label class="cal-panel__label">Altura (m)</label>
+                    <input type="range" id="override-height-slider" class="cal-panel__slider"
+                        min="-5" max="5" step="0.1"
+                        value="${heightVal}" />
+                    <input type="number" id="override-height-input" class="cal-panel__input cal-panel__input--narrow"
+                        min="-10" max="10" step="0.1"
+                        value="${heightVal.toFixed(1)}" />
                 </div>
             ` : `
                 <p class="cal-panel__hint">Sem override definido. Clique no viewer para posicionar.</p>
@@ -864,23 +875,28 @@ function attachEvents() {
         }
     });
 
-    // Override bearing/distance sliders
+    // Override bearing/distance/height sliders
     const bearingSlider = document.getElementById('override-bearing-slider');
     const bearingInput = document.getElementById('override-bearing-input');
     const distanceSlider = document.getElementById('override-distance-slider');
     const distanceInput = document.getElementById('override-distance-input');
+    const heightSlider = document.getElementById('override-height-slider');
+    const heightInput = document.getElementById('override-height-input');
+
+    /** Helper to read current height value from slider */
+    const getHeightVal = () => parseFloat(heightSlider?.value ?? 0);
 
     if (bearingSlider) {
         bearingSlider.addEventListener('input', (e) => {
             const bearing = parseFloat(e.target.value);
             if (bearingInput) bearingInput.value = bearing.toFixed(1);
             const distVal = parseFloat(distanceSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearing, distVal, true);
+            setTargetOverride(state.selectedTargetId, bearing, distVal, getHeightVal(), true);
         });
         bearingSlider.addEventListener('change', (e) => {
             const bearing = parseFloat(e.target.value);
             const distVal = parseFloat(distanceSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearing, distVal);
+            setTargetOverride(state.selectedTargetId, bearing, distVal, getHeightVal());
         });
     }
 
@@ -890,7 +906,7 @@ function attachEvents() {
             if (isNaN(bearing)) bearing = 0;
             bearing = Math.max(0, Math.min(360, bearing));
             const distVal = parseFloat(distanceSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearing, distVal);
+            setTargetOverride(state.selectedTargetId, bearing, distVal, getHeightVal());
         });
     }
 
@@ -899,12 +915,12 @@ function attachEvents() {
             const distance = parseFloat(e.target.value);
             if (distanceInput) distanceInput.value = distance.toFixed(1);
             const bearingVal = parseFloat(bearingSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearingVal, distance, true);
+            setTargetOverride(state.selectedTargetId, bearingVal, distance, getHeightVal(), true);
         });
         distanceSlider.addEventListener('change', (e) => {
             const distance = parseFloat(e.target.value);
             const bearingVal = parseFloat(bearingSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearingVal, distance);
+            setTargetOverride(state.selectedTargetId, bearingVal, distance, getHeightVal());
         });
     }
 
@@ -914,7 +930,28 @@ function attachEvents() {
             if (isNaN(distance)) distance = 5;
             distance = Math.max(0.5, Math.min(500, distance));
             const bearingVal = parseFloat(bearingSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearingVal, distance);
+            setTargetOverride(state.selectedTargetId, bearingVal, distance, getHeightVal());
+        });
+    }
+
+    if (heightSlider) {
+        heightSlider.addEventListener('input', (e) => {
+            const height = parseFloat(e.target.value);
+            if (heightInput) heightInput.value = height.toFixed(1);
+            setTargetOverrideHeight(state.selectedTargetId, height, true);
+        });
+        heightSlider.addEventListener('change', (e) => {
+            const height = parseFloat(e.target.value);
+            setTargetOverrideHeight(state.selectedTargetId, height);
+        });
+    }
+
+    if (heightInput) {
+        heightInput.addEventListener('change', (e) => {
+            let height = parseFloat(e.target.value);
+            if (isNaN(height)) height = 0;
+            height = Math.max(-10, Math.min(10, height));
+            setTargetOverrideHeight(state.selectedTargetId, height);
         });
     }
 

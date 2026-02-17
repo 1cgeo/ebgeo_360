@@ -121,7 +121,8 @@ export function isDirty() {
         const original = state.originalTargetOverrides.get(targetId);
         const origB = original?.bearing ?? null;
         const origD = original?.distance ?? null;
-        if (edited.bearing !== origB || edited.distance !== origD) {
+        const origH = original?.height ?? 0;
+        if (edited.bearing !== origB || edited.distance !== origD || (edited.height ?? 0) !== origH) {
             return true;
         }
     }
@@ -192,6 +193,7 @@ export function loadPhoto(photoId, metadata) {
                 const override = {
                     bearing: target.override_bearing,
                     distance: target.override_distance ?? 5,
+                    height: target.override_height ?? 0,
                 };
                 state.originalTargetOverrides.set(target.id, { ...override });
                 state.editedTargetOverrides.set(target.id, { ...override });
@@ -232,6 +234,7 @@ export function refreshTargets(metadata) {
                 const override = {
                     bearing: target.override_bearing,
                     distance: target.override_distance ?? 5,
+                    height: target.override_height ?? 0,
                 };
                 state.originalTargetOverrides.set(target.id, { ...override });
                 state.editedTargetOverrides.set(target.id, { ...override });
@@ -307,14 +310,15 @@ export function setMarkerScale(value, silent = false) {
 }
 
 /**
- * Sets a target override (bearing/distance).
+ * Sets a target override (bearing/distance/height).
  * @param {string} targetId - Target photo UUID
  * @param {number} bearing - Override bearing in degrees (0-360)
  * @param {number} distance - Override ground distance in meters (0.5-500)
+ * @param {number} [height=0] - Vertical offset in meters (-10 to +10)
  * @param {boolean} [silent=false] - If true, skip notifying listeners (for live slider dragging)
  */
-export function setTargetOverride(targetId, bearing, distance, silent = false) {
-    state.editedTargetOverrides.set(targetId, { bearing, distance });
+export function setTargetOverride(targetId, bearing, distance, height = 0, silent = false) {
+    state.editedTargetOverrides.set(targetId, { bearing, distance, height });
     if (!silent) notify();
 }
 
@@ -358,8 +362,8 @@ export function clearTargetOverrideEdit(targetId) {
     // If there was an original override, revert to it
     const original = state.originalTargetOverrides.get(targetId);
     if (original) {
-        // Mark as "cleared" by setting bearing/distance to null
-        state.editedTargetOverrides.set(targetId, { bearing: null, distance: null });
+        // Mark as "cleared" by setting bearing/distance/height to null
+        state.editedTargetOverrides.set(targetId, { bearing: null, distance: null, height: null });
     } else {
         // No original override, just remove the edit
         state.editedTargetOverrides.delete(targetId);
@@ -429,7 +433,7 @@ export function markSaved() {
         }
     }
 
-    // Clean up null overrides from edits
+    // Clean up null overrides from edits (bearing+distance null = cleared)
     for (const [targetId, edited] of state.editedTargetOverrides) {
         if (edited.bearing === null && edited.distance === null) {
             state.editedTargetOverrides.delete(targetId);
@@ -466,6 +470,20 @@ export function getEffectiveOverride(targetId) {
     }
 
     return null;
+}
+
+/**
+ * Updates only the height field of an existing target override, preserving bearing and distance.
+ * @param {string} targetId - Target photo UUID
+ * @param {number} height - Vertical offset in meters
+ * @param {boolean} [silent=false] - If true, skip notifying listeners
+ */
+export function setTargetOverrideHeight(targetId, height, silent = false) {
+    const current = state.editedTargetOverrides.get(targetId);
+    if (current) {
+        current.height = height;
+    }
+    if (!silent) notify();
 }
 
 /**

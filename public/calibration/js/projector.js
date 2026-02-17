@@ -233,17 +233,19 @@ export class StreetViewProjector {
 
     /**
      * Calculates the flattening ratio for elliptical markers based on camera height and distance.
-     * Uses perspective-correct formula: flattenRatio = h / sqrt(h^2 + d^2)
+     * Uses perspective-correct formula: flattenRatio = verticalDrop / sqrt(verticalDrop^2 + d^2)
+     * where verticalDrop = cameraHeight - elevationDelta accounts for target elevation.
      * @param {number} horizontalDistance - Distance from camera in meters
      * @param {number} pitch - Camera pitch in radians
+     * @param {number} [elevationDelta=0] - Elevation difference (target ele - camera ele) in meters
      * @returns {number} Flatten ratio (0-1), where lower values are flatter
      */
-    calculateFlattenRatio(horizontalDistance, pitch) {
+    calculateFlattenRatio(horizontalDistance, pitch, elevationDelta = 0) {
         const cameraHeight = this.cameraConfig?.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
 
-        const h = cameraHeight;
+        const h = cameraHeight - elevationDelta;
         const d = Math.max(0.1, horizontalDistance);
-        const baseFlatten = h / Math.sqrt(h * h + d * d);
+        const baseFlatten = Math.abs(h) / Math.sqrt(h * h + d * d);
 
         // Pitch correction: looking straight down -> markers appear circular
         const pitchFactor = Math.abs(Math.cos(pitch));
@@ -284,12 +286,14 @@ export class StreetViewProjector {
      * @param {number} worldRadius - Physical radius in meters
      * @param {number} horizontalDistance - Distance from camera in meters
      * @param {number} fov - Camera FOV in degrees
+     * @param {number} [elevationDelta=0] - Elevation difference (target ele - camera ele) in meters
      * @returns {number} Marker radius in pixels
      */
-    calculateMarkerSize(worldRadius, horizontalDistance, fov) {
+    calculateMarkerSize(worldRadius, horizontalDistance, fov, elevationDelta = 0) {
         const cameraHeight = this.cameraConfig?.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
         const markerScale = this.cameraConfig?.marker_scale ?? 1.0;
-        const slant = Math.sqrt(horizontalDistance * horizontalDistance + cameraHeight * cameraHeight);
+        const verticalDrop = cameraHeight - elevationDelta;
+        const slant = Math.sqrt(horizontalDistance * horizontalDistance + verticalDrop * verticalDrop);
         const d = Math.max(0.5, slant);
         const f = this.focalLength(fov);
         const size = (worldRadius * markerScale) * f / d;

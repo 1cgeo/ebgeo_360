@@ -23,6 +23,7 @@ npm run dev            # Dev server with auto-restart (--watch)
 npm run migrate        # Import JSON metadata + JPG images into SQLite
 npm run generate-pmtiles  # Generate PMTiles for map markers
 npm run verify         # Validate database integrity
+npm run estimate-slope-roll  # Estimate mesh_rotation_z from elevation data
 npm test               # Run tests (node:test built-in)
 npm run lint           # ESLint (--max-warnings 0)
 npm run lint:fix       # ESLint auto-fix
@@ -51,6 +52,7 @@ src/
 scripts/
 ├── migrate.js             # JSON+JPG → SQLite migration (7-phase)
 ├── generate-pmtiles.js    # PMTiles generation for mapping
+├── estimate-slope-roll.js # Estimate mesh_rotation_z from elevation between consecutive photos
 └── verify.js              # Data validation
 
 public/calibration/        # Calibration web interface
@@ -71,7 +73,7 @@ tests/
 - **projects** — slug, name, location, center coordinates, entry photo ID, photo count
 - **photos** — coordinates, heading, camera_height, mesh_rotation_y/x/z, distance_scale, calibration_reviewed, sequence number
 - **photos_rtree** — R-tree spatial index for geographic queries
-- **targets** — Navigation graph (source→target with distance, bearing, override bearing/distance, hidden flag)
+- **targets** — Navigation graph (source→target with distance, bearing, override bearing/distance/height, hidden flag)
 
 ### {slug}.db (Per-project images)
 - **images** — photo_id → full_webp BLOB + preview_webp BLOB
@@ -89,6 +91,7 @@ tests/
 - Renames `override_heading`/`override_pitch` → `override_bearing`/`override_distance` in `targets`
 - Clamps old `override_pitch < 0.5` values to `5m` default
 - Adds `hidden` column to `targets` (default 0)
+- Adds `override_height` column to `targets` (default NULL)
 
 ## API Endpoints
 
@@ -112,7 +115,7 @@ tests/
 | `PUT /api/v1/photos/:uuid/distance-scale` | Update distance_scale (0.1–5.0) |
 | `PUT /api/v1/photos/:uuid/marker-scale` | Update marker_scale (0.1–5.0) |
 | `PUT /api/v1/photos/:uuid/reviewed` | Mark photo reviewed/unreviewed |
-| `PUT /api/v1/targets/:sourceId/:targetId/override` | Set bearing (0–360°) / distance (0.5–500 m) overrides |
+| `PUT /api/v1/targets/:sourceId/:targetId/override` | Set bearing (0–360°) / distance (0.5–500 m) / height (−10–10 m) overrides |
 | `DELETE /api/v1/targets/:sourceId/:targetId/override` | Clear overrides |
 | `PUT /api/v1/targets/:sourceId/:targetId/visibility` | Set target hidden state (hidden: bool) |
 | `GET /api/v1/photos/:uuid/nearby?radius=100` | Find nearby unconnected photos within radius |
@@ -141,7 +144,7 @@ tests/
     "lon": -55.79, "lat": -29.78, "ele": 100.0,
     "display_name": "IMG_0002",
     "next": true, "distance": 12.5, "bearing": 45.0,
-    "override_bearing": null, "override_distance": null,
+    "override_bearing": null, "override_distance": null, "override_height": null,
     "hidden": false, "is_original": true
   }]
 }
@@ -232,20 +235,27 @@ const imgDb = getProjectDb('alegrete.db');  // Cached per filename
 |-----------|--------|-------|---------|-------------|
 | Heading (Y) | `mesh_rotation_y` | 0–360 | 180 | Yaw correction applied to panorama sphere |
 | Pitch (X) | `mesh_rotation_x` | −30–30 | 0 | Pitch tilt correction |
-| Roll (Z) | `mesh_rotation_z` | −30–30 | 0 | Roll tilt correction |
+| Roll (Z) | `mesh_rotation_z` | −30–30 | 0 | Roll tilt correction (auto-estimated from slope) |
 | Camera height | `camera_height` | 0.1–20 | 2.5 | Height above ground in meters |
 | Distance scale | `distance_scale` | 0.1–5.0 | 1.0 | Multiplier for target distances |
 | Marker scale | `marker_scale` | 0.1–5.0 | 1.0 | Multiplier for navigation marker visual size |
 | Override bearing | `override_bearing` | 0–360 | NULL | Manual target bearing (degrees, 0=North) |
 | Override distance | `override_distance` | 0.5–500 | NULL | Manual target ground distance (meters) |
+| Override height | `override_height` | −10–10 | NULL | Manual target vertical offset (meters, positive = above ground) |
 | Hidden | `hidden` | 0/1 | 0 | Whether target is hidden from navigation (per source→target pair) |
 | Reviewed | `calibration_reviewed` | 0/1 | 0 | Whether calibration has been reviewed |
 
 ### Three.js Rotation Order
 The panorama sphere uses Euler order `ZXY` — matrix `Rz·Rx·Ry` — meaning Y (heading) is applied first to pixels, then X (pitch), then Z (roll) in the corrected frame. Both `viewer.js` (calibration) and `street_view_viewer.js` (ebgeo_web) must use the same order.
 
+### Elevation Delta in Projection
+When both camera and target have `ele` data, the elevation difference `ΔE = target.ele - camera.ele` offsets the target marker vertically: `y = -cameraHeight + ΔE`. This affects marker Y position, flatten ratio, and slant distance for marker sizing. Clamped to ±2m (`MAX_ELEVATION_DELTA`) to protect against GPS noise. When either `ele` is null, `ΔE = 0` (flat ground fallback).
+
+### Slope Roll Estimation
+`scripts/estimate-slope-roll.js` estimates `mesh_rotation_z` (roll) from elevation data between a photo and its `next` target: `θ = atan2(ΔE, distance)`. Slopes beyond `--max-angle` (default 15°, recommended 10°) are **discarded** as GPS noise (set to 0), not clamped. Supports `--dry-run`, `--clear`, `--project <slug>`, `--max-angle <N>`.
+
 ### Target Override Projection
-Override markers use a **ground-plane model**: bearing + ground distance are projected onto `y = -cameraHeight` plane, NOT spherical coordinates. Both `navigator.js` (calibration) and `navigation/navigator.js` (ebgeo_web) use `projectFromOverride()` for this.
+Override markers use a **ground-plane model**: bearing + ground distance + height are projected onto `y = -cameraHeight + overrideHeight` plane, NOT spherical coordinates. Both `navigator.js` (calibration) and `navigation/navigator.js` (ebgeo_web) use `projectFromOverride()` for this. Override markers do **not** use GPS elevation delta — the height is manually controlled via a slider in the calibration UI. When `override_height` is NULL/0, the marker sits on the ground plane exactly where the user clicked.
 
 ## Calibration UI Architecture
 
@@ -273,10 +283,10 @@ app.js (orchestrator)
 3. Grid toggle — perspective grid on/off
 4. Save/Discard buttons — enabled when dirty
 5. Review actions — mark reviewed, reviewed → next
-6. **Collapsible**: Parametros de Calibracao — 6 sliders (rotation_y/x/z, height, distance/marker_scale)
+6. **Collapsible**: Parametros de Calibração — 6 sliders (rotation_y/x/z, height, distance/marker_scale)
 7. **Collapsible**: Aplicar ao Projeto — batch update buttons
 8. **Collapsible**: Targets (N) — clickable target list with override/hidden badges
-9. Override editor — bearing/distance sliders, set-from-click, hide/show, delete (when target selected)
+9. Override editor — bearing/distance/height sliders, set-from-click, hide/show, delete (when target selected)
 10. **Collapsible**: Fotos Proximas (N) — nearby unconnected photos with Preview toggle
 11. Fotos do Projeto — full photo list with review status
 
