@@ -257,106 +257,108 @@ function main() {
   const db = new Database(indexDbPath);
   db.pragma('journal_mode = WAL');
 
-  const projects = db.prepare('SELECT id, slug, name, photo_count FROM projects ORDER BY name').all();
+  try {
+    const projects = db.prepare('SELECT id, slug, name, photo_count FROM projects ORDER BY name').all();
 
-  // Detect projects that should be skipped (have original targets but no spatial ones)
-  const skipSlugs = new Set();
-  for (const p of projects) {
-    const spatial = db.prepare(
-      'SELECT COUNT(*) as c FROM targets t JOIN photos ph ON ph.id = t.source_id WHERE ph.project_id = ? AND t.is_original = 0'
-    ).get(p.id);
-    const original = db.prepare(
-      'SELECT COUNT(*) as c FROM targets t JOIN photos ph ON ph.id = t.source_id WHERE ph.project_id = ? AND t.is_original = 1'
-    ).get(p.id);
-    if (spatial.c === 0 && original.c > 0) {
-      skipSlugs.add(p.slug);
-    }
-  }
-
-  if (skipSlugs.size > 0) {
-    console.log(`Skipping (no spatial targets exist): ${[...skipSlugs].join(', ')}`);
-    console.log('');
-  }
-
-  const deleteSpatialTargets = db.prepare(
-    'DELETE FROM targets WHERE is_original = 0 AND source_id IN (SELECT id FROM photos WHERE project_id = ?)'
-  );
-
-  const insertTarget = db.prepare(
-    'INSERT OR IGNORE INTO targets (source_id, target_id, distance_m, bearing_deg, is_next, is_original) VALUES (?, ?, ?, ?, 0, 0)'
-  );
-
-  const getOriginalTargets = db.prepare(
-    'SELECT t.source_id, t.target_id, t.bearing_deg FROM targets t JOIN photos ph ON ph.id = t.source_id WHERE ph.project_id = ? AND t.is_original = 1'
-  );
-
-  console.log('Project                   | Photos | Median NN (m) | Radius (m) | Old Spatial | New Spatial | Avg/Photo');
-  console.log('--------------------------|--------|---------------|------------|-------------|-------------|----------');
-
-  let totalOldSpatial = 0;
-  let totalNewSpatial = 0;
-
-  for (const p of projects) {
-    if (skipSlugs.has(p.slug)) continue;
-
-    const photos = db.prepare('SELECT id, lat, lon FROM photos WHERE project_id = ?').all(p.id);
-
-    if (photos.length < 2) {
-      console.log(
-        `${p.slug.padEnd(25)} | ${String(photos.length).padStart(6)} | ` +
-        `${'N/A'.padStart(13)} | ${'N/A'.padStart(10)} | ` +
-        `${'N/A'.padStart(11)} | ${'N/A'.padStart(11)} | ${'N/A'.padStart(9)}`
-      );
-      continue;
+    // Detect projects that should be skipped (have original targets but no spatial ones)
+    const skipSlugs = new Set();
+    for (const p of projects) {
+      const spatial = db.prepare(
+        'SELECT COUNT(*) as c FROM targets t JOIN photos ph ON ph.id = t.source_id WHERE ph.project_id = ? AND t.is_original = 0'
+      ).get(p.id);
+      const original = db.prepare(
+        'SELECT COUNT(*) as c FROM targets t JOIN photos ph ON ph.id = t.source_id WHERE ph.project_id = ? AND t.is_original = 1'
+      ).get(p.id);
+      if (spatial.c === 0 && original.c > 0) {
+        skipSlugs.add(p.slug);
+      }
     }
 
-    const medianNN = computeMedianNearestDist(photos);
-    const radius = Math.round(medianNN * opts.multiplier);
-
-    const oldSpatialCount = db.prepare(
-      'SELECT COUNT(*) as c FROM targets t JOIN photos ph ON ph.id = t.source_id WHERE ph.project_id = ? AND t.is_original = 0'
-    ).get(p.id).c;
-
-    const originalTargets = getOriginalTargets.all(p.id);
-    const newTargets = generateSpatialTargets(photos, originalTargets, radius, opts);
-
-    if (!opts.dryRun) {
-      db.transaction(() => {
-        deleteSpatialTargets.run(p.id);
-        for (const t of newTargets) {
-          insertTarget.run(t.sourceId, t.targetId, t.distance, t.bearing);
-        }
-      })();
+    if (skipSlugs.size > 0) {
+      console.log(`Skipping (no spatial targets exist): ${[...skipSlugs].join(', ')}`);
+      console.log('');
     }
 
-    totalOldSpatial += oldSpatialCount;
-    totalNewSpatial += newTargets.length;
-
-    const avgPerPhoto = photos.length > 0 ? (newTargets.length / photos.length).toFixed(1) : '0';
-
-    console.log(
-      `${p.slug.padEnd(25)} | ` +
-      `${String(photos.length).padStart(6)} | ` +
-      `${medianNN.toFixed(1).padStart(13)} | ` +
-      `${String(radius).padStart(10)} | ` +
-      `${String(oldSpatialCount).padStart(11)} | ` +
-      `${String(newTargets.length).padStart(11)} | ` +
-      `${avgPerPhoto.padStart(9)}`
+    const deleteSpatialTargets = db.prepare(
+      'DELETE FROM targets WHERE is_original = 0 AND source_id IN (SELECT id FROM photos WHERE project_id = ?)'
     );
+
+    const insertTarget = db.prepare(
+      'INSERT OR IGNORE INTO targets (source_id, target_id, distance_m, bearing_deg, is_next, is_original) VALUES (?, ?, ?, ?, 0, 0)'
+    );
+
+    const getOriginalTargets = db.prepare(
+      'SELECT t.source_id, t.target_id, t.bearing_deg FROM targets t JOIN photos ph ON ph.id = t.source_id WHERE ph.project_id = ? AND t.is_original = 1'
+    );
+
+    console.log('Project                   | Photos | Median NN (m) | Radius (m) | Old Spatial | New Spatial | Avg/Photo');
+    console.log('--------------------------|--------|---------------|------------|-------------|-------------|----------');
+
+    let totalOldSpatial = 0;
+    let totalNewSpatial = 0;
+
+    for (const p of projects) {
+      if (skipSlugs.has(p.slug)) continue;
+
+      const photos = db.prepare('SELECT id, lat, lon FROM photos WHERE project_id = ?').all(p.id);
+
+      if (photos.length < 2) {
+        console.log(
+          `${p.slug.padEnd(25)} | ${String(photos.length).padStart(6)} | ` +
+          `${'N/A'.padStart(13)} | ${'N/A'.padStart(10)} | ` +
+          `${'N/A'.padStart(11)} | ${'N/A'.padStart(11)} | ${'N/A'.padStart(9)}`
+        );
+        continue;
+      }
+
+      const medianNN = computeMedianNearestDist(photos);
+      const radius = Math.round(medianNN * opts.multiplier);
+
+      const oldSpatialCount = db.prepare(
+        'SELECT COUNT(*) as c FROM targets t JOIN photos ph ON ph.id = t.source_id WHERE ph.project_id = ? AND t.is_original = 0'
+      ).get(p.id).c;
+
+      const originalTargets = getOriginalTargets.all(p.id);
+      const newTargets = generateSpatialTargets(photos, originalTargets, radius, opts);
+
+      if (!opts.dryRun) {
+        db.transaction(() => {
+          deleteSpatialTargets.run(p.id);
+          for (const t of newTargets) {
+            insertTarget.run(t.sourceId, t.targetId, t.distance, t.bearing);
+          }
+        })();
+      }
+
+      totalOldSpatial += oldSpatialCount;
+      totalNewSpatial += newTargets.length;
+
+      const avgPerPhoto = photos.length > 0 ? (newTargets.length / photos.length).toFixed(1) : '0';
+
+      console.log(
+        `${p.slug.padEnd(25)} | ` +
+        `${String(photos.length).padStart(6)} | ` +
+        `${medianNN.toFixed(1).padStart(13)} | ` +
+        `${String(radius).padStart(10)} | ` +
+        `${String(oldSpatialCount).padStart(11)} | ` +
+        `${String(newTargets.length).padStart(11)} | ` +
+        `${avgPerPhoto.padStart(9)}`
+      );
+    }
+
+    console.log('--------------------------|--------|---------------|------------|-------------|-------------|----------');
+    console.log(
+      `${'TOTAL'.padEnd(25)} | ` +
+      `${''.padStart(6)} | ` +
+      `${''.padStart(13)} | ` +
+      `${''.padStart(10)} | ` +
+      `${String(totalOldSpatial).padStart(11)} | ` +
+      `${String(totalNewSpatial).padStart(11)} | ` +
+      `${''.padStart(9)}`
+    );
+  } finally {
+    db.close();
   }
-
-  console.log('--------------------------|--------|---------------|------------|-------------|-------------|----------');
-  console.log(
-    `${'TOTAL'.padEnd(25)} | ` +
-    `${''.padStart(6)} | ` +
-    `${''.padStart(13)} | ` +
-    `${''.padStart(10)} | ` +
-    `${String(totalOldSpatial).padStart(11)} | ` +
-    `${String(totalNewSpatial).padStart(11)} | ` +
-    `${''.padStart(9)}`
-  );
-
-  db.close();
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`\n=== ${opts.dryRun ? 'Dry run' : 'Recalculation'} complete in ${elapsed}s ===`);

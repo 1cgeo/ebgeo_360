@@ -183,6 +183,7 @@ try {
   console.log(`  fotos.pmtiles generated at ${pointsOutput}`);
 } catch (error) {
   console.error('Error running tippecanoe for points:', error.message);
+  db.close();
   process.exit(1);
 }
 

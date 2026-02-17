@@ -12,6 +12,7 @@
     "estimate-slope-roll": "node scripts/estimate-slope-roll.js",
     "generate-pmtiles": "node scripts/generate-pmtiles.js",
     "verify": "node scripts/verify.js",
+    "cleanup-wal": "node scripts/cleanup-wal.js",
     "test": "node --test tests/**/*.test.js",
     "knip": "knip",
     "lint": "eslint . --max-warnings 0",

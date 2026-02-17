@@ -820,78 +820,81 @@ async function processImages(opts, projects, sequences, photoUUIDs, indexDb) {
 
     // Create project DB with large page size
     const projDb = new Database(projDbPath);
-    projDb.pragma('page_size = 65536');
-    projDb.pragma('journal_mode = WAL');
-    projDb.pragma('synchronous = NORMAL');
-    projDb.exec(projectSchema);
+    try {
+      projDb.pragma('page_size = 65536');
+      projDb.pragma('journal_mode = WAL');
+      projDb.pragma('synchronous = NORMAL');
+      projDb.exec(projectSchema);
 
-    const insertImage = projDb.prepare(`INSERT OR REPLACE INTO images (photo_id, full_webp, preview_webp) VALUES (?, ?, ?)`);
+      const insertImage = projDb.prepare(`INSERT OR REPLACE INTO images (photo_id, full_webp, preview_webp) VALUES (?, ?, ?)`);
 
-    console.log(`  Processing ${p.slug} (${seq.length} photos)...`);
-    let processed = 0;
-    let errors = 0;
+      console.log(`  Processing ${p.slug} (${seq.length} photos)...`);
+      let processed = 0;
+      let errors = 0;
 
-    // Process in batches: convert images with sharp (async), insert in transaction (sync)
-    const BATCH_SIZE = 100;
-    for (let batch = 0; batch < seq.length; batch += BATCH_SIZE) {
-      const batchEnd = Math.min(batch + BATCH_SIZE, seq.length);
-      const batchNames = seq.slice(batch, batchEnd);
+      // Process in batches: convert images with sharp (async), insert in transaction (sync)
+      const BATCH_SIZE = 100;
+      for (let batch = 0; batch < seq.length; batch += BATCH_SIZE) {
+        const batchEnd = Math.min(batch + BATCH_SIZE, seq.length);
+        const batchNames = seq.slice(batch, batchEnd);
 
-      const batchErrors = []; // collect errors for this batch
-      const promises = [];
-      for (const originalName of batchNames) {
-        const uuid = photoUUIDs.get(originalName);
-        const imgPath = join(opts.images, `${originalName}.jpg`);
+        const batchErrors = []; // collect errors for this batch
+        const promises = [];
+        for (const originalName of batchNames) {
+          const uuid = photoUUIDs.get(originalName);
+          const imgPath = join(opts.images, `${originalName}.jpg`);
 
-        if (!existsSync(imgPath)) {
-          errors++;
-          batchErrors.push({ originalName, reason: 'JPG file not found' });
-          continue;
+          if (!existsSync(imgPath)) {
+            errors++;
+            batchErrors.push({ originalName, reason: 'JPG file not found' });
+            continue;
+          }
+
+          promises.push(
+            (async () => {
+              try {
+                const imgBuffer = readFileSync(imgPath);
+                const [fullBuf, prevBuf] = await Promise.all([
+                  sharp(imgBuffer).webp({ quality: 80 }).toBuffer(),
+                  sharp(imgBuffer).resize(512, 256, { fit: 'fill' }).webp({ quality: 70 }).toBuffer(),
+                ]);
+                return { uuid, fullBuf, prevBuf };
+              } catch (err) {
+                errors++;
+                batchErrors.push({ originalName, reason: err.message });
+                return null;
+              }
+            })()
+          );
         }
 
-        promises.push(
-          (async () => {
-            try {
-              const imgBuffer = readFileSync(imgPath);
-              const [fullBuf, prevBuf] = await Promise.all([
-                sharp(imgBuffer).webp({ quality: 80 }).toBuffer(),
-                sharp(imgBuffer).resize(512, 256, { fit: 'fill' }).webp({ quality: 70 }).toBuffer(),
-              ]);
-              return { uuid, fullBuf, prevBuf };
-            } catch (err) {
-              errors++;
-              batchErrors.push({ originalName, reason: err.message });
-              return null;
-            }
-          })()
-        );
-      }
+        const results = await Promise.all(promises);
 
-      const results = await Promise.all(promises);
+        // Insert in transaction (synchronous)
+        const insertTransact = projDb.transaction(() => {
+          for (const r of results) {
+            if (!r) continue;
+            insertImage.run(r.uuid, r.fullBuf, r.prevBuf);
+            updateSizes.run(r.fullBuf.length, r.prevBuf.length, r.uuid);
+            processed++;
+          }
+        });
+        insertTransact();
 
-      // Insert in transaction (synchronous)
-      const insertTransact = projDb.transaction(() => {
-        for (const r of results) {
-          if (!r) continue;
-          insertImage.run(r.uuid, r.fullBuf, r.prevBuf);
-          updateSizes.run(r.fullBuf.length, r.prevBuf.length, r.uuid);
-          processed++;
+        // Flush errors to CSV immediately after each batch
+        if (batchErrors.length > 0) {
+          const lines = batchErrors.map(e => `${p.slug},${e.originalName},"${e.reason.replace(/"/g, '""')}"`).join('\n') + '\n';
+          appendFileSync(errPath, lines, 'utf-8');
+          totalErrors += batchErrors.length;
         }
-      });
-      insertTransact();
 
-      // Flush errors to CSV immediately after each batch
-      if (batchErrors.length > 0) {
-        const lines = batchErrors.map(e => `${p.slug},${e.originalName},"${e.reason.replace(/"/g, '""')}"`).join('\n') + '\n';
-        appendFileSync(errPath, lines, 'utf-8');
-        totalErrors += batchErrors.length;
+        process.stdout.write(`    ${processed}/${seq.length} processed (${errors} errors)\r`);
       }
 
-      process.stdout.write(`    ${processed}/${seq.length} processed (${errors} errors)\r`);
+      console.log(`    ${processed}/${seq.length} done (${errors} errors)`);
+    } finally {
+      projDb.close();
     }
-
-    console.log(`    ${processed}/${seq.length} done (${errors} errors)`);
-    projDb.close();
   }
 
   if (totalErrors > 0) {
@@ -939,13 +942,15 @@ async function main() {
   // Phase 6: Populate metadata + targets in index.db
   const indexDb = populateMetadata(opts, photos, PROJECTS, sequences, projectUUIDs, photoUUIDs, photoDisplayNames, spatialTargets);
 
-  // Phase 7: Estimate slope roll (mesh_rotation_z from elevation data)
-  estimateSlopeRoll(indexDb, PROJECTS, projectUUIDs, opts);
+  try {
+    // Phase 7: Estimate slope roll (mesh_rotation_z from elevation data)
+    estimateSlopeRoll(indexDb, PROJECTS, projectUUIDs, opts);
 
-  // Phase 8: Process images into per-project databases
-  await processImages(opts, PROJECTS, sequences, photoUUIDs, indexDb);
-
-  indexDb.close();
+    // Phase 8: Process images into per-project databases
+    await processImages(opts, PROJECTS, sequences, photoUUIDs, indexDb);
+  } finally {
+    indexDb.close();
+  }
   console.log('  Database finalized.');
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);

@@ -22,7 +22,9 @@
       "Bash(docker-compose exec:*)",
       "Bash(git stash:*)",
       "Bash(node --test:*)",
-      "Bash(npm run knip:*)"
+      "Bash(npm run knip:*)",
+      "Bash(findstr:*)",
+      "Bash(node scripts/cleanup-wal.js:*)"
     ]
   }
 }

@@ -46,13 +46,23 @@ await fastify.register(calibrationRoutes);
 // Graceful shutdown
 const shutdown = async () => {
   fastify.log.info('Shutting down...');
-  closeAll();
   await fastify.close();
+  closeAll();
   process.exit(0);
 };
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+process.on('uncaughtException', (err) => {
+  fastify.log.error(err, 'Uncaught exception');
+  closeAll();
+  process.exit(1);
+});
+process.on('unhandledRejection', (err) => {
+  fastify.log.error(err, 'Unhandled rejection');
+  closeAll();
+  process.exit(1);
+});
 
 // Start
 try {
