@@ -22,6 +22,11 @@ const config = {
     return resolve(this.dataDir, 'projects');
   },
 
+  // Directory containing static thumbnails
+  get thumbnailsDir() {
+    return resolve(this.dataDir, 'thumbnails');
+  },
+
   // Logging
   logLevel: process.env.LOG_LEVEL || 'info',
 

@@ -42,6 +42,7 @@ function formatProject(row) {
     location: row.location,
     center: { lat: row.center_lat, lon: row.center_lon },
     entryPhotoId: row.entry_photo_id,
+    previewThumbnail: `/thumbnails/${row.slug}.webp`,
     photoCount: row.photo_count,
   };
 }

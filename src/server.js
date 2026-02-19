@@ -34,6 +34,13 @@ await fastify.register(fastifyStatic, {
   decorateReply: false,
 });
 
+// Static files — project thumbnails ({slug}.webp in /data/thumbnails/)
+await fastify.register(fastifyStatic, {
+  root: config.thumbnailsDir,
+  prefix: '/api/v1/thumbnails/',
+  decorateReply: false,
+});
+
 // Initialize database on startup
 getIndexDb();
 
