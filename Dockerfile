@@ -12,7 +12,7 @@ COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY public/ ./public/
 
-RUN mkdir -p /data/projects /data/thumbnails/projects
+RUN mkdir -p /data/projects /data/thumbnails
 
 ENV NODE_ENV=production
 ENV PORT=8081

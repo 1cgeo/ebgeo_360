@@ -79,6 +79,10 @@ tests/
 - **images** — photo_id → full_webp BLOB + preview_webp BLOB
 - Created with `PRAGMA page_size = 65536` for optimal BLOB streaming
 
+### thumbnails/ (Static project thumbnails)
+- `{slug}.webp` — One thumbnail per project, served via `/api/v1/thumbnails/{slug}.webp`
+- Used by the catalog in ebgeo_web to display project preview images
+
 ### SQLite Optimizations
 - WAL mode on all connections
 - 64 MB cache for index.db, 32 MB per project DB
@@ -99,8 +103,9 @@ tests/
 | Endpoint | Description | Cache |
 |----------|-------------|-------|
 | `/health` | Service status + project count | None |
-| `/api/v1/projects` | List all projects | 1h |
+| `/api/v1/projects` | List all projects (includes `previewThumbnail` URL) | 1h |
 | `/api/v1/projects/:slug` | Single project details | 1h |
+| `/api/v1/thumbnails/:slug.webp` | Static project thumbnail image (WebP) | Static |
 | `/api/v1/photos/:uuid` | Photo metadata + targets (hidden targets filtered unless `?include_hidden=true`) | no-cache (revalidate) |
 | `/api/v1/photos/:uuid/image?quality=full\|preview` | WebP image stream | 1yr immutable + ETag |
 | `/api/v1/photos/by-name/:originalName` | Backward compat lookup | 1h |
@@ -158,7 +163,7 @@ Environment variables (with defaults):
 |----------|---------|-------------|
 | `PORT` | 8081 | HTTP server port |
 | `HOST` | 0.0.0.0 | Bind address |
-| `STREETVIEW_DATA_DIR` | ./data | Root data dir (index.db + projects/) |
+| `STREETVIEW_DATA_DIR` | ./data | Root data dir (index.db + projects/ + thumbnails/) |
 | `LOG_LEVEL` | info | Fastify logger level |
 | `CORS_ORIGIN` | * | CORS allowed origins |
 
@@ -171,6 +176,7 @@ The parent app (`../ebgeo_web`) integrates via REST API calls:
 - **`src/js/store/streetview360.operations.js`** — CRUD for orientations/markers
 - **`src/js/features_tab/streetview360-section.component.js`** — Feature list section
 - **`src/js/street_view_tool/streetview_markers.js`** — Clustered map markers (PMTiles)
+- **`src/js/catalog/catalog.service.js`** — Catalog aggregation (builds absolute thumbnail URLs from `serviceUrl` + `previewThumbnail`)
 
 Events: `STREETVIEW_360_OPENED`, `STREETVIEW_360_CLOSED`, `STREETVIEW_360_PHOTO_CHANGED`, `ORIENTATION_360_SAVED`, `ORIENTATION_360_CLEARED`, `MARKER_360_CLICKED`, `MARKERS_360_CHANGED`
 
@@ -330,8 +336,3 @@ docker-compose up -d
 # Local development
 npm run dev
 ```
-
-## Projects
-
-15 military sites in southern Brazil:
-Alegrete, Parque Osorio, Uruguaiana, 3o RCMec, CIST, 27o GAC, CI Guarnicao Ijui, EASA, 29o GACap, CI Cruz Alta, SantAna do Livramento, Tubarao, Blumenau, CI General Calazans, Ponta Grossa

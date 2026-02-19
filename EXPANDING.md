@@ -14,8 +14,9 @@ Fotos 360 (JPG) + Metadados (JSON)
 1. Registrar novo projeto em migrate.js
 2. Executar migracao (JSON+JPG -> SQLite)
 3. Gerar PMTiles para marcadores no mapa
-4. Verificar e testar
-5. Deploy
+4. Adicionar thumbnail do projeto
+5. Verificar e testar
+6. Deploy
 ```
 
 ## Pre-requisitos
@@ -174,7 +175,22 @@ Isso cria `fotos.pmtiles` contendo um ponto para cada foto com:
 
 Requisito: [tippecanoe](https://github.com/felt/tippecanoe) deve estar instalado.
 
-## Passo 5: Verificar
+## Passo 5: Adicionar Thumbnail
+
+Crie uma imagem de thumbnail para o novo projeto no diretorio de thumbnails:
+
+```
+{STREETVIEW_DATA_DIR}/thumbnails/{slug}.webp
+```
+
+- Formato: WebP
+- Nome do arquivo: deve corresponder ao slug do projeto (ex: `nome_do_local.webp`)
+- A imagem sera servida na API em `GET /api/v1/thumbnails/{slug}.webp`
+- Usada pelo catalogo do EBGeo Web como preview do projeto
+
+No Docker, o diretorio e `/data/thumbnails/`. Localmente, depende do `.env` (`STREETVIEW_DATA_DIR`).
+
+## Passo 6: Verificar
 
 ### Verificacao manual
 
@@ -194,6 +210,13 @@ No retorno de `/api/v1/projects/nome_do_local`, verifique:
 - `photoCount` — Numero esperado de fotos
 - `entryPhotoId` — UUID valido
 - `center` — Coordenadas corretas
+- `previewThumbnail` — Path do thumbnail (ex: `/thumbnails/nome_do_local.webp`)
+
+### Testar thumbnail
+
+```bash
+curl -o test_thumb.webp "http://localhost:8081/api/v1/thumbnails/nome_do_local.webp"
+```
 
 ### Testar foto de entrada
 
