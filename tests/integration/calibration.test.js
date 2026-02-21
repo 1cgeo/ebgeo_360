@@ -983,3 +983,118 @@ describe('DELETE /api/v1/targets/:sourceId/:targetId', () => {
     assert.equal(res.statusCode, 404);
   });
 });
+
+// ============================================================================
+// DELETE /api/v1/photos/:uuid — soft-delete a photo
+// ============================================================================
+
+describe('DELETE /api/v1/photos/:uuid (soft-delete)', () => {
+  // These tests delete PHOTO_3 (not connected as a target by seed data).
+  // Run them last since they mutate shared state.
+
+  it('returns 200 with ok:true for a valid photo', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/photos/${SEEDS.PHOTO_3_ID}`,
+    });
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.body);
+    assert.equal(body.ok, true);
+    assert.equal(body.deletedPhotoId, SEEDS.PHOTO_3_ID);
+    assert.equal(body.projectSlug, SEEDS.PROJECT_SLUG);
+    assert.equal(typeof body.newPhotoCount, 'number');
+    assert.equal(body.newPhotoCount, 2); // was 3, now 2
+  });
+
+  it('returns 404 for a photo that was already deleted', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/photos/${SEEDS.PHOTO_3_ID}`,
+    });
+    assert.equal(res.statusCode, 404);
+  });
+
+  it('returns 404 for a non-existent photo UUID', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/v1/photos/00000000-0000-0000-0000-000000000000',
+    });
+    assert.equal(res.statusCode, 404);
+  });
+
+  it('GET /photos/:uuid returns 404 after deletion', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/photos/${SEEDS.PHOTO_3_ID}`,
+    });
+    assert.equal(res.statusCode, 404);
+  });
+
+  it('GET /photos/:uuid/image returns 404 after deletion', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/photos/${SEEDS.PHOTO_3_ID}/image`,
+    });
+    assert.equal(res.statusCode, 404);
+  });
+
+  it('deleted photo does not appear in project photo list', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${SEEDS.PROJECT_SLUG}/photos`,
+    });
+    const body = JSON.parse(res.body);
+    const deleted = body.photos.find(p => p.id === SEEDS.PHOTO_3_ID);
+    assert.equal(deleted, undefined, 'Deleted photo should not appear in project photos');
+  });
+
+  it('deleted photo does not appear in nearby results', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/nearby?radius=100`,
+    });
+    const body = JSON.parse(res.body);
+    const deleted = body.photos.find(p => p.id === SEEDS.PHOTO_3_ID);
+    assert.equal(deleted, undefined, 'Deleted photo should not appear in nearby');
+  });
+
+  it('project photo_count is decremented', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${SEEDS.PROJECT_SLUG}`,
+    });
+    const body = JSON.parse(res.body);
+    assert.equal(body.project.photoCount, 2);
+  });
+
+  // Now test deleting a photo that IS a target of another photo
+  it('targets TO deleted photo are removed from other photos', async () => {
+    // PHOTO_2 has PHOTO_1 as target. Delete PHOTO_1.
+    const delRes = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}`,
+    });
+    assert.equal(delRes.statusCode, 200);
+
+    // PHOTO_2's targets should no longer include PHOTO_1
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/photos/${SEEDS.PHOTO_2_ID}?include_hidden=true`,
+    });
+    const body = JSON.parse(res.body);
+    const deletedTarget = body.targets.find(t => t.id === SEEDS.PHOTO_1_ID);
+    assert.equal(deletedTarget, undefined, 'Deleted photo should not appear as target');
+  });
+
+  it('entry_photo_id is updated when entry photo is deleted', async () => {
+    // PHOTO_1 was the entry photo and was deleted above.
+    // entry_photo_id should now point to PHOTO_2 (the only remaining photo).
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${SEEDS.PROJECT_SLUG}`,
+    });
+    const body = JSON.parse(res.body);
+    assert.equal(body.project.entryPhotoId, SEEDS.PHOTO_2_ID);
+    assert.equal(body.project.photoCount, 1);
+  });
+});

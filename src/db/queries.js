@@ -63,6 +63,7 @@ function stmts() {
       FROM targets t
       JOIN photos ph ON ph.id = t.target_id
       WHERE t.source_id = ?
+        AND t.target_id NOT IN (SELECT photo_id FROM deleted_photos)
       ORDER BY t.is_next DESC, t.distance_m ASC
     `),
 
@@ -73,6 +74,7 @@ function stmts() {
       FROM targets t
       JOIN photos ph ON ph.id = t.target_id
       WHERE t.source_id = ? AND t.hidden = 0
+        AND t.target_id NOT IN (SELECT photo_id FROM deleted_photos)
       ORDER BY t.is_next DESC, t.distance_m ASC
     `),
 
@@ -117,6 +119,7 @@ function stmts() {
       WHERE ph.project_id = (SELECT project_id FROM photos WHERE id = ?)
         AND ph.id != ?
         AND ph.id NOT IN (SELECT target_id FROM targets WHERE source_id = ?)
+        AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)
         AND rt.min_lon >= ? AND rt.max_lon <= ?
         AND rt.min_lat >= ? AND rt.max_lat <= ?
       ORDER BY ph.sequence_number
@@ -132,6 +135,7 @@ function stmts() {
       FROM photos ph
       JOIN projects p ON p.id = ph.project_id
       WHERE p.slug = ?
+        AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)
       ORDER BY ph.sequence_number ASC
     `),
 
@@ -142,17 +146,20 @@ function stmts() {
       FROM photos ph
       JOIN projects p ON p.id = ph.project_id
       WHERE p.slug = ?
+        AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
 
     // ---- Batch calibration (writes) ----
     batchUpdateMeshRotationY: db.prepare(`
       UPDATE photos SET mesh_rotation_y = ?
       WHERE project_id = (SELECT id FROM projects WHERE slug = ?)
+        AND id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
 
     batchUpdateCameraHeight: db.prepare(`
       UPDATE photos SET camera_height = ?
       WHERE project_id = (SELECT id FROM projects WHERE slug = ?)
+        AND id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
 
     // ---- Mesh rotation X/Z and distance scale ----
@@ -175,27 +182,70 @@ function stmts() {
     batchUpdateMeshRotationX: db.prepare(`
       UPDATE photos SET mesh_rotation_x = ?
       WHERE project_id = (SELECT id FROM projects WHERE slug = ?)
+        AND id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
 
     batchUpdateMeshRotationZ: db.prepare(`
       UPDATE photos SET mesh_rotation_z = ?
       WHERE project_id = (SELECT id FROM projects WHERE slug = ?)
+        AND id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
 
     batchUpdateDistanceScale: db.prepare(`
       UPDATE photos SET distance_scale = ?
       WHERE project_id = (SELECT id FROM projects WHERE slug = ?)
+        AND id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
 
     batchUpdateMarkerScale: db.prepare(`
       UPDATE photos SET marker_scale = ?
       WHERE project_id = (SELECT id FROM projects WHERE slug = ?)
+        AND id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
 
     // ---- Reset reviewed ----
     batchResetReviewed: db.prepare(`
       UPDATE photos SET calibration_reviewed = 0
       WHERE project_id = (SELECT id FROM projects WHERE slug = ?)
+        AND id NOT IN (SELECT photo_id FROM deleted_photos)
+    `),
+
+    // ---- Soft-delete ----
+    isPhotoDeleted: db.prepare(
+      'SELECT 1 FROM deleted_photos WHERE photo_id = ?'
+    ),
+
+    insertDeletedPhoto: db.prepare(
+      'INSERT OR IGNORE INTO deleted_photos (photo_id) VALUES (?)'
+    ),
+
+    deleteTargetsForPhoto: db.prepare(
+      'DELETE FROM targets WHERE source_id = ? OR target_id = ?'
+    ),
+
+    deleteRtreeForPhoto: db.prepare(`
+      DELETE FROM photos_rtree WHERE rowid_id IN (
+        SELECT rowid_id FROM photos_rowid WHERE photo_id = ?
+      )
+    `),
+
+    deleteRowidForPhoto: db.prepare(
+      'DELETE FROM photos_rowid WHERE photo_id = ?'
+    ),
+
+    updateProjectPhotoCount: db.prepare(`
+      UPDATE projects SET photo_count = (
+        SELECT COUNT(*) FROM photos
+        WHERE project_id = ? AND id NOT IN (SELECT photo_id FROM deleted_photos)
+      ) WHERE id = ?
+    `),
+
+    updateProjectEntryPhoto: db.prepare(`
+      UPDATE projects SET entry_photo_id = (
+        SELECT id FROM photos
+        WHERE project_id = ? AND id NOT IN (SELECT photo_id FROM deleted_photos)
+        ORDER BY sequence_number LIMIT 1
+      ) WHERE id = ? AND entry_photo_id = ?
     `),
   };
 
@@ -498,6 +548,55 @@ export function batchUpdateMarkerScale(slug, markerScale) {
  */
 export function batchResetReviewed(slug) {
   return stmts().batchResetReviewed.run(slug);
+}
+
+// ---- Soft-delete functions ----
+
+/**
+ * Checks if a photo has been soft-deleted.
+ * @param {string} photoId - Photo UUID
+ * @returns {boolean} True if deleted
+ */
+export function isPhotoDeleted(photoId) {
+  return !!stmts().isPhotoDeleted.get(photoId);
+}
+
+/**
+ * Soft-deletes a photo: marks as deleted, removes targets and spatial index.
+ * Runs in a transaction. The photo row in `photos` is preserved.
+ * @param {string} photoId - Photo UUID
+ * @param {string} projectId - Project UUID
+ * @returns {{deletedTargets: number, newPhotoCount: number}}
+ */
+export function softDeletePhoto(photoId, projectId) {
+  const db = getIndexDb();
+  const s = stmts();
+
+  return db.transaction(() => {
+    // 1. Mark as deleted
+    s.insertDeletedPhoto.run(photoId);
+
+    // 2. Remove all targets involving this photo
+    const targetResult = s.deleteTargetsForPhoto.run(photoId, photoId);
+
+    // 3. Remove spatial index entry
+    s.deleteRtreeForPhoto.run(photoId);
+    s.deleteRowidForPhoto.run(photoId);
+
+    // 4. Update project photo count
+    s.updateProjectPhotoCount.run(projectId, projectId);
+
+    // 5. Update entry_photo_id if it was this photo
+    s.updateProjectEntryPhoto.run(projectId, projectId, photoId);
+
+    // Get updated count
+    const project = db.prepare('SELECT photo_count FROM projects WHERE id = ?').get(projectId);
+
+    return {
+      deletedTargets: targetResult.changes,
+      newPhotoCount: project?.photo_count ?? 0,
+    };
+  })();
 }
 
 /**

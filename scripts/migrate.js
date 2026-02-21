@@ -7,8 +7,7 @@
  *   - index.db: metadata, navigation graph, spatial index
  *   - {slug}.db: per-project image BLOBs (full WebP + preview WebP)
  *
- * Includes adaptive spatial target generation (sector-based, per-project adaptive radius)
- * and slope roll estimation (mesh_rotation_z from elevation data).
+ * Includes adaptive spatial target generation (sector-based, per-project adaptive radius).
  *
  * Usage:
  *   node scripts/migrate.js --metadata <METADATA_DIR> --images <IMG_DIR> [--output <DATA_DIR>] [--workers <N>] [--skip-images]
@@ -40,8 +39,6 @@ function parseArgs() {
     maxTargets: 6,     // max spatial targets per photo
     sectors: 4,        // number of angular sectors (360/4 = 90° each)
     perSector: 3,      // max targets per sector
-    // Slope roll estimation
-    maxSlope: 10,      // discard slopes beyond ±N degrees (GPS noise)
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -56,7 +53,6 @@ function parseArgs() {
       case '--max-targets': opts.maxTargets = parseInt(args[++i], 10); break;
       case '--sectors': opts.sectors = parseInt(args[++i], 10); break;
       case '--per-sector': opts.perSector = parseInt(args[++i], 10); break;
-      case '--max-slope': opts.maxSlope = parseFloat(args[++i]); break;
     }
   }
 
@@ -127,7 +123,7 @@ function bearing(lat1, lon1, lat2, lon2) {
 // ============================================================
 
 function readAllMetadata(metadataDir) {
-  console.log('[Phase 1/8] Reading metadata files...');
+  console.log('[Phase 1/7] Reading metadata files...');
   const files = readdirSync(metadataDir).filter(f => f.endsWith('.json'));
   const photos = new Map(); // originalName → metadata
   let count = 0;
@@ -174,7 +170,7 @@ function readAllMetadata(metadataDir) {
 // ============================================================
 
 function assignToProjects(photos, projects, opts) {
-  console.log('[Phase 2/8] Assigning photos to projects...');
+  console.log('[Phase 2/7] Assigning photos to projects...');
 
   const assignments = new Map(); // originalName → project slug
   const projectPhotos = new Map(); // slug → [originalName, ...]
@@ -306,7 +302,7 @@ function sequenceProject(projectDef, photoNames, photos) {
 }
 
 function sequenceAllProjects(projects, projectPhotos, photos) {
-  console.log('[Phase 3/8] Computing sequence numbers...');
+  console.log('[Phase 3/7] Computing sequence numbers...');
 
   const sequences = new Map(); // slug → [originalName in order]
 
@@ -327,7 +323,7 @@ function sequenceAllProjects(projects, projectPhotos, photos) {
 // ============================================================
 
 function generateUUIDs(projects, sequences) {
-  console.log('[Phase 4/8] Generating UUIDs...');
+  console.log('[Phase 4/7] Generating UUIDs...');
 
   const projectUUIDs = new Map(); // slug → uuid
   const photoUUIDs = new Map(); // originalName → uuid
@@ -514,7 +510,7 @@ function generateSpatialTargetsForProject(projectPhotos, originalTargetMap, orig
 }
 
 function adaptiveSpatialAnalysis(photos, photoUUIDs, opts, assignments, projects) {
-  console.log('[Phase 5/8] Adaptive spatial analysis for enhanced targets...');
+  console.log('[Phase 5/7] Adaptive spatial analysis for enhanced targets...');
 
   // Build set of slugs that skip spatial target generation
   const skipTargetSlugs = new Set(projects.filter(p => p.skipTargets).map(p => p.slug));
@@ -597,7 +593,7 @@ function adaptiveSpatialAnalysis(photos, photoUUIDs, opts, assignments, projects
 // ============================================================
 
 function populateMetadata(opts, photos, projects, sequences, projectUUIDs, photoUUIDs, photoDisplayNames, spatialTargets) {
-  console.log('[Phase 6/8] Populating metadata in index.db...');
+  console.log('[Phase 6/7] Populating metadata in index.db...');
 
   // Ensure output directories exist
   if (!existsSync(opts.output)) mkdirSync(opts.output, { recursive: true });
@@ -714,90 +710,16 @@ function populateMetadata(opts, photos, projects, sequences, projectUUIDs, photo
 }
 
 // ============================================================
-// Phase 7: Estimate slope roll (mesh_rotation_z from elevation)
-// ============================================================
-
-function estimateSlopeRoll(indexDb, projects, projectUUIDs, opts) {
-  console.log(`[Phase 7/8] Estimating slope roll (mesh_rotation_z, max ±${opts.maxSlope}°)...`);
-
-  const getPhotosWithNext = indexDb.prepare(`
-    SELECT
-      p.id,
-      p.display_name,
-      p.ele AS cam_ele,
-      t_next.ele AS next_ele,
-      tgt.distance_m AS next_dist
-    FROM photos p
-    LEFT JOIN targets tgt ON tgt.source_id = p.id AND tgt.is_next = 1
-    LEFT JOIN photos t_next ON t_next.id = tgt.target_id
-    WHERE p.project_id = ?
-    ORDER BY p.sequence_number
-  `);
-
-  const updateRotZ = indexDb.prepare('UPDATE photos SET mesh_rotation_z = ? WHERE id = ?');
-
-  let totalPhotos = 0;
-  let totalWithEle = 0;
-  let totalUpdated = 0;
-
-  for (const p of projects) {
-    const projectId = projectUUIDs.get(p.slug);
-    if (!projectId) continue;
-
-    const rows = getPhotosWithNext.all(projectId);
-    if (rows.length === 0) continue;
-
-    const updates = []; // {id, newZ}
-
-    for (const row of rows) {
-      // Skip if missing elevation data on either end
-      if (row.cam_ele == null || row.next_ele == null || row.next_dist == null) continue;
-      // Skip if distance is too small (same spot, unreliable angle)
-      if (row.next_dist < 1) continue;
-
-      totalWithEle++;
-
-      // Compute slope angle: positive = uphill (next is higher)
-      const deltaEle = row.next_ele - row.cam_ele;
-      const slopeRad = Math.atan2(deltaEle, row.next_dist);
-      const slopeDeg = slopeRad * RAD_TO_DEG;
-
-      // Discard outliers: slopes beyond maxSlope are GPS noise, not real inclines
-      if (Math.abs(slopeDeg) > opts.maxSlope) continue;
-
-      // Round to 1 decimal for clean values
-      const newZ = Math.round(slopeDeg * 10) / 10;
-      if (newZ !== 0) {
-        updates.push({ id: row.id, newZ });
-      }
-    }
-
-    if (updates.length > 0) {
-      indexDb.transaction(() => {
-        for (const u of updates) {
-          updateRotZ.run(u.newZ, u.id);
-        }
-      })();
-    }
-
-    totalPhotos += rows.length;
-    totalUpdated += updates.length;
-  }
-
-  console.log(`  ${totalPhotos} photos, ${totalWithEle} with elevation, ${totalUpdated} updated.`);
-}
-
-// ============================================================
-// Phase 8: Process images into per-project databases
+// Phase 7: Process images into per-project databases
 // ============================================================
 
 async function processImages(opts, projects, sequences, photoUUIDs, indexDb) {
   if (opts.skipImages) {
-    console.log('[Phase 8/8] Skipping image processing (--skip-images).');
+    console.log('[Phase 7/7] Skipping image processing (--skip-images).');
     return;
   }
 
-  console.log('[Phase 8/8] Processing images into per-project databases...');
+  console.log('[Phase 7/7] Processing images into per-project databases...');
 
   const projectsDir = join(opts.output, 'projects');
   const projectSchemaPath = resolve(fileURLToPath(new URL('../src/db/project-schema.sql', import.meta.url)));
@@ -919,7 +841,6 @@ async function main() {
   console.log(`  Skip targets: ${opts.skipTargets}`);
   console.log(`  Multiplier:   ${opts.multiplier}x median NN`);
   console.log(`  Max targets:  ${opts.maxTargets} (${opts.sectors} sectors, ${opts.perSector}/sector)`);
-  console.log(`  Max slope:    ±${opts.maxSlope}°`);
   console.log('');
 
   // Phase 1: Read metadata
@@ -936,17 +857,14 @@ async function main() {
 
   // Phase 5: Adaptive spatial analysis (skipped when --skip-targets)
   const spatialTargets = opts.skipTargets
-    ? (console.log('[Phase 5/8] Skipping spatial analysis (--skip-targets).'), new Map())
+    ? (console.log('[Phase 5/7] Skipping spatial analysis (--skip-targets).'), new Map())
     : adaptiveSpatialAnalysis(photos, photoUUIDs, opts, assignments, PROJECTS);
 
   // Phase 6: Populate metadata + targets in index.db
   const indexDb = populateMetadata(opts, photos, PROJECTS, sequences, projectUUIDs, photoUUIDs, photoDisplayNames, spatialTargets);
 
   try {
-    // Phase 7: Estimate slope roll (mesh_rotation_z from elevation data)
-    estimateSlopeRoll(indexDb, PROJECTS, projectUUIDs, opts);
-
-    // Phase 8: Process images into per-project databases
+    // Phase 7: Process images into per-project databases
     await processImages(opts, PROJECTS, sequences, photoUUIDs, indexDb);
   } finally {
     indexDb.close();

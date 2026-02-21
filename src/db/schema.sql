@@ -64,6 +64,11 @@ CREATE TABLE IF NOT EXISTS targets (
     PRIMARY KEY (source_id, target_id)
 );
 
+CREATE TABLE IF NOT EXISTS deleted_photos (
+    photo_id    TEXT PRIMARY KEY REFERENCES photos(id),
+    deleted_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_photos_project ON photos(project_id);
 CREATE INDEX IF NOT EXISTS idx_photos_original ON photos(original_name);
 CREATE INDEX IF NOT EXISTS idx_targets_source ON targets(source_id);

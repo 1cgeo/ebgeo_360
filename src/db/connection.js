@@ -75,6 +75,15 @@ export function getIndexDb() {
     indexDb.exec('ALTER TABLE targets ADD COLUMN override_height REAL');
   }
 
+  // Migrate: create deleted_photos table if missing
+  const delTable = indexDb.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='deleted_photos'").all();
+  if (delTable.length === 0) {
+    indexDb.exec(`CREATE TABLE IF NOT EXISTS deleted_photos (
+      photo_id TEXT PRIMARY KEY REFERENCES photos(id),
+      deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+  }
+
   return indexDb;
 }
 

@@ -12,6 +12,7 @@ import {
   getVisibleTargetsBySourceId,
   getProjectByPhotoId,
   getImageBlob,
+  isPhotoDeleted,
 } from '../db/queries.js';
 import { setImageCacheHeaders, setMetadataCacheHeaders, setMutableMetadataCacheHeaders, computeETag } from '../middleware/cache.js';
 
@@ -21,7 +22,7 @@ export default async function photoRoutes(fastify) {
     const { uuid } = request.params;
     const photo = getPhotoById(uuid);
 
-    if (!photo) {
+    if (!photo || isPhotoDeleted(uuid)) {
       reply.code(404);
       return { error: 'Photo not found' };
     }
@@ -83,7 +84,7 @@ export default async function photoRoutes(fastify) {
 
     // Find which project DB holds this photo
     const project = getProjectByPhotoId(uuid);
-    if (!project) {
+    if (!project || isPhotoDeleted(uuid)) {
       reply.code(404);
       return { error: 'Photo not found' };
     }

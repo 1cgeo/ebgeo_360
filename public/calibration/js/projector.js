@@ -60,7 +60,7 @@ export class StreetViewProjector {
     /**
      * Projects a 3D point to screen coordinates
      * @param {number} x - X position in meters
-     * @param {number} y - Y position in meters (elevation)
+     * @param {number} y - Y position in meters (vertical)
      * @param {number} z - Z position in meters
      * @param {number} yaw - Camera yaw rotation in radians
      * @param {number} pitch - Camera pitch rotation in radians
@@ -234,16 +234,16 @@ export class StreetViewProjector {
     /**
      * Calculates the flattening ratio for elliptical markers based on camera height and distance.
      * Uses perspective-correct formula: flattenRatio = verticalDrop / sqrt(verticalDrop^2 + d^2)
-     * where verticalDrop = cameraHeight - elevationDelta accounts for target elevation.
+     * where verticalDrop = cameraHeight - heightOffset.
      * @param {number} horizontalDistance - Distance from camera in meters
      * @param {number} pitch - Camera pitch in radians
-     * @param {number} [elevationDelta=0] - Elevation difference (target ele - camera ele) in meters
+     * @param {number} [heightOffset=0] - Height offset from ground plane (e.g. override_height)
      * @returns {number} Flatten ratio (0-1), where lower values are flatter
      */
-    calculateFlattenRatio(horizontalDistance, pitch, elevationDelta = 0) {
+    calculateFlattenRatio(horizontalDistance, pitch, heightOffset = 0) {
         const cameraHeight = this.cameraConfig?.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
 
-        const h = cameraHeight - elevationDelta;
+        const h = cameraHeight - heightOffset;
         const d = Math.max(0.1, horizontalDistance);
         const baseFlatten = Math.abs(h) / Math.sqrt(h * h + d * d);
 
@@ -286,13 +286,13 @@ export class StreetViewProjector {
      * @param {number} worldRadius - Physical radius in meters
      * @param {number} horizontalDistance - Distance from camera in meters
      * @param {number} fov - Camera FOV in degrees
-     * @param {number} [elevationDelta=0] - Elevation difference (target ele - camera ele) in meters
+     * @param {number} [heightOffset=0] - Height offset from ground plane (e.g. override_height)
      * @returns {number} Marker radius in pixels
      */
-    calculateMarkerSize(worldRadius, horizontalDistance, fov, elevationDelta = 0) {
+    calculateMarkerSize(worldRadius, horizontalDistance, fov, heightOffset = 0) {
         const cameraHeight = this.cameraConfig?.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
         const markerScale = this.cameraConfig?.marker_scale ?? 1.0;
-        const verticalDrop = cameraHeight - elevationDelta;
+        const verticalDrop = cameraHeight - heightOffset;
         const slant = Math.sqrt(horizontalDistance * horizontalDistance + verticalDrop * verticalDrop);
         const d = Math.max(0.5, slant);
         const f = this.focalLength(fov);

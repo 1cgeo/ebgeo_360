@@ -337,6 +337,22 @@ export async function createTarget(sourceId, targetId) {
 }
 
 /**
+ * Soft-deletes a photo (removes from navigation, keeps data for recovery).
+ * @param {string} photoId - Photo UUID
+ * @returns {Promise<Object>} Server response with deletedPhotoId, projectSlug, newPhotoCount
+ */
+export async function deletePhoto(photoId) {
+    const response = await fetch(`${BASE}/photos/${photoId}`, {
+        method: 'DELETE',
+    });
+    if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(`Failed to delete photo ${photoId} (HTTP ${response.status}): ${text}`);
+    }
+    return response.json();
+}
+
+/**
  * Deletes a manually-created target connection.
  * @param {string} sourceId - Source photo UUID
  * @param {string} targetId - Target photo UUID

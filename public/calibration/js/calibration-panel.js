@@ -7,7 +7,7 @@ import {
     state, onChange, isDirty,
     setMeshRotationY, setCameraHeight,
     setMeshRotationX, setMeshRotationZ, setDistanceScale, setMarkerScale,
-    setTargetOverride, setTargetOverrideHeight, clearTargetOverrideEdit,
+    setTargetOverride, clearTargetOverrideEdit,
     selectTarget, deselectTarget, setSetFromClickMode,
     setTargetHidden, isTargetHidden,
     getCurrentPhotoIndex, resetAllReviewedState,
@@ -49,6 +49,7 @@ let onAddTargetCallback = null;
 let onDeleteTargetCallback = null;
 let onNearbyPreviewToggleCallback = null;
 let onNearbySelectCallback = null;
+let onDeletePhotoCallback = null;
 
 // ============================================================================
 // COLLAPSIBLE SECTIONS
@@ -140,6 +141,7 @@ export function initPanel(container, options = {}) {
     onDeleteTargetCallback = options.onDeleteTarget || null;
     onNearbyPreviewToggleCallback = options.onNearbyPreviewToggle || null;
     onNearbySelectCallback = options.onNearbySelect || null;
+    onDeletePhotoCallback = options.onDeletePhoto || null;
 
     // Initialize collapsed state from localStorage
     initCollapsedState();
@@ -206,7 +208,12 @@ function renderPanel(s) {
         ` : ''}
 
         <div class="cal-panel__section">
-            <h3 class="cal-panel__title">Foto: ${camera.display_name || 'Sem nome'} ${s.calibrationReviewed ? '<span class="cal-panel__reviewed-badge">REVISADA</span>' : ''}</h3>
+            <h3 class="cal-panel__title">
+                Foto: ${camera.display_name || 'Sem nome'}
+                ${s.calibrationReviewed ? '<span class="cal-panel__reviewed-badge">REVISADA</span>' : ''}
+                <button id="btn-open-json" class="cal-panel__btn cal-panel__btn--icon" title="Abrir JSON da foto">{ }</button>
+                <button id="btn-delete-photo" class="cal-panel__btn cal-panel__btn--icon cal-panel__btn--danger" title="Excluir foto">&times;</button>
+            </h3>
         </div>
 
         <div class="cal-panel__section cal-panel__section--grid">
@@ -464,54 +471,52 @@ function renderTargetItem(target, s) {
 function renderOverrideEditor(target, s) {
     const edited = s.editedTargetOverrides.get(target.id);
     const original = s.originalTargetOverrides.get(target.id);
-    const effective = edited || original || { bearing: null, distance: null, height: 0 };
+    const effective = edited || original || { bearing: null, distance: null, height: null };
 
     const hasEffectiveOverride = effective.bearing !== null;
     const hidden = isTargetHidden(target.id);
     const isManual = target.is_original === false;
 
-    // bearing (degrees), distance = ground distance (meters), height = vertical offset (meters)
-    const bearingVal = effective.bearing ?? 0;
-    const distanceVal = effective.distance ?? 5;
+    // Distance default includes distance_scale (GPS projection applies it, override does not)
+    const distanceScale = s.editedDistanceScale ?? 1;
+
+    const bearingVal = effective.bearing ?? target.bearing ?? 0;
+    const distanceVal = effective.distance ?? ((target.distance ?? 5) * distanceScale);
     const heightVal = effective.height ?? 0;
 
     return `
         <div class="cal-panel__section cal-panel__section--override">
-            <h3 class="cal-panel__title">Override: ${target.display_name || target.id.slice(0, 8)}</h3>
+            <h3 class="cal-panel__title">${hasEffectiveOverride ? 'Override' : 'Target'}: ${target.display_name || target.id.slice(0, 8)}</h3>
 
-            ${hasEffectiveOverride ? `
-                <div class="cal-panel__slider-group">
-                    <label class="cal-panel__label">Bearing</label>
-                    <input type="range" id="override-bearing-slider" class="cal-panel__slider"
-                        min="0" max="360" step="0.5"
-                        value="${bearingVal}" />
-                    <input type="number" id="override-bearing-input" class="cal-panel__input cal-panel__input--narrow"
-                        min="0" max="360" step="0.5"
-                        value="${bearingVal.toFixed(1)}" />
-                </div>
+            <div class="cal-panel__slider-group">
+                <label class="cal-panel__label">Bearing</label>
+                <input type="range" id="override-bearing-slider" class="cal-panel__slider"
+                    min="0" max="360" step="0.5"
+                    value="${bearingVal}" />
+                <input type="number" id="override-bearing-input" class="cal-panel__input cal-panel__input--narrow"
+                    min="0" max="360" step="0.5"
+                    value="${bearingVal.toFixed(1)}" />
+            </div>
 
-                <div class="cal-panel__slider-group">
-                    <label class="cal-panel__label">Dist (m)</label>
-                    <input type="range" id="override-distance-slider" class="cal-panel__slider"
-                        min="0.5" max="200" step="0.1"
-                        value="${distanceVal}" />
-                    <input type="number" id="override-distance-input" class="cal-panel__input cal-panel__input--narrow"
-                        min="0.5" max="500" step="0.1"
-                        value="${distanceVal.toFixed(1)}" />
-                </div>
+            <div class="cal-panel__slider-group">
+                <label class="cal-panel__label">Dist (m)</label>
+                <input type="range" id="override-distance-slider" class="cal-panel__slider"
+                    min="0.5" max="200" step="0.1"
+                    value="${distanceVal}" />
+                <input type="number" id="override-distance-input" class="cal-panel__input cal-panel__input--narrow"
+                    min="0.5" max="500" step="0.1"
+                    value="${distanceVal.toFixed(1)}" />
+            </div>
 
-                <div class="cal-panel__slider-group">
-                    <label class="cal-panel__label">Altura (m)</label>
-                    <input type="range" id="override-height-slider" class="cal-panel__slider"
-                        min="-5" max="5" step="0.1"
-                        value="${heightVal}" />
-                    <input type="number" id="override-height-input" class="cal-panel__input cal-panel__input--narrow"
-                        min="-10" max="10" step="0.1"
-                        value="${heightVal.toFixed(1)}" />
-                </div>
-            ` : `
-                <p class="cal-panel__hint">Sem override definido. Clique no viewer para posicionar.</p>
-            `}
+            <div class="cal-panel__slider-group">
+                <label class="cal-panel__label">Altura (m)</label>
+                <input type="range" id="override-height-slider" class="cal-panel__slider"
+                    min="-5" max="5" step="0.1"
+                    value="${heightVal}" />
+                <input type="number" id="override-height-input" class="cal-panel__input cal-panel__input--narrow"
+                    min="-10" max="10" step="0.1"
+                    value="${heightVal.toFixed(1)}" />
+            </div>
 
             <div class="cal-panel__override-actions">
                 <button id="btn-set-from-click" class="cal-panel__btn cal-panel__btn--small ${s.setFromClickMode ? 'cal-panel__btn--active' : ''}">
@@ -938,11 +943,15 @@ function attachEvents() {
         heightSlider.addEventListener('input', (e) => {
             const height = parseFloat(e.target.value);
             if (heightInput) heightInput.value = height.toFixed(1);
-            setTargetOverrideHeight(state.selectedTargetId, height, true);
+            const bearingVal = parseFloat(bearingSlider?.value ?? 0);
+            const distVal = parseFloat(distanceSlider?.value ?? 0);
+            setTargetOverride(state.selectedTargetId, bearingVal, distVal, height, true);
         });
         heightSlider.addEventListener('change', (e) => {
             const height = parseFloat(e.target.value);
-            setTargetOverrideHeight(state.selectedTargetId, height);
+            const bearingVal = parseFloat(bearingSlider?.value ?? 0);
+            const distVal = parseFloat(distanceSlider?.value ?? 0);
+            setTargetOverride(state.selectedTargetId, bearingVal, distVal, height);
         });
     }
 
@@ -951,7 +960,9 @@ function attachEvents() {
             let height = parseFloat(e.target.value);
             if (isNaN(height)) height = 0;
             height = Math.max(-10, Math.min(10, height));
-            setTargetOverrideHeight(state.selectedTargetId, height);
+            const bearingVal = parseFloat(bearingSlider?.value ?? 0);
+            const distVal = parseFloat(distanceSlider?.value ?? 0);
+            setTargetOverride(state.selectedTargetId, bearingVal, distVal, height);
         });
     }
 
@@ -1070,6 +1081,20 @@ function attachEvents() {
 
     document.getElementById('btn-back-projects')?.addEventListener('click', () => {
         if (onBackToProjectsCallback) onBackToProjectsCallback();
+    });
+
+    // Open photo JSON in new tab
+    document.getElementById('btn-open-json')?.addEventListener('click', () => {
+        if (state.currentPhotoId) {
+            window.open(`/api/v1/photos/${state.currentPhotoId}?include_hidden=true`, '_blank');
+        }
+    });
+
+    // Delete photo
+    document.getElementById('btn-delete-photo')?.addEventListener('click', () => {
+        if (onDeletePhotoCallback && state.currentPhotoId) {
+            onDeletePhotoCallback(state.currentPhotoId);
+        }
     });
 
     // Photo list navigation

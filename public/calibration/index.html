@@ -449,6 +449,34 @@
             font-size: 11px;
         }
 
+        .cal-panel__btn--icon {
+            background: transparent;
+            border: 1px solid #45475a;
+            color: #a6adc8;
+            padding: 1px 6px;
+            font-size: 11px;
+            font-family: monospace;
+            border-radius: 4px;
+            cursor: pointer;
+            vertical-align: middle;
+            margin-left: 6px;
+        }
+
+        .cal-panel__btn--icon:hover {
+            background: #45475a;
+            color: #cdd6f4;
+        }
+
+        .cal-panel__btn--danger {
+            color: #f38ba8;
+            border-color: #f38ba8;
+        }
+
+        .cal-panel__btn--danger:hover {
+            background: #f38ba8;
+            color: #1e1e2e;
+        }
+
         .cal-panel__btn--ghost {
             background: transparent;
             border: 1px solid #45475a;
@@ -799,6 +827,16 @@
 
         .cal-dialog__actions .cal-panel__btn {
             flex: 1;
+        }
+
+        .cal-dialog__actions .cal-panel__btn--destructive {
+            background: #f38ba8;
+            color: #1e1e2e;
+            font-weight: 600;
+        }
+
+        .cal-dialog__actions .cal-panel__btn--destructive:hover {
+            background: #eba0ac;
         }
 
         /* ================================================================

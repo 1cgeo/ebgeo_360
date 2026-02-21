@@ -30,6 +30,9 @@ import {
   batchUpdateDistanceScale,
   batchUpdateMarkerScale,
   batchResetReviewed,
+  isPhotoDeleted,
+  softDeletePhoto,
+  getProjectByPhotoId,
 } from '../db/queries.js';
 
 export default async function calibrationRoutes(fastify) {
@@ -662,6 +665,39 @@ export default async function calibrationRoutes(fastify) {
         is_original: false,
       },
     };
+  });
+
+  // DELETE /api/v1/photos/:uuid — soft-delete a photo
+  fastify.delete('/api/v1/photos/:uuid', async (request, reply) => {
+    const { uuid } = request.params;
+
+    const photo = getPhotoById(uuid);
+    if (!photo) {
+      reply.code(404);
+      return { error: 'Photo not found' };
+    }
+
+    if (isPhotoDeleted(uuid)) {
+      reply.code(404);
+      return { error: 'Photo already deleted' };
+    }
+
+    const project = getProjectByPhotoId(uuid);
+
+    try {
+      const result = softDeletePhoto(uuid, photo.project_id);
+      return {
+        ok: true,
+        deletedPhotoId: uuid,
+        projectSlug: project?.slug ?? null,
+        newPhotoCount: result.newPhotoCount,
+        deletedTargets: result.deletedTargets,
+      };
+    } catch (err) {
+      request.log.error(err, 'Failed to soft-delete photo');
+      reply.code(500);
+      return { error: 'Failed to delete photo' };
+    }
   });
 
   // DELETE /api/v1/targets/:sourceId/:targetId — remove a manually-created target

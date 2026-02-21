@@ -329,30 +329,6 @@ function updateGroundCursor(markers, yaw, pitch, fov) {
 }
 
 // ============================================================================
-// ELEVATION DELTA
-// ============================================================================
-
-/**
- * Maximum elevation delta applied to target projection (meters).
- * GPS elevation noise can produce large deltas that distort marker placement.
- * Clamped to ±2m to keep markers grounded near the road surface.
- */
-const MAX_ELEVATION_DELTA = 2;
-
-/**
- * Computes the elevation difference between a target and the camera.
- * Returns 0 when either elevation is missing, preserving flat-ground behavior.
- * Clamped to ±MAX_ELEVATION_DELTA to avoid GPS outliers distorting projection.
- * @param {Object} target - Target with optional `ele` property
- * @returns {number} Elevation delta in meters (positive = target above camera)
- */
-function getElevationDelta(target) {
-    if (target.ele == null || cameraConfig?.ele == null) return 0;
-    const delta = target.ele - cameraConfig.ele;
-    return Math.max(-MAX_ELEVATION_DELTA, Math.min(MAX_ELEVATION_DELTA, delta));
-}
-
-// ============================================================================
 // TARGET PROJECTION  (verbatim EBGeo projectTarget / projectFromSpherical)
 // ============================================================================
 
@@ -366,12 +342,7 @@ function projectTarget(target, yaw, pitch, fov) {
     // Check for effective override (edited > original)
     const override = getEffectiveOverride(target.id);
 
-    // Elevation delta: positive when target is above camera
-    const elevationDelta = getElevationDelta(target);
-
     // If target has a ground-plane override, project from bearing + distance.
-    // Override uses its own height offset instead of GPS elevation delta —
-    // the user manually placed the marker, height is controlled via slider.
     if (override && override.bearing !== null) {
         return projectFromOverride(
             override.bearing,
@@ -390,13 +361,8 @@ function projectTarget(target, yaw, pitch, fov) {
     x *= distanceScale;
     z *= distanceScale;
 
-    // Place marker accounting for elevation difference.
-    // y = -cameraHeight + elevationDelta:
-    //   elevationDelta > 0 → target above camera → marker rises from ground plane
-    //   elevationDelta = 0 → flat ground (original behavior)
-    //   elevationDelta < 0 → target below camera → marker sinks below ground plane
     const cameraHeight = cameraConfig.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
-    const y = -cameraHeight + elevationDelta;
+    const y = -cameraHeight;
 
     // Horizontal distance (for flatten ratio — ground-plane perspective)
     const horizontalDistance = Math.sqrt(x * x + z * z);
@@ -406,11 +372,10 @@ function projectTarget(target, yaw, pitch, fov) {
 
     if (!projected.visible) return null;
 
-    // Size and flatten use elevation-corrected vertical drop
     const radius = projector.calculateMarkerSize(
-        NAV_CONSTANTS.MARKER_WORLD_RADIUS, horizontalDistance, fov, elevationDelta
+        NAV_CONSTANTS.MARKER_WORLD_RADIUS, horizontalDistance, fov
     );
-    const flattenY = projector.calculateFlattenRatio(horizontalDistance, pitch, elevationDelta);
+    const flattenY = projector.calculateFlattenRatio(horizontalDistance, pitch);
 
     return {
         id: target.id,
@@ -493,9 +458,6 @@ function projectFromOverride(bearingDeg, groundDistance, target, yaw, pitch, fov
 function projectNearbyPhoto(photo, yaw, pitch, fov) {
     if (!cameraConfig) return null;
 
-    // Elevation delta for nearby photos (same logic as targets)
-    const elevationDelta = getElevationDelta(photo);
-
     let { x, z } = projector.lonLatToMeters(
         photo.lon, photo.lat,
         cameraConfig.lon, cameraConfig.lat
@@ -505,7 +467,7 @@ function projectNearbyPhoto(photo, yaw, pitch, fov) {
     z *= distanceScale;
 
     const cameraHeight = cameraConfig.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
-    const y = -cameraHeight + elevationDelta;
+    const y = -cameraHeight;
 
     const horizontalDistance = Math.sqrt(x * x + z * z);
 
@@ -513,9 +475,9 @@ function projectNearbyPhoto(photo, yaw, pitch, fov) {
     if (!projected.visible) return null;
 
     const radius = projector.calculateMarkerSize(
-        NAV_CONSTANTS.MARKER_WORLD_RADIUS, horizontalDistance, fov, elevationDelta
+        NAV_CONSTANTS.MARKER_WORLD_RADIUS, horizontalDistance, fov
     );
-    const flattenY = projector.calculateFlattenRatio(horizontalDistance, pitch, elevationDelta);
+    const flattenY = projector.calculateFlattenRatio(horizontalDistance, pitch);
 
     return {
         id: photo.id,

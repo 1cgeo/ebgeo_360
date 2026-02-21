@@ -23,7 +23,7 @@ npm run dev            # Dev server with auto-restart (--watch)
 npm run migrate        # Import JSON metadata + JPG images into SQLite
 npm run generate-pmtiles  # Generate PMTiles for map markers
 npm run verify         # Validate database integrity
-npm run estimate-slope-roll  # Estimate mesh_rotation_z from elevation data
+npm run estimate-slope-roll  # (Deprecated) Estimate mesh_rotation_z from elevation data
 npm test               # Run tests (node:test built-in)
 npm run lint           # ESLint (--max-warnings 0)
 npm run lint:fix       # ESLint auto-fix
@@ -52,7 +52,7 @@ src/
 scripts/
 ├── migrate.js             # JSON+JPG → SQLite migration (7-phase)
 ├── generate-pmtiles.js    # PMTiles generation for mapping
-├── estimate-slope-roll.js # Estimate mesh_rotation_z from elevation between consecutive photos
+├── estimate-slope-roll.js # (Deprecated) Estimate mesh_rotation_z from elevation
 └── verify.js              # Data validation
 
 public/calibration/        # Calibration web interface
@@ -241,7 +241,7 @@ const imgDb = getProjectDb('alegrete.db');  // Cached per filename
 |-----------|--------|-------|---------|-------------|
 | Heading (Y) | `mesh_rotation_y` | 0–360 | 180 | Yaw correction applied to panorama sphere |
 | Pitch (X) | `mesh_rotation_x` | −30–30 | 0 | Pitch tilt correction |
-| Roll (Z) | `mesh_rotation_z` | −30–30 | 0 | Roll tilt correction (auto-estimated from slope) |
+| Roll (Z) | `mesh_rotation_z` | −30–30 | 0 | Roll tilt correction |
 | Camera height | `camera_height` | 0.1–20 | 2.5 | Height above ground in meters |
 | Distance scale | `distance_scale` | 0.1–5.0 | 1.0 | Multiplier for target distances |
 | Marker scale | `marker_scale` | 0.1–5.0 | 1.0 | Multiplier for navigation marker visual size |
@@ -254,14 +254,21 @@ const imgDb = getProjectDb('alegrete.db');  // Cached per filename
 ### Three.js Rotation Order
 The panorama sphere uses Euler order `ZXY` — matrix `Rz·Rx·Ry` — meaning Y (heading) is applied first to pixels, then X (pitch), then Z (roll) in the corrected frame. Both `viewer.js` (calibration) and `street_view_viewer.js` (ebgeo_web) must use the same order.
 
-### Elevation Delta in Projection
-When both camera and target have `ele` data, the elevation difference `ΔE = target.ele - camera.ele` offsets the target marker vertically: `y = -cameraHeight + ΔE`. This affects marker Y position, flatten ratio, and slant distance for marker sizing. Clamped to ±2m (`MAX_ELEVATION_DELTA`) to protect against GPS noise. When either `ele` is null, `ΔE = 0` (flat ground fallback).
+### Height Model (Flat Ground)
+All markers are projected using a **flat ground model** — GPS elevation (`ele`) is stored but **not used** for projection. The `ele` column is retained in the database and API responses for informational purposes only.
 
-### Slope Roll Estimation
-`scripts/estimate-slope-roll.js` estimates `mesh_rotation_z` (roll) from elevation data between a photo and its `next` target: `θ = atan2(ΔE, distance)`. Slopes beyond `--max-angle` (default 15°, recommended 10°) are **discarded** as GPS noise (set to 0), not clamped. Supports `--dry-run`, `--clear`, `--project <slug>`, `--max-angle <N>`.
+- **GPS targets**: projected onto ground plane at `y = -cameraHeight` (all targets at same level)
+- **Override targets**: projected onto `y = -cameraHeight + overrideHeight` (manual height control)
+- **`override_height`**: relative to camera ground level (0 = ground, positive = above ground)
+- **`camera_height`**: distance from ground to camera lens (default 2.5m)
+
+Both `projector.calculateFlattenRatio()` and `projector.calculateMarkerSize()` accept a `heightOffset` parameter (default 0) used only by override targets via `overrideHeight`.
 
 ### Target Override Projection
-Override markers use a **ground-plane model**: bearing + ground distance + height are projected onto `y = -cameraHeight + overrideHeight` plane, NOT spherical coordinates. Both `navigator.js` (calibration) and `navigation/navigator.js` (ebgeo_web) use `projectFromOverride()` for this. Override markers do **not** use GPS elevation delta — the height is manually controlled via a slider in the calibration UI. When `override_height` is NULL/0, the marker sits on the ground plane exactly where the user clicked.
+Override markers use a **ground-plane model**: bearing + ground distance + height are projected onto `y = -cameraHeight + overrideHeight` plane, NOT spherical coordinates. Both `navigator.js` (calibration) and `navigation/navigator.js` (ebgeo_web) use `projectFromOverride()` for this. When `override_height` is NULL/0, the marker sits on the ground plane exactly where the user clicked.
+
+### Slope Roll Estimation (Deprecated)
+`scripts/estimate-slope-roll.js` previously estimated `mesh_rotation_z` from elevation data. This is deprecated — elevation data is no longer used for projection. The standalone script remains available with a deprecation warning; its `--clear` mode can reset `mesh_rotation_z` to 0.
 
 ## Calibration UI Architecture
 
@@ -318,12 +325,12 @@ app.js (orchestrator)
 
 Migration (`scripts/migrate.js`) processes source data in 7 phases:
 1. Read JSON metadata files from `METADATA/*.json`
-2. Read JPG images from `IMG/*.jpg`
-3. Assign photos to nearest project center by distance
-4. Generate navigation graph (50m radius, 15-degree angular separation)
-5. Convert images to WebP (full + preview sizes)
-6. Write to SQLite databases (index.db + per-project DBs)
-7. Verify data integrity
+2. Assign photos to nearest project center by distance
+3. Compute sequence numbers per project
+4. Generate deterministic UUIDs
+5. Adaptive spatial analysis — navigation graph (sector-based, per-project adaptive radius)
+6. Populate metadata + targets in index.db
+7. Process images into per-project databases (JPG → WebP conversion)
 
 ## Deployment
 

@@ -479,8 +479,15 @@ export function getEffectiveOverride(targetId) {
  * @param {boolean} [silent=false] - If true, skip notifying listeners
  */
 export function setTargetOverrideHeight(targetId, height, silent = false) {
-    const current = state.editedTargetOverrides.get(targetId);
-    if (current) {
+    let current = state.editedTargetOverrides.get(targetId);
+    if (!current) {
+        // Auto-create override from original or with null bearing/distance
+        const original = state.originalTargetOverrides.get(targetId);
+        current = original
+            ? { bearing: original.bearing, distance: original.distance, height }
+            : { bearing: null, distance: null, height };
+        state.editedTargetOverrides.set(targetId, current);
+    } else {
         current.height = height;
     }
     if (!silent) notify();

@@ -10,6 +10,7 @@ import {
     saveTargetOverride, clearTargetOverride,
     setPhotoReviewed, fetchProjectPhotos,
     saveTargetVisibility, fetchNearbyPhotos, createTarget, deleteTargetConnection,
+    deletePhoto,
 } from './api.js';
 import {
     state, isDirty, loadPhoto, discardChanges, markSaved, onChange,
@@ -297,6 +298,7 @@ function initializeSubsystems() {
         onDeleteTarget: handleDeleteTarget,
         onNearbyPreviewToggle: handleNearbyPreviewToggle,
         onNearbySelect: handleNearbySelect,
+        onDeletePhoto: handleDeletePhoto,
     });
 
     // Initialize preview viewer (shows target photo when selected)
@@ -310,14 +312,19 @@ function initializeSubsystems() {
         },
     });
 
-    // Sync minimap target selection and preview viewer with state
+    // Sync minimap target selection and preview viewer with state.
+    // Track last fetched target to avoid re-fetching on every notify (e.g. slider changes).
+    let lastPreviewTargetId = null;
+
     onChange((s) => {
         setSelectedTarget(s.selectedTargetId);
 
-        // Show/hide preview viewer based on selected target
-        if (s.selectedTargetId && s.currentMetadata?.targets) {
+        // Show/hide preview viewer only when the selected target changes
+        if (s.selectedTargetId && s.selectedTargetId !== lastPreviewTargetId && s.currentMetadata?.targets) {
             const target = s.currentMetadata.targets.find(t => t.id === s.selectedTargetId);
             if (target) {
+                lastPreviewTargetId = s.selectedTargetId;
+
                 // Clear nearby preview when selecting a real target
                 clearNearbyPreview();
                 showAddButton(false);
@@ -340,6 +347,7 @@ function initializeSubsystems() {
                 });
             }
         } else if (!s.selectedTargetId) {
+            lastPreviewTargetId = null;
             // Only hide preview if no nearby preview is active
             const { previewingId } = getNearbyPreviewState();
             if (!previewingId) {
@@ -379,6 +387,7 @@ function onSetFromClick(groundOverride) {
     refreshCursor();
     showToast(`Override definido: bearing=${bearingDeg.toFixed(1)}°, dist=${distance.toFixed(1)}m`, 'success');
 }
+
 
 // ============================================================================
 // NAVIGATION
@@ -638,6 +647,81 @@ async function handleDeleteTarget(targetId) {
     }
 }
 
+// ============================================================================
+// DELETE PHOTO (soft-delete)
+// ============================================================================
+
+async function handleDeletePhoto() {
+    const photoId = state.currentPhotoId;
+    const displayName = state.currentMetadata?.camera?.display_name || photoId?.slice(0, 8);
+
+    const confirmed = await showDeletePhotoDialog(displayName);
+    if (!confirmed) return;
+
+    try {
+        const result = await deletePhoto(photoId);
+        showToast(`Foto ${displayName} excluida`, 'success');
+
+        // Refresh project photo list
+        const slug = state.currentProjectSlug || result.projectSlug;
+        if (slug) {
+            await loadProjectContext(slug);
+        }
+
+        // Navigate to previous (or next if at start, or back to projects)
+        const prevId = getPrevPhotoId();
+        const nextId = getNextPhotoId();
+        if (prevId) {
+            startCalibration(prevId);
+        } else if (nextId) {
+            startCalibration(nextId);
+        } else {
+            // No photos left — go back to project selector
+            showProjectSelector();
+        }
+    } catch (err) {
+        console.error('Failed to delete photo:', err);
+        showToast(`Erro ao excluir foto: ${err.message}`, 'error');
+    }
+}
+
+/**
+ * Shows a large destructive confirmation dialog for deleting a photo.
+ * @param {string} displayName - Display name of the photo being deleted
+ * @returns {Promise<boolean>} Whether the user confirmed
+ */
+function showDeletePhotoDialog(displayName) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'cal-dialog-overlay';
+        overlay.innerHTML = `
+            <div class="cal-dialog">
+                <h3 class="cal-dialog__title">Excluir foto permanentemente?</h3>
+                <p class="cal-dialog__text">
+                    <strong>${displayName}</strong><br><br>
+                    Todas as conexoes desta foto serao removidas.
+                    Ela nao aparecera mais na navegacao.<br><br>
+                    <em>O PMTiles precisara ser regenerado para remover o ponto do mapa.</em>
+                </p>
+                <div class="cal-dialog__actions">
+                    <button class="cal-panel__btn cal-panel__btn--destructive" data-action="confirm">Excluir</button>
+                    <button class="cal-panel__btn cal-panel__btn--ghost" data-action="cancel">Cancelar</button>
+                </div>
+            </div>
+        `;
+
+        overlay.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (btn) {
+                overlay.remove();
+                resolve(btn.dataset.action === 'confirm');
+            }
+        });
+
+        document.body.appendChild(overlay);
+    });
+}
+
 /**
  * Refreshes targets and nearby photos without reloading the panorama.
  * Preserves the current camera view and calibration edits.
@@ -731,7 +815,7 @@ function onKeyDown(e) {
         }
     }
 
-    // Escape = Deselect target
+    // Escape = Cancel modes / Deselect target
     if (e.key === 'Escape') {
         if (state.setFromClickMode) {
             setSetFromClickMode(false);
@@ -752,8 +836,8 @@ function onKeyDown(e) {
         handleNextPhoto();
     }
 
-    // P or [ = Previous photo
-    if ((e.key === 'p' || e.key === '[') && !e.ctrlKey && !e.metaKey) {
+    // P or [ or Q = Previous photo
+    if ((e.key === 'p' || e.key === '[' || e.key === 'q') && !e.ctrlKey && !e.metaKey) {
         handlePrevPhoto();
     }
 
