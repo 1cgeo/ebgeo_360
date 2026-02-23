@@ -20,7 +20,8 @@ import { batchUpdateProject, resetProjectReviewed } from './api.js';
 
 let panelEl = null;
 let isSaving = false;
-let gridVisible = false;
+let sphericalGridVisible = false;
+let groundGridVisible = false;
 
 // Collapsible section state (persisted in localStorage)
 const collapsedSections = new Map();
@@ -44,7 +45,8 @@ let onMarkReviewedCallback = null;
 let onNextPhotoCallback = null;
 let onPrevPhotoCallback = null;
 let onBackToProjectsCallback = null;
-let onGridToggleCallback = null;
+let onSphericalGridToggleCallback = null;
+let onGroundGridToggleCallback = null;
 let onAddTargetCallback = null;
 let onDeleteTargetCallback = null;
 let onNearbyPreviewToggleCallback = null;
@@ -136,7 +138,8 @@ export function initPanel(container, options = {}) {
     onNextPhotoCallback = options.onNextPhoto || null;
     onPrevPhotoCallback = options.onPrevPhoto || null;
     onBackToProjectsCallback = options.onBackToProjects || null;
-    onGridToggleCallback = options.onGridToggle || null;
+    onSphericalGridToggleCallback = options.onSphericalGridToggle || null;
+    onGroundGridToggleCallback = options.onGroundGridToggle || null;
     onAddTargetCallback = options.onAddTarget || null;
     onDeleteTargetCallback = options.onDeleteTarget || null;
     onNearbyPreviewToggleCallback = options.onNearbyPreviewToggle || null;
@@ -201,9 +204,9 @@ function renderPanel(s) {
             </div>
         </div>
         <div class="cal-panel__photo-nav">
-            <button id="btn-prev-photo" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost" title="Foto anterior [P]">&larr;</button>
+            <button id="btn-prev-photo" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost" title="Foto anterior [Q]">&larr;</button>
             <span class="cal-panel__photo-counter">${photoIdx} / ${totalPhotos}</span>
-            <button id="btn-next-photo" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost" title="Proxima foto [N]">&rarr;</button>
+            <button id="btn-next-photo" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost" title="Proxima foto">&rarr;</button>
         </div>
         ` : ''}
 
@@ -218,8 +221,12 @@ function renderPanel(s) {
 
         <div class="cal-panel__section cal-panel__section--grid">
             <label class="cal-panel__grid-toggle">
-                <input type="checkbox" id="grid-toggle" />
-                <span>Mostrar grade de perspectiva [G]</span>
+                <input type="checkbox" id="spherical-grid-toggle" />
+                <span>Grade esf&eacute;rica [G]</span>
+            </label>
+            <label class="cal-panel__grid-toggle">
+                <input type="checkbox" id="ground-grid-toggle" />
+                <span>Grade de ch&atilde;o</span>
             </label>
         </div>
 
@@ -236,22 +243,22 @@ function renderPanel(s) {
 
         ${hasProject ? `
         <div class="cal-panel__review-actions">
-            <button id="btn-toggle-reviewed" class="cal-panel__btn ${s.calibrationReviewed ? 'cal-panel__btn--ghost' : 'cal-panel__btn--reviewed'}" title="[R]">
+            <button id="btn-toggle-reviewed" class="cal-panel__btn ${s.calibrationReviewed ? 'cal-panel__btn--ghost' : 'cal-panel__btn--reviewed'}">
                 ${s.calibrationReviewed ? 'Desmarcar revisao' : 'Marcar revisada'}
             </button>
-            <button id="btn-review-next" class="cal-panel__btn cal-panel__btn--review-next" title="Marcar revisada e ir para proxima [E]">
+            <button id="btn-review-next" class="cal-panel__btn cal-panel__btn--review-next" title="Salvar, marcar revisada e ir para proxima [E]">
                 Revisada &rarr; Proxima
             </button>
         </div>
         ` : ''}
+
+        ${selectedTarget ? renderOverrideEditor(selectedTarget, s) : ''}
 
         ${renderSlidersSection(s)}
 
         ${hasProject ? renderBatchSection(s) : ''}
 
         ${renderTargetsSection(targets, selectedTarget, s)}
-
-        ${selectedTarget ? renderOverrideEditor(selectedTarget, s) : ''}
 
         ${renderNearbyPhotos(s)}
 
@@ -622,13 +629,21 @@ function attachEvents() {
         });
     });
 
-    // Grid toggle checkbox
-    const gridToggle = document.getElementById('grid-toggle');
-    if (gridToggle) {
-        gridToggle.checked = gridVisible;
-        gridToggle.addEventListener('change', (e) => {
-            gridVisible = e.target.checked;
-            if (onGridToggleCallback) onGridToggleCallback(gridVisible);
+    // Grid toggle checkboxes
+    const sphericalGridToggle = document.getElementById('spherical-grid-toggle');
+    if (sphericalGridToggle) {
+        sphericalGridToggle.checked = sphericalGridVisible;
+        sphericalGridToggle.addEventListener('change', (e) => {
+            sphericalGridVisible = e.target.checked;
+            if (onSphericalGridToggleCallback) onSphericalGridToggleCallback(sphericalGridVisible);
+        });
+    }
+    const groundGridToggle = document.getElementById('ground-grid-toggle');
+    if (groundGridToggle) {
+        groundGridToggle.checked = groundGridVisible;
+        groundGridToggle.addEventListener('change', (e) => {
+            groundGridVisible = e.target.checked;
+            if (onGroundGridToggleCallback) onGroundGridToggleCallback(groundGridVisible);
         });
     }
 
@@ -1178,13 +1193,23 @@ async function handleResetReviewed() {
 // ============================================================================
 
 /**
- * Updates the grid toggle state (called from keyboard shortcut).
- * @param {boolean} visible - Whether the grid is visible
+ * Updates the spherical grid toggle state (called from keyboard shortcut).
+ * @param {boolean} visible - Whether the spherical grid is visible
  */
-export function setGridToggleState(visible) {
-    gridVisible = visible;
-    const gridToggle = document.getElementById('grid-toggle');
-    if (gridToggle) gridToggle.checked = visible;
+export function setSphericalGridToggleState(visible) {
+    sphericalGridVisible = visible;
+    const el = document.getElementById('spherical-grid-toggle');
+    if (el) el.checked = visible;
+}
+
+/**
+ * Updates the ground grid toggle state (called from keyboard shortcut).
+ * @param {boolean} visible - Whether the ground grid is visible
+ */
+export function setGroundGridToggleState(visible) {
+    groundGridVisible = visible;
+    const el = document.getElementById('ground-grid-toggle');
+    if (el) el.checked = visible;
 }
 
 /**

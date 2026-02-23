@@ -34,6 +34,7 @@ import {
   softDeletePhoto,
   getProjectByPhotoId,
 } from '../db/queries.js';
+import { getIndexDb } from '../db/connection.js';
 
 export default async function calibrationRoutes(fastify) {
   // PUT /api/v1/photos/:uuid/calibration — update mesh_rotation_y
@@ -620,14 +621,14 @@ export default async function calibrationRoutes(fastify) {
       return { error: 'Photos must be in the same project' };
     }
 
-    // Check if connection already exists
+    // Check if forward connection already exists
     const existing = getTargetByPair(source_id, target_id);
     if (existing) {
       reply.code(409);
       return { error: 'Target connection already exists' };
     }
 
-    // Calculate distance and bearing
+    // Calculate distance and bearing (forward: source → target)
     const DEG_TO_RAD = Math.PI / 180;
     const R = 6_371_000;
     const dLat = (targetPhoto.lat - sourcePhoto.lat) * DEG_TO_RAD;
@@ -642,16 +643,23 @@ export default async function calibrationRoutes(fastify) {
       - Math.sin(sourcePhoto.lat * DEG_TO_RAD) * Math.cos(targetPhoto.lat * DEG_TO_RAD) * Math.cos(dLon);
     const bearingDeg = ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
 
-    const result = insertTarget(
-      source_id, target_id,
-      Math.round(distanceM * 100) / 100,
-      Math.round(bearingDeg * 100) / 100,
-    );
+    const roundedDistance = Math.round(distanceM * 100) / 100;
+    const roundedBearing = Math.round(bearingDeg * 100) / 100;
+    const reverseBearing = Math.round(((bearingDeg + 180) % 360) * 100) / 100;
 
-    if (result.changes === 0) {
-      reply.code(500);
-      return { error: 'Failed to create target' };
-    }
+    // Check if reverse connection already exists
+    const existingReverse = getTargetByPair(target_id, source_id);
+
+    // Insert both directions atomically
+    const db = getIndexDb();
+    let reverseCreated = false;
+    db.transaction(() => {
+      insertTarget(source_id, target_id, roundedDistance, roundedBearing);
+      if (!existingReverse) {
+        insertTarget(target_id, source_id, roundedDistance, reverseBearing);
+        reverseCreated = true;
+      }
+    })();
 
     reply.code(201);
     return {
@@ -659,11 +667,12 @@ export default async function calibrationRoutes(fastify) {
       target: {
         source_id,
         target_id,
-        distance_m: Math.round(distanceM * 100) / 100,
-        bearing_deg: Math.round(bearingDeg * 100) / 100,
+        distance_m: roundedDistance,
+        bearing_deg: roundedBearing,
         is_next: false,
         is_original: false,
       },
+      reverseCreated,
     };
   });
 
@@ -715,12 +724,19 @@ export default async function calibrationRoutes(fastify) {
       return { error: 'Cannot delete original targets. Use visibility to hide them instead.' };
     }
 
-    const result = deleteTarget(sourceId, targetId);
-    if (result.changes === 0) {
-      reply.code(500);
-      return { error: 'Failed to delete' };
-    }
+    // Also delete reverse connection if it is manual (is_original=0)
+    const reverse = getTargetByPair(targetId, sourceId);
+    let reverseDeleted = false;
 
-    return { ok: true };
+    const db = getIndexDb();
+    db.transaction(() => {
+      deleteTarget(sourceId, targetId);
+      if (reverse && !reverse.is_original) {
+        deleteTarget(targetId, sourceId);
+        reverseDeleted = true;
+      }
+    })();
+
+    return { ok: true, reverseDeleted };
   });
 }

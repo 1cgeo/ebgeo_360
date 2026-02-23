@@ -265,6 +265,9 @@ export function update(cameraState) {
     // ── Set nearby markers for rendering (only when preview mode is active) ──
     navRenderer.setNearbyMarkers(nearbyPreviewEnabled ? nearbyMarkers : []);
 
+    // ── Ghost marker for set-from-click preview ──
+    updateGhostMarker(yaw, pitch, fov);
+
     // ── Render ──
     navRenderer.render();
 }
@@ -329,6 +332,53 @@ function updateGroundCursor(markers, yaw, pitch, fov) {
 }
 
 // ============================================================================
+// GHOST MARKER  (set-from-click preview)
+// ============================================================================
+
+/**
+ * Updates the ghost marker that previews where the override will land.
+ * Only active when setFromClickMode is on and a target is selected.
+ */
+function updateGhostMarker(yaw, pitch, fov) {
+    if (!state.setFromClickMode || !state.selectedTargetId || !cameraConfig) {
+        navRenderer.setGhostMarker(null);
+        return;
+    }
+
+    const ground = projector.screenToGround(mouseX, mouseY, yaw, pitch, fov);
+    if (!ground) {
+        navRenderer.setGhostMarker(null);
+        return;
+    }
+
+    // Compute bearing and distance from ground position
+    const bearing = Math.atan2(ground.x, -ground.z);
+    let bearingDeg = (bearing * 180) / Math.PI;
+    if (bearingDeg < 0) bearingDeg += 360;
+    const distance = Math.sqrt(ground.x * ground.x + ground.z * ground.z);
+
+    if (distance < 0.5) {
+        navRenderer.setGhostMarker(null);
+        return;
+    }
+
+    const cameraHeight = cameraConfig.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
+    const radius = projector.calculateMarkerSize(
+        NAV_CONSTANTS.MARKER_WORLD_RADIUS, distance, fov
+    );
+    const flattenY = projector.calculateFlattenRatio(distance, pitch);
+
+    navRenderer.setGhostMarker({
+        screenX: mouseX,
+        screenY: mouseY,
+        radius,
+        flattenY,
+        bearing: bearingDeg,
+        distance,
+    });
+}
+
+// ============================================================================
 // TARGET PROJECTION  (verbatim EBGeo projectTarget / projectFromSpherical)
 // ============================================================================
 
@@ -342,14 +392,26 @@ function projectTarget(target, yaw, pitch, fov) {
     // Check for effective override (edited > original)
     const override = getEffectiveOverride(target.id);
 
-    // If target has a ground-plane override, project from bearing + distance.
+    // If target has a ground-plane override, project from bearing + distance
+    // and also compute the original GPS position for the visual indicator.
     if (override && override.bearing !== null) {
-        return projectFromOverride(
+        const result = projectFromOverride(
             override.bearing,
             override.distance ?? 5,
             target, yaw, pitch, fov,
             override.height ?? 0
         );
+        if (result) {
+            // Also project the original GPS position
+            const orig = projectOriginalPosition(target, yaw, pitch, fov);
+            if (orig) {
+                result.originalScreenX = orig.screenX;
+                result.originalScreenY = orig.screenY;
+                result.originalRadius = orig.radius;
+                result.originalFlattenY = orig.flattenY;
+            }
+        }
+        return result;
     }
 
     // Convert lon/lat to meters, then apply distance_scale
@@ -445,6 +507,36 @@ function projectFromOverride(bearingDeg, groundDistance, target, yaw, pitch, fov
         isHidden: isTargetHidden(target.id),
         displayName: target.display_name || target.id.slice(0, 8),
     };
+}
+
+/**
+ * Projects the original GPS position of a target (ignoring overrides).
+ * Used to show the original position indicator when an override is active.
+ */
+function projectOriginalPosition(target, yaw, pitch, fov) {
+    if (!cameraConfig) return null;
+
+    let { x, z } = projector.lonLatToMeters(
+        target.lon, target.lat,
+        cameraConfig.lon, cameraConfig.lat
+    );
+    const distanceScale = cameraConfig.distance_scale ?? 1.0;
+    x *= distanceScale;
+    z *= distanceScale;
+
+    const cameraHeight = cameraConfig.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
+    const y = -cameraHeight;
+    const horizontalDistance = Math.sqrt(x * x + z * z);
+
+    const projected = projector.metersToScreen(x, y, z, yaw, pitch, fov);
+    if (!projected.visible) return null;
+
+    const radius = projector.calculateMarkerSize(
+        NAV_CONSTANTS.MARKER_WORLD_RADIUS, horizontalDistance, fov
+    );
+    const flattenY = projector.calculateFlattenRatio(horizontalDistance, pitch);
+
+    return { screenX: projected.screenX, screenY: projected.screenY, radius, flattenY };
 }
 
 // ============================================================================
@@ -725,6 +817,14 @@ export function setGroundGridVisible(visible) {
     if (!visible && navRenderer) {
         navRenderer.setGroundGrid(null);
     }
+}
+
+/**
+ * Returns whether the ground grid is currently visible.
+ * @returns {boolean}
+ */
+export function isGroundGridVisible() {
+    return groundGridVisible;
 }
 
 /**

@@ -36,6 +36,9 @@ export class StreetViewRenderer {
         // Ground grid state
         this.groundGrid = null; // { lines: Array<{points: Array<{x,y}>}>, color, opacity }
 
+        // Ghost marker state (set-from-click preview)
+        this.ghostMarker = null; // { screenX, screenY, radius, flattenY, bearing, distance }
+
         // Animation state
         this.hoverAnimation = new Map();
     }
@@ -106,6 +109,14 @@ export class StreetViewRenderer {
     }
 
     /**
+     * Sets the ghost marker for set-from-click preview.
+     * @param {Object|null} data - Ghost marker data or null to hide
+     */
+    setGhostMarker(data) {
+        this.ghostMarker = data;
+    }
+
+    /**
      * Sets visibility of the overlay
      * @param {boolean} visible - Whether to show the overlay
      */
@@ -168,6 +179,11 @@ export class StreetViewRenderer {
             this.renderMarker(marker);
         }
 
+        // Render ghost marker for set-from-click preview
+        if (this.ghostMarker) {
+            this.renderGhostMarker();
+        }
+
         // Render ground cursor on top
         if (this.groundCursor) {
             this.renderGroundCursor();
@@ -185,6 +201,11 @@ export class StreetViewRenderer {
      */
     renderMarker(marker) {
         const { id, screenX, screenY, radius, flattenY } = marker;
+
+        // Draw original GPS position indicator for override markers
+        if (marker.hasOverride && marker.originalScreenX != null) {
+            this.renderOriginalPositionIndicator(marker);
+        }
 
         const isHovered = this.hoveredMarkerId === id;
         const isNearest = this.nearestMarkerId === id;
@@ -310,6 +331,51 @@ export class StreetViewRenderer {
             ctx.lineCap = 'round';
             ctx.stroke();
         }
+
+        ctx.restore();
+    }
+
+    // ====================================================================
+    // ORIGINAL POSITION INDICATOR  (override visual feedback)
+    // ====================================================================
+
+    /**
+     * Renders the original GPS position as a ghost marker with a dashed
+     * line connecting it to the override position.
+     * @param {Object} marker - Marker data with originalScreenX/Y fields
+     */
+    renderOriginalPositionIndicator(marker) {
+        const { screenX, screenY, originalScreenX, originalScreenY, originalRadius, originalFlattenY } = marker;
+        const ctx = this.ctx;
+
+        ctx.save();
+
+        // Dashed line from original to override position
+        ctx.beginPath();
+        ctx.setLineDash([6, 4]);
+        ctx.moveTo(originalScreenX, originalScreenY);
+        ctx.lineTo(screenX, screenY);
+        ctx.strokeStyle = 'rgba(255, 200, 80, 0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Ghost marker at original position (outline only)
+        ctx.translate(originalScreenX, originalScreenY);
+        ctx.scale(1, originalFlattenY);
+        ctx.globalAlpha = 0.35;
+
+        ctx.beginPath();
+        ctx.arc(0, 0, originalRadius, 0, Math.PI * 2);
+        ctx.setLineDash([4, 3]);
+        ctx.strokeStyle = 'rgba(255, 200, 80, 0.7)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Small dot at center
+        ctx.beginPath();
+        ctx.arc(0, 0, originalRadius * 0.25, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 200, 80, 0.5)';
+        ctx.fill();
 
         ctx.restore();
     }
@@ -506,6 +572,61 @@ export class StreetViewRenderer {
             ctx.stroke();
             ctx.restore();
         }
+    }
+
+    // ====================================================================
+    // GHOST MARKER  (set-from-click preview)
+    // ====================================================================
+
+    /**
+     * Renders a ghost marker at the mouse position during set-from-click mode.
+     * Shows a semi-transparent marker with bearing/distance label.
+     */
+    renderGhostMarker() {
+        const { screenX, screenY, radius, flattenY, bearing, distance } = this.ghostMarker;
+        const ctx = this.ctx;
+
+        ctx.save();
+        ctx.translate(screenX, screenY);
+        ctx.globalAlpha = 0.45;
+
+        // Elliptical perspective
+        ctx.save();
+        ctx.scale(1, flattenY);
+
+        // Dashed orange circle
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = 'rgba(250, 179, 135, 0.9)';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // Semi-transparent fill
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(250, 179, 135, 0.2)';
+        ctx.fill();
+
+        ctx.restore(); // undo scale
+
+        // Label above marker
+        ctx.globalAlpha = 0.85;
+        const label = `${bearing.toFixed(0)}\u00B0 / ${distance.toFixed(1)}m`;
+        ctx.font = '12px monospace';
+        const metrics = ctx.measureText(label);
+        const labelX = -metrics.width / 2;
+        const labelY = -(radius * flattenY) - 10;
+
+        // Label background
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.fillRect(labelX - 4, labelY - 12, metrics.width + 8, 16);
+
+        // Label text
+        ctx.fillStyle = '#fab387';
+        ctx.fillText(label, labelX, labelY);
+
+        ctx.restore();
     }
 
     // ====================================================================

@@ -18,6 +18,8 @@ import {
     selectTarget, deselectTarget, setSetFromClickMode,
     setProjectContext, setCalibrationReviewed, getNextPhotoId, getPrevPhotoId,
     setNearbyPhotos, isTargetHidden, refreshTargets,
+    setMeshRotationX, setMeshRotationY, setMeshRotationZ,
+    setTargetHidden as stateSetTargetHidden,
 } from './state.js';
 import {
     initViewer, loadProgressive, setMeshRotationY as viewerSetMeshRotationY,
@@ -34,9 +36,11 @@ import {
     initMinimap, updateCamera, updateTargets, setSelectedTarget,
     updateNearbyPhotos,
 } from './minimap.js';
-import { initPanel, showToast, setGridToggleState, clearNearbyPreview, getNearbyPreviewState } from './calibration-panel.js';
+import { initPanel, showToast, setSphericalGridToggleState, clearNearbyPreview, getNearbyPreviewState } from './calibration-panel.js';
 import {
     initPreviewViewer, showPreview, hidePreview, showAddButton,
+    showRearView, updateRearViewRotation, showTargetActions, updateHideButtonState,
+    syncRearViewCamera, setRearViewTargets,
 } from './preview-viewer.js';
 
 // ============================================================================
@@ -71,6 +75,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Keyboard shortcuts
     document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onWindowBlur);
 
     // Prevent data loss on tab close
     window.addEventListener('beforeunload', (e) => {
@@ -200,6 +206,7 @@ async function startCalibration(photoId) {
         // Configure navigator
         setCameraConfig(metadata.camera);
         setTargets(metadata.targets);
+        setRearViewTargets(metadata.targets, metadata.camera);
 
         // Reset camera to look straight at the image center (lon=0).
         // The navigator adds imageHeading when computing world yaw,
@@ -215,6 +222,14 @@ async function startCalibration(photoId) {
         const previewUrl = getPhotoImageUrl(photoId, 'preview');
         const fullUrl = getPhotoImageUrl(photoId, 'full');
         await loadProgressive(previewUrl, fullUrl);
+
+        // Show rear view in preview viewer
+        showRearView(
+            photoId,
+            metadata.camera?.mesh_rotation_y ?? 180,
+            metadata.camera?.mesh_rotation_x ?? 0,
+            metadata.camera?.mesh_rotation_z ?? 0,
+        );
 
         // Update minimap
         updateCamera(metadata.camera);
@@ -264,15 +279,24 @@ function initializeSubsystems() {
     initPanel(panelContainer, {
         onSave: handleSave,
         onDiscard: handleDiscard,
-        onMeshRotationPreview: (degrees) => viewerSetMeshRotationY(degrees),
+        onMeshRotationPreview: (degrees) => {
+            viewerSetMeshRotationY(degrees);
+            updateRearViewRotation(degrees, state.editedMeshRotationX ?? 0, state.editedMeshRotationZ ?? 0);
+        },
         onCameraHeightPreview: (height) => {
             // Update navigator camera config live for ground-plane projection preview
             if (state.currentMetadata?.camera) {
                 setCameraConfig({ ...state.currentMetadata.camera, height, distance_scale: state.editedDistanceScale, marker_scale: state.editedMarkerScale });
             }
         },
-        onMeshRotationXPreview: (degrees) => viewerSetMeshRotationX(degrees),
-        onMeshRotationZPreview: (degrees) => viewerSetMeshRotationZ(degrees),
+        onMeshRotationXPreview: (degrees) => {
+            viewerSetMeshRotationX(degrees);
+            updateRearViewRotation(state.editedMeshRotationY ?? 180, degrees, state.editedMeshRotationZ ?? 0);
+        },
+        onMeshRotationZPreview: (degrees) => {
+            viewerSetMeshRotationZ(degrees);
+            updateRearViewRotation(state.editedMeshRotationY ?? 180, state.editedMeshRotationX ?? 0, degrees);
+        },
         onDistanceScalePreview: (scale) => {
             // Update navigator camera config with new distance_scale
             if (state.currentMetadata?.camera) {
@@ -290,10 +314,8 @@ function initializeSubsystems() {
         onNextPhoto: handleNextPhoto,
         onPrevPhoto: handlePrevPhoto,
         onBackToProjects: () => showProjectSelector(),
-        onGridToggle: (visible) => {
-            setGridVisible(visible);
-            setGroundGridVisible(visible);
-        },
+        onSphericalGridToggle: (visible) => setGridVisible(visible),
+        onGroundGridToggle: (visible) => setGroundGridVisible(visible),
         onAddTarget: handleAddTarget,
         onDeleteTarget: handleDeleteTarget,
         onNearbyPreviewToggle: handleNearbyPreviewToggle,
@@ -329,26 +351,53 @@ function initializeSubsystems() {
                 clearNearbyPreview();
                 showAddButton(false);
 
-                // Fetch target photo metadata to get its mesh_rotation_y
+                // Fetch target photo metadata to get its mesh_rotation_y/x/z
                 fetchPhotoMetadata(target.id).then(meta => {
                     // Only show if still the same target
                     if (state.selectedTargetId === target.id) {
                         showPreview(
                             target.id,
                             target.display_name || target.id.slice(0, 8),
-                            meta.camera?.mesh_rotation_y ?? 180
+                            meta.camera?.mesh_rotation_y ?? 180,
+                            meta.camera?.mesh_rotation_x ?? 0,
+                            meta.camera?.mesh_rotation_z ?? 0,
                         );
+                        showTargetActions(true, {
+                            onHide: () => {
+                                const hidden = isTargetHidden(state.selectedTargetId);
+                                stateSetTargetHidden(state.selectedTargetId, !hidden);
+                                updateHideButtonState(!hidden);
+                            },
+                            onSetFromClick: () => {
+                                setSetFromClickMode(!state.setFromClickMode);
+                                refreshCursor();
+                            },
+                            isHidden: isTargetHidden(target.id),
+                        });
                     }
                 }).catch(() => {
                     // Still show without correct mesh rotation
                     if (state.selectedTargetId === target.id) {
                         showPreview(target.id, target.display_name || target.id.slice(0, 8));
+                        showTargetActions(true, {
+                            onHide: () => {
+                                const hidden = isTargetHidden(state.selectedTargetId);
+                                stateSetTargetHidden(state.selectedTargetId, !hidden);
+                                updateHideButtonState(!hidden);
+                            },
+                            onSetFromClick: () => {
+                                setSetFromClickMode(!state.setFromClickMode);
+                                refreshCursor();
+                            },
+                            isHidden: isTargetHidden(target.id),
+                        });
                     }
                 });
             }
         } else if (!s.selectedTargetId) {
             lastPreviewTargetId = null;
-            // Only hide preview if no nearby preview is active
+            showTargetActions(false);
+            // Switch back to rear view (or hide if no nearby preview)
             const { previewingId } = getNearbyPreviewState();
             if (!previewingId) {
                 hidePreview();
@@ -365,6 +414,11 @@ function onViewerRender(cameraState) {
     // Update navigator projection each frame
     updateCameraState(cameraState);
     updateNavigator(cameraState);
+
+    // Sync rear view camera direction with main viewer (opposite direction)
+    const lonDeg = (cameraState.yaw * 180) / Math.PI;
+    const latDeg = (cameraState.pitch * 180) / Math.PI;
+    syncRearViewCamera(lonDeg, latDeg, cameraState.fov);
 }
 
 // ============================================================================
@@ -736,6 +790,7 @@ async function refreshTargetsAndNearby() {
         // Update navigator and minimap with new targets
         setCameraConfig(metadata.camera);
         setTargets(metadata.targets);
+        setRearViewTargets(metadata.targets, metadata.camera);
         updateTargets(metadata.targets);
 
         // Re-fetch nearby photos
@@ -803,6 +858,12 @@ function handleNearbySelect(nearbyPhoto) {
 // KEYBOARD SHORTCUTS
 // ============================================================================
 
+// ── Held-key state for smooth WASD rotation ──
+const heldKeys = new Set();
+let heldKeysAnimId = null;
+let lastHeldKeyTime = 0;
+const ROTATION_RATE = 20; // degrees per second
+
 function onKeyDown(e) {
     // Don't handle shortcuts when typing in inputs
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -810,9 +871,8 @@ function onKeyDown(e) {
     // Ctrl+S / Cmd+S = Save
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        if (isDirty()) {
-            handleSave();
-        }
+        if (isDirty()) handleSave();
+        return;
     }
 
     // Escape = Cancel modes / Deselect target
@@ -823,36 +883,145 @@ function onKeyDown(e) {
         } else if (state.selectedTargetId) {
             deselectTarget();
         }
+        return;
     }
 
-    // Review workflow shortcuts
-    // R = Toggle reviewed
-    if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
-        handleMarkReviewed(!state.calibrationReviewed);
+    // ── Smooth rotation keys (WASD) — held for continuous rotation ──
+    if (['w', 'a', 's', 'd'].includes(e.key)) {
+        e.preventDefault();
+        if (!heldKeys.has(e.key)) {
+            heldKeys.add(e.key);
+            if (!heldKeysAnimId) startHeldKeysLoop();
+        }
+        return;
     }
 
-    // N or ] = Next photo
-    if ((e.key === 'n' || e.key === ']') && !e.ctrlKey && !e.metaKey) {
-        handleNextPhoto();
+    // ── Instant action shortcuts ──
+
+    // Q = Previous photo
+    if (e.key === 'q') handlePrevPhoto();
+
+    // E = Save + mark reviewed + next
+    if (e.key === 'e') handleMarkReviewedAndNext();
+
+    // R = Toggle hide selected marker (requires selected target)
+    if (e.key === 'r' && state.selectedTargetId) {
+        stateSetTargetHidden(state.selectedTargetId, !isTargetHidden(state.selectedTargetId));
     }
 
-    // P or [ or Q = Previous photo
-    if ((e.key === 'p' || e.key === '[' || e.key === 'q') && !e.ctrlKey && !e.metaKey) {
-        handlePrevPhoto();
+    // F = Toggle set-from-click mode (requires selected target)
+    if (e.key === 'f' && state.selectedTargetId) {
+        setSetFromClickMode(!state.setFromClickMode);
+        refreshCursor();
     }
 
-    // E = Mark reviewed + go to next (efficient workflow)
-    if (e.key === 'e' && !e.ctrlKey && !e.metaKey) {
-        handleMarkReviewedAndNext();
-    }
-
-    // G = Toggle perspective grid
-    if (e.key === 'g' && !e.ctrlKey && !e.metaKey) {
+    // G = Toggle spherical grid
+    if (e.key === 'g') {
         const newState = !isGridVisible();
         setGridVisible(newState);
-        setGroundGridVisible(newState);
-        setGridToggleState(newState);
+        setSphericalGridToggleState(newState);
     }
+
+    // Z = Reset mesh_rotation_z to 0
+    if (e.key === 'z') {
+        resetMeshRotationZ();
+    }
+
+    // X = Reset mesh_rotation_x to 0
+    if (e.key === 'x') {
+        resetMeshRotationX();
+    }
+}
+
+function onKeyUp(e) {
+    if (['w', 'a', 's', 'd'].includes(e.key)) {
+        heldKeys.delete(e.key);
+        if (heldKeys.size === 0) {
+            stopHeldKeysLoop();
+            flushHeldKeyState();
+        }
+    }
+}
+
+function onWindowBlur() {
+    if (heldKeys.size > 0) {
+        heldKeys.clear();
+        stopHeldKeysLoop();
+        flushHeldKeyState();
+    }
+}
+
+function startHeldKeysLoop() {
+    lastHeldKeyTime = 0;
+    function tick(timestamp) {
+        if (heldKeys.size === 0) {
+            heldKeysAnimId = null;
+            return;
+        }
+        if (!lastHeldKeyTime) lastHeldKeyTime = timestamp;
+        const dt = Math.min((timestamp - lastHeldKeyTime) / 1000, 0.1);
+        lastHeldKeyTime = timestamp;
+        const delta = ROTATION_RATE * dt;
+
+        if (heldKeys.has('w')) adjustMeshRotationZ(+delta, true);
+        if (heldKeys.has('s')) adjustMeshRotationZ(-delta, true);
+        if (heldKeys.has('a')) adjustMeshRotationX(+delta, true);
+        if (heldKeys.has('d')) adjustMeshRotationX(-delta, true);
+
+        heldKeysAnimId = requestAnimationFrame(tick);
+    }
+    heldKeysAnimId = requestAnimationFrame(tick);
+}
+
+function stopHeldKeysLoop() {
+    if (heldKeysAnimId) {
+        cancelAnimationFrame(heldKeysAnimId);
+        heldKeysAnimId = null;
+    }
+    lastHeldKeyTime = 0;
+}
+
+/** Triggers panel re-render after held-key rotation ends. */
+function flushHeldKeyState() {
+    const x = state.editedMeshRotationX;
+    if (x !== null && x !== undefined) {
+        setMeshRotationX(x); // non-silent → triggers notify/re-render
+    } else {
+        const z = state.editedMeshRotationZ;
+        if (z !== null && z !== undefined) {
+            setMeshRotationZ(z);
+        }
+    }
+}
+
+function adjustMeshRotationX(delta, silent = false) {
+    const current = state.editedMeshRotationX ?? 0;
+    const newVal = Math.max(-30, Math.min(30, current + delta));
+    setMeshRotationX(newVal, silent);
+    viewerSetMeshRotationX(newVal);
+    updateRearViewRotation(state.editedMeshRotationY ?? 180, newVal, state.editedMeshRotationZ ?? 0);
+}
+
+function adjustMeshRotationZ(delta, silent = false) {
+    const current = state.editedMeshRotationZ ?? 0;
+    const newVal = Math.max(-30, Math.min(30, current + delta));
+    setMeshRotationZ(newVal, silent);
+    viewerSetMeshRotationZ(newVal);
+    updateRearViewRotation(state.editedMeshRotationY ?? 180, state.editedMeshRotationX ?? 0, newVal);
+}
+
+function resetMeshRotationX() {
+    const original = state.originalMeshRotationX ?? 0;
+    setMeshRotationX(original);
+    viewerSetMeshRotationX(original);
+    updateRearViewRotation(state.editedMeshRotationY ?? 180, original, state.editedMeshRotationZ ?? 0);
+}
+
+function resetMeshRotationZ() {
+    const original = state.originalMeshRotationZ ?? 0;
+    setMeshRotationZ(original);
+    viewerSetMeshRotationZ(original);
+    updateRearViewRotation(state.editedMeshRotationY ?? 180, state.editedMeshRotationX ?? 0, original);
 }
 
 async function handleMarkReviewedAndNext() {
