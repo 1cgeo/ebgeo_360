@@ -106,6 +106,7 @@ export default async function photoRoutes(fastify) {
     setImageCacheHeaders(reply, etag);
     reply.header('Content-Type', 'image/webp');
     reply.header('Content-Length', imageBuffer.length);
+    reply.header('X-Accel-Buffering', 'no');
 
     // Stream the buffer without copying
     return reply.send(Readable.from(imageBuffer));
