@@ -114,6 +114,34 @@ describe('GET /api/v1/photos/:uuid', () => {
     const res = await app.inject({ method: 'GET', url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}` });
     assert.ok(res.headers['content-type']?.includes('application/json'));
   });
+
+  it('sets no-cache Cache-Control with an ETag validator', async () => {
+    const res = await app.inject({ method: 'GET', url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}` });
+    assert.ok(res.headers['cache-control']?.includes('no-cache'));
+    assert.ok(res.headers['etag']);
+  });
+
+  it('returns 304 when If-None-Match matches the metadata ETag', async () => {
+    const res1 = await app.inject({ method: 'GET', url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}` });
+    const etag = res1.headers['etag'];
+    assert.ok(etag);
+
+    const res2 = await app.inject({
+      method: 'GET',
+      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}`,
+      headers: { 'if-none-match': etag },
+    });
+    assert.equal(res2.statusCode, 304);
+  });
+
+  it('uses a distinct ETag when include_hidden=true', async () => {
+    const resVisible = await app.inject({ method: 'GET', url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}` });
+    const resHidden = await app.inject({
+      method: 'GET',
+      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}?include_hidden=true`,
+    });
+    assert.notEqual(resVisible.headers['etag'], resHidden.headers['etag']);
+  });
 });
 
 // ============================================================================
@@ -179,6 +207,72 @@ describe('GET /api/v1/photos/:uuid/image', () => {
     const res = await app.inject({ method: 'GET', url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/image` });
     assert.ok(res.headers['cache-control']?.includes('immutable'));
     assert.ok(res.headers['cache-control']?.includes('31536000'));
+  });
+
+  it('ETag is derived from uuid+quality (does not require reading the blob)', async () => {
+    const full = await app.inject({ method: 'GET', url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/image` });
+    const preview = await app.inject({ method: 'GET', url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/image?quality=preview` });
+    // ETag determinístico embute o uuid e a quality, e difere entre variantes.
+    assert.ok(full.headers['etag'].includes(SEEDS.PHOTO_1_ID));
+    assert.ok(full.headers['etag'].includes('full'));
+    assert.ok(preview.headers['etag'].includes('preview'));
+    assert.notEqual(full.headers['etag'], preview.headers['etag']);
+  });
+
+  it('advertises Accept-Ranges: bytes', async () => {
+    const res = await app.inject({ method: 'GET', url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/image` });
+    assert.equal(res.headers['accept-ranges'], 'bytes');
+  });
+
+  it('does not set X-Accel-Buffering header', async () => {
+    const res = await app.inject({ method: 'GET', url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/image` });
+    assert.equal(res.headers['x-accel-buffering'], undefined);
+  });
+
+  it('responds 206 with Content-Range for a valid Range request', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/image`,
+      headers: { range: 'bytes=0-4' },
+    });
+    assert.equal(res.statusCode, 206);
+    assert.equal(res.headers['content-range'], `bytes 0-4/${SEEDS.FULL_BLOB.length}`);
+    assert.equal(parseInt(res.headers['content-length'], 10), 5);
+    assert.equal(res.rawPayload.length, 5);
+    assert.deepEqual(res.rawPayload, SEEDS.FULL_BLOB.subarray(0, 5));
+  });
+
+  it('responds 416 for an unsatisfiable Range request', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/image`,
+      headers: { range: `bytes=${SEEDS.FULL_BLOB.length + 10}-` },
+    });
+    assert.equal(res.statusCode, 416);
+    assert.equal(res.headers['content-range'], `bytes */${SEEDS.FULL_BLOB.length}`);
+  });
+
+  it('serves the full image (200) for a non-byte Range unit', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/image`,
+      headers: { range: 'items=0-4' },
+    });
+    assert.equal(res.statusCode, 200);
+    assert.equal(parseInt(res.headers['content-length'], 10), SEEDS.FULL_BLOB.length);
+  });
+
+  it('serves many concurrent image requests under the in-flight limiter', async () => {
+    // Mais requisicoes do que o teto de concorrencia: todas devem concluir 200,
+    // confirmando que o limitador enfileira em vez de travar.
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        app.inject({ method: 'GET', url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/image` })),
+    );
+    for (const res of results) {
+      assert.equal(res.statusCode, 200);
+      assert.equal(parseInt(res.headers['content-length'], 10), SEEDS.FULL_BLOB.length);
+    }
   });
 });
 

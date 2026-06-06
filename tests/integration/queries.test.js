@@ -10,9 +10,10 @@ import { createTestData, destroyTestData, SEEDS } from '../helpers/test-db.js';
 let dataDir;
 
 // Query functions are imported dynamically after env setup
-let getAllProjects, getProjectBySlug, getProjectByPhotoId;
+let getAllProjects, getProjectBySlug, getProjectByPhotoId, getProjectCount;
 let getPhotoById, getPhotoByOriginalName, getTargetsBySourceId, getImageBlob;
 let updatePhotoMeshRotationY, updateTargetOverride, clearTargetOverride;
+let getTargetByPair, getNearbyPhotos;
 
 before(async () => {
   ({ dataDir } = createTestData());
@@ -30,6 +31,9 @@ before(async () => {
   updatePhotoMeshRotationY = queries.updatePhotoMeshRotationY;
   updateTargetOverride = queries.updateTargetOverride;
   clearTargetOverride = queries.clearTargetOverride;
+  getProjectCount = queries.getProjectCount;
+  getTargetByPair = queries.getTargetByPair;
+  getNearbyPhotos = queries.getNearbyPhotos;
 });
 
 after(async () => {
@@ -46,6 +50,21 @@ describe('getAllProjects', () => {
     assert.equal(Array.isArray(projects), true);
     assert.equal(projects.length, 1);
     assert.equal(projects[0].slug, SEEDS.PROJECT_SLUG);
+  });
+
+  it('does not over-fetch db_filename (internal infra detail)', () => {
+    const projects = getAllProjects();
+    assert.equal('db_filename' in projects[0], false);
+  });
+});
+
+// ============================================================================
+// getProjectCount
+// ============================================================================
+
+describe('getProjectCount', () => {
+  it('returns the total number of projects', () => {
+    assert.equal(getProjectCount(), 1);
   });
 });
 
@@ -158,6 +177,46 @@ describe('getTargetsBySourceId', () => {
   it('returns empty array for photo with no outbound targets', () => {
     const targets = getTargetsBySourceId('00000000-0000-0000-0000-000000000000');
     assert.equal(targets.length, 0);
+  });
+});
+
+// ============================================================================
+// getTargetByPair
+// ============================================================================
+
+describe('getTargetByPair', () => {
+  it('returns the target row for an existing source/target pair', () => {
+    const target = getTargetByPair(SEEDS.PHOTO_1_ID, SEEDS.PHOTO_2_ID);
+    assert.ok(target);
+    assert.equal(target.source_id, SEEDS.PHOTO_1_ID);
+    assert.equal(target.target_id, SEEDS.PHOTO_2_ID);
+    assert.equal(target.is_original, 1);
+  });
+
+  it('returns undefined for a non-existent pair', () => {
+    const target = getTargetByPair(SEEDS.PHOTO_1_ID, '00000000-0000-0000-0000-000000000000');
+    assert.equal(target, undefined);
+  });
+});
+
+// ============================================================================
+// getNearbyPhotos (R-tree pre-filtered)
+// ============================================================================
+
+describe('getNearbyPhotos', () => {
+  it('returns nearby unconnected photos within the bounding box', () => {
+    // PHOTO_2 ja e target de PHOTO_1; PHOTO_3 esta proximo e nao conectado
+    const nearby = getNearbyPhotos(SEEDS.PHOTO_1_ID, -55.79, -55.77, -29.76, -29.74);
+    const ids = nearby.map(n => n.id);
+    assert.equal(ids.includes(SEEDS.PHOTO_3_ID), true);
+    assert.equal(ids.includes(SEEDS.PHOTO_2_ID), false); // ja conectado
+    assert.equal(ids.includes(SEEDS.PHOTO_1_ID), false); // a propria origem
+  });
+
+  it('excludes photos outside the bounding box', () => {
+    // bbox que nao cobre nenhuma foto
+    const nearby = getNearbyPhotos(SEEDS.PHOTO_1_ID, -10, -9, -10, -9);
+    assert.equal(nearby.length, 0);
   });
 });
 

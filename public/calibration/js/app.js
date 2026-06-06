@@ -25,22 +25,24 @@ import {
     initViewer, loadProgressive, setMeshRotationY as viewerSetMeshRotationY,
     setMeshRotationX as viewerSetMeshRotationX, setMeshRotationZ as viewerSetMeshRotationZ,
     setHeading, forceResize, setGridVisible, isGridVisible,
+    dispose as disposeViewer,
 } from './viewer.js';
 import {
     initNavigator, setCameraConfig, setTargets,
     update as updateNavigator, handleClick, updateCameraState,
     refreshCursor, setGroundGridVisible,
     setNearbyPhotos as navSetNearbyPhotos, setNearbyPreviewMode,
+    disposeNavigator,
 } from './navigator.js';
 import {
     initMinimap, updateCamera, updateTargets, setSelectedTarget,
-    updateNearbyPhotos,
+    updateNearbyPhotos, disposeMinimap,
 } from './minimap.js';
 import { initPanel, showToast, setSphericalGridToggleState, clearNearbyPreview, getNearbyPreviewState } from './calibration-panel.js';
 import {
     initPreviewViewer, showPreview, hidePreview, showAddButton,
     showRearView, updateRearViewRotation, showTargetActions, updateHideButtonState,
-    syncRearViewCamera, setRearViewTargets,
+    syncRearViewCamera, setRearViewTargets, disposePreviewViewer,
 } from './preview-viewer.js';
 
 // ============================================================================
@@ -93,6 +95,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function showProjectSelector() {
     if (!projectSelector) return;
+
+    // Desmonta os subsistemas da sessao de calibracao ao voltar ao seletor:
+    // libera o contexto WebGL do MapLibre, o render loop, os contextos WebGL
+    // do viewer/preview e os listeners globais (resize/scroll/mousemove).
+    // Os subsistemas serao re-inicializados na proxima carga de foto.
+    teardownSubsystems();
+
     projectSelector.style.display = 'flex';
     viewerContainer.style.display = 'none';
     panelContainer.style.display = 'none';
@@ -161,12 +170,15 @@ async function showProjectSelector() {
 
 /**
  * Loads the project photo list and review stats into state.
+ * @param {string} slug - Project slug
+ * @param {AbortSignal} [signal] - Signal opcional para cancelar a requisicao
  */
-async function loadProjectContext(slug) {
+async function loadProjectContext(slug, signal) {
     try {
-        const data = await fetchProjectPhotos(slug);
+        const data = await fetchProjectPhotos(slug, { signal });
         setProjectContext(slug, data.photos, data.reviewStats);
     } catch (err) {
+        if (err?.name === 'AbortError') return;
         console.error('Failed to load project context:', err);
     }
 }
@@ -176,17 +188,44 @@ async function loadProjectContext(slug) {
 // ============================================================================
 
 let initialized = false;
+// Unsubscribe do listener onChange registrado em initializeSubsystems,
+// chamado no teardown para nao acumular listeners duplicados ao re-inicializar.
+let unsubscribeOnChange = null;
+// Canvas do viewer principal, removido do DOM no teardown (o dispose() do
+// viewer nao remove o proprio canvas).
+let viewerCanvasEl = null;
+
+// ── Token de geracao para descartar cargas obsoletas em navegacao rapida ──
+// Cada chamada de startCalibration incrementa loadGeneration e captura seu
+// proprio myGen. Apos cada await, comparamos myGen com loadGeneration: se
+// divergir, outra navegacao comecou e os resultados desta carga sao ignorados
+// (evita exibir panorama/targets/camera de uma foto sobre outra).
+let loadGeneration = 0;
+// AbortController da carga em andamento, abortado ao iniciar a proxima.
+let currentLoadController = null;
 
 async function startCalibration(photoId) {
+    // Aborta a requisicao de carga anterior (metadata/nearby ainda em voo).
+    if (currentLoadController) {
+        currentLoadController.abort();
+    }
+    const controller = new AbortController();
+    currentLoadController = controller;
+    const myGen = ++loadGeneration;
+
     showLoading(true);
 
     try {
         // Fetch metadata
-        const metadata = await fetchPhotoMetadata(photoId);
+        const metadata = await fetchPhotoMetadata(photoId, { signal: controller.signal });
+
+        // Carga obsoleta: outra navegacao comecou enquanto buscavamos metadados.
+        if (myGen !== loadGeneration) return;
 
         // Auto-load project context if not already loaded
         if (metadata.projectSlug && state.currentProjectSlug !== metadata.projectSlug) {
-            await loadProjectContext(metadata.projectSlug);
+            await loadProjectContext(metadata.projectSlug, controller.signal);
+            if (myGen !== loadGeneration) return;
         }
 
         // Load state (after project context so review info is available)
@@ -223,6 +262,9 @@ async function startCalibration(photoId) {
         const fullUrl = getPhotoImageUrl(photoId, 'full');
         await loadProgressive(previewUrl, fullUrl);
 
+        // Carga obsoleta apos a textura terminar de carregar: descarta o resto.
+        if (myGen !== loadGeneration) return;
+
         // Show rear view in preview viewer
         showRearView(
             photoId,
@@ -236,12 +278,15 @@ async function startCalibration(photoId) {
         updateTargets(metadata.targets);
 
         // Fetch nearby unconnected photos (non-blocking)
-        fetchNearbyPhotos(photoId).then(data => {
+        fetchNearbyPhotos(photoId, 100, { signal: controller.signal }).then(data => {
+            // Ignora resultado se a foto ja mudou.
+            if (myGen !== loadGeneration) return;
             const photos = data.photos || [];
             setNearbyPhotos(photos);
             updateNearbyPhotos(photos);
             navSetNearbyPhotos(photos);
         }).catch(err => {
+            if (err?.name === 'AbortError') return;
             console.warn('Failed to load nearby photos:', err);
         });
 
@@ -250,6 +295,8 @@ async function startCalibration(photoId) {
         // Force resize after layout settles
         requestAnimationFrame(() => forceResize());
     } catch (err) {
+        // Requisicao cancelada por navegacao mais recente: silencioso.
+        if (err?.name === 'AbortError' || myGen !== loadGeneration) return;
         console.error('Failed to load photo:', err);
         showLoading(false);
         showToast(`Erro ao carregar foto: ${err.message}`, 'error');
@@ -258,10 +305,14 @@ async function startCalibration(photoId) {
 
 function initializeSubsystems() {
     // Initialize Three.js viewer
-    initViewer(viewerContainer, {
+    const viewerHandle = initViewer(viewerContainer, {
         onRender: onViewerRender,
         onClick: onViewerClick,
     });
+    // Guarda o canvas do viewer para remove-lo do DOM no teardown: dispose()
+    // do viewer libera o contexto WebGL mas nao remove o proprio canvas, entao
+    // sem isso um re-init empilharia canvases mortos no container.
+    viewerCanvasEl = viewerHandle?.canvas ?? null;
 
     // Initialize navigation overlay
     initNavigator(viewerContainer, {
@@ -338,7 +389,7 @@ function initializeSubsystems() {
     // Track last fetched target to avoid re-fetching on every notify (e.g. slider changes).
     let lastPreviewTargetId = null;
 
-    onChange((s) => {
+    unsubscribeOnChange = onChange((s) => {
         setSelectedTarget(s.selectedTargetId);
 
         // Show/hide preview viewer only when the selected target changes
@@ -406,6 +457,42 @@ function initializeSubsystems() {
     });
 }
 
+/**
+ * Desmonta todos os subsistemas da sessao de calibracao (viewer, navigator,
+ * minimap, preview-viewer) e o listener de estado, liberando contextos WebGL,
+ * o mapa MapLibre e listeners globais. Idempotente: sai cedo se nada foi
+ * inicializado. Apos o teardown, a proxima carga de foto re-inicializa tudo.
+ */
+function teardownSubsystems() {
+    if (!initialized) return;
+
+    // Cancela qualquer carga em andamento e invalida cargas obsoletas.
+    if (currentLoadController) {
+        currentLoadController.abort();
+        currentLoadController = null;
+    }
+    loadGeneration++;
+
+    // Remove o listener de estado antes de descartar os subsistemas que ele usa.
+    if (unsubscribeOnChange) {
+        unsubscribeOnChange();
+        unsubscribeOnChange = null;
+    }
+
+    disposeNavigator();
+    disposeMinimap();
+    disposePreviewViewer();
+    disposeViewer();
+
+    // Remove o canvas do viewer (dispose() do viewer nao o remove do DOM).
+    if (viewerCanvasEl?.parentElement) {
+        viewerCanvasEl.parentElement.removeChild(viewerCanvasEl);
+    }
+    viewerCanvasEl = null;
+
+    initialized = false;
+}
+
 // ============================================================================
 // RENDER LOOP CALLBACK
 // ============================================================================
@@ -447,13 +534,31 @@ function onSetFromClick(groundOverride) {
 // NAVIGATION
 // ============================================================================
 
+// Trava de reentrancia: enquanto o dialogo de dirty esta aberto (ou um save
+// disparado por ele esta em curso), novas navegacoes/atalhos sao ignorados,
+// evitando que edicoes/saves/discards concorrentes leiam estado vivo
+// inconsistente durante o await do dialogo.
+let isNavigating = false;
+
 async function navigateToPhoto(photoIdOrTargetId) {
+    if (isNavigating) return;
+
     // Check dirty state
     if (isDirty()) {
-        const action = await showDirtyDialog();
-        if (action === 'cancel') return;
-        if (action === 'save') await handleSave();
-        if (action === 'discard') discardChanges();
+        isNavigating = true;
+        try {
+            const action = await showDirtyDialog();
+            if (action === 'cancel') return;
+            if (action === 'save') {
+                const saved = await handleSave();
+                // Save falhou (total ou parcial): nao navega para nao perder
+                // as edicoes nem deixar o estado dirty divergente.
+                if (!saved) return;
+            }
+            if (action === 'discard') discardChanges();
+        } finally {
+            isNavigating = false;
+        }
     }
 
     // The parameter might be a target ID (which is also a photo ID)
@@ -492,7 +597,18 @@ function showDirtyDialog() {
 // SAVE / DISCARD
 // ============================================================================
 
+/**
+ * Salva todas as alteracoes pendentes da foto atual.
+ * @returns {Promise<boolean>} true se tudo foi salvo (ou nao havia nada a
+ *   salvar); false se houve falha total ou parcial.
+ */
 async function handleSave() {
+    // Captura o photoId alvo no momento do save. Nao confiar em
+    // state.currentPhotoId apos os awaits, pois a foto pode ter mudado
+    // (navegacao concorrente) — isso salvaria calibracao na foto errada.
+    const photoId = state.currentPhotoId;
+    if (!photoId) return false;
+
     try {
         const promises = [];
 
@@ -502,7 +618,7 @@ async function handleSave() {
             state.editedMeshRotationY !== state.originalMeshRotationY
         ) {
             promises.push(
-                saveCalibration(state.currentPhotoId, state.editedMeshRotationY)
+                saveCalibration(photoId, state.editedMeshRotationY)
             );
         }
 
@@ -512,7 +628,7 @@ async function handleSave() {
             state.editedCameraHeight !== state.originalCameraHeight
         ) {
             promises.push(
-                saveCameraHeight(state.currentPhotoId, state.editedCameraHeight)
+                saveCameraHeight(photoId, state.editedCameraHeight)
             );
         }
 
@@ -522,7 +638,7 @@ async function handleSave() {
             state.editedMeshRotationX !== state.originalMeshRotationX
         ) {
             promises.push(
-                saveMeshRotationX(state.currentPhotoId, state.editedMeshRotationX)
+                saveMeshRotationX(photoId, state.editedMeshRotationX)
             );
         }
 
@@ -532,7 +648,7 @@ async function handleSave() {
             state.editedMeshRotationZ !== state.originalMeshRotationZ
         ) {
             promises.push(
-                saveMeshRotationZ(state.currentPhotoId, state.editedMeshRotationZ)
+                saveMeshRotationZ(photoId, state.editedMeshRotationZ)
             );
         }
 
@@ -542,7 +658,7 @@ async function handleSave() {
             state.editedDistanceScale !== state.originalDistanceScale
         ) {
             promises.push(
-                saveDistanceScale(state.currentPhotoId, state.editedDistanceScale)
+                saveDistanceScale(photoId, state.editedDistanceScale)
             );
         }
 
@@ -552,7 +668,7 @@ async function handleSave() {
             state.editedMarkerScale !== state.originalMarkerScale
         ) {
             promises.push(
-                saveMarkerScale(state.currentPhotoId, state.editedMarkerScale)
+                saveMarkerScale(photoId, state.editedMarkerScale)
             );
         }
 
@@ -567,13 +683,13 @@ async function handleSave() {
                 if (edited.bearing === null && edited.distance === null) {
                     // Override cleared
                     promises.push(
-                        clearTargetOverride(state.currentPhotoId, targetId)
+                        clearTargetOverride(photoId, targetId)
                     );
                 } else {
                     // Override set/updated
                     promises.push(
                         saveTargetOverride(
-                            state.currentPhotoId, targetId,
+                            photoId, targetId,
                             edited.bearing, edited.distance,
                             edited.height ?? 0
                         )
@@ -587,7 +703,7 @@ async function handleSave() {
             const originalHidden = state.originalTargetHidden.get(targetId) ?? false;
             if (editedHidden !== originalHidden) {
                 promises.push(
-                    saveTargetVisibility(state.currentPhotoId, targetId, editedHidden)
+                    saveTargetVisibility(photoId, targetId, editedHidden)
                 );
             }
         }
@@ -595,22 +711,45 @@ async function handleSave() {
         for (const [targetId] of state.originalTargetHidden) {
             if (!state.editedTargetHidden.has(targetId)) {
                 promises.push(
-                    saveTargetVisibility(state.currentPhotoId, targetId, false)
+                    saveTargetVisibility(photoId, targetId, false)
                 );
             }
         }
 
         if (promises.length === 0) {
             showToast('Nenhuma alteracao para salvar', 'info');
-            return;
+            return true;
         }
 
-        await Promise.all(promises);
-        markSaved();
-        showToast(`${promises.length} alteracao(oes) salva(s)`, 'success');
+        // allSettled em vez de Promise.all: precisamos saber se houve falha
+        // parcial. Em falha parcial NAO marcamos como limpo (markSaved), para
+        // que o snapshot local nao divirja do banco e o usuario possa re-salvar.
+        const results = await Promise.allSettled(promises);
+        const failures = results.filter(r => r.status === 'rejected');
+
+        if (failures.length > 0) {
+            const succeeded = results.length - failures.length;
+            console.error('Save partially failed:', failures.map(f => f.reason));
+            showToast(
+                `Falha ao salvar ${failures.length} de ${results.length} alteracao(oes). ` +
+                `${succeeded} salva(s). Tente salvar novamente.`,
+                'error'
+            );
+            return false;
+        }
+
+        // So marca como salvo se a foto editada ainda for a atual. Se o usuario
+        // navegou durante o save, o snapshot local ja pertence a outra foto e
+        // markSaved() corromperia o estado dirty da nova foto.
+        if (state.currentPhotoId === photoId) {
+            markSaved();
+        }
+        showToast(`${results.length} alteracao(oes) salva(s)`, 'success');
+        return true;
     } catch (err) {
         console.error('Save failed:', err);
         showToast(`Erro ao salvar: ${err.message}`, 'error');
+        return false;
     }
 }
 
@@ -868,6 +1007,11 @@ function onKeyDown(e) {
     // Don't handle shortcuts when typing in inputs
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
+    // Trava de navegacao: enquanto o dialogo de dirty/save esta aberto, ignora
+    // todos os atalhos (WASD editam estado vivo, Q/E navegam) para nao gerar
+    // edicoes/navegacoes concorrentes durante o await do dialogo.
+    if (isNavigating) return;
+
     // Ctrl+S / Cmd+S = Save
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
@@ -1026,7 +1170,10 @@ function resetMeshRotationZ() {
 
 async function handleMarkReviewedAndNext() {
     if (isDirty()) {
-        await handleSave();
+        const saved = await handleSave();
+        // Save falhou (total ou parcial): nao marca como revisada nem avanca,
+        // para nao registrar revisao sobre um estado nao persistido.
+        if (!saved) return;
     }
     await handleMarkReviewed(true);
     await handleNextPhoto();

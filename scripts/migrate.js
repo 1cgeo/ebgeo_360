@@ -118,6 +118,36 @@ function bearing(lat1, lon1, lat2, lon2) {
   return ((Math.atan2(y, x) * RAD_TO_DEG) + 360) % 360;
 }
 
+/**
+ * Executa tarefas assíncronas com concorrência limitada (pool de tamanho fixo).
+ * Substitui um `Promise.all` ilimitado para conter o pico de memória, processando
+ * no máximo `limit` tarefas simultâneas. Os resultados são retornados na ordem
+ * original das tarefas.
+ *
+ * @template T
+ * @param {Array<() => Promise<T>>} tasks - Funções que produzem cada Promise.
+ * @param {number} limit - Número máximo de tarefas em execução simultânea.
+ * @returns {Promise<Array<T>>} Resultados na ordem original.
+ */
+async function runWithConcurrency(tasks, limit) {
+  const results = new Array(tasks.length);
+  const poolSize = Math.max(1, Math.min(limit, tasks.length));
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < tasks.length) {
+      const current = nextIndex++;
+      results[current] = await tasks[current]();
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < poolSize; i++) workers.push(worker());
+  await Promise.all(workers);
+
+  return results;
+}
+
 // ============================================================
 // Phase 1: Read all metadata JSON files
 // ============================================================
@@ -174,6 +204,8 @@ function assignToProjects(photos, projects, opts) {
 
   const assignments = new Map(); // originalName → project slug
   const projectPhotos = new Map(); // slug → [originalName, ...]
+  // Vizinho mais próximo computado uma única vez por foto, reaproveitado no relatório.
+  const nearestByName = new Map(); // originalName → {lat, lon, bestSlug, bestDist}
 
   for (const p of projects) {
     projectPhotos.set(p.slug, []);
@@ -185,7 +217,10 @@ function assignToProjects(photos, projects, opts) {
   for (const [name, meta] of photos) {
     const lat = meta.camera.lat;
     const lon = meta.camera.lon;
-    if (lat == null || lon == null) continue;
+    if (lat == null || lon == null) {
+      nearestByName.set(name, { lat, lon, bestSlug: null, bestDist: Infinity });
+      continue;
+    }
 
     let bestDist = Infinity;
     let bestSlug = null;
@@ -197,6 +232,8 @@ function assignToProjects(photos, projects, opts) {
         bestSlug = p.slug;
       }
     }
+
+    nearestByName.set(name, { lat, lon, bestSlug, bestDist });
 
     if (bestDist <= MAX_ASSIGN_DIST && bestSlug) {
       assignments.set(name, bestSlug);
@@ -212,22 +249,17 @@ function assignToProjects(photos, projects, opts) {
   }
 
   const unassignedNames = [];
-  for (const [name, meta] of photos) {
+  for (const name of photos.keys()) {
     if (!assignments.has(name)) {
-      const lat = meta.camera.lat;
-      const lon = meta.camera.lon;
-
-      // Find nearest project for context
-      let bestDist = Infinity;
-      let bestSlug = null;
-      if (lat != null && lon != null) {
-        for (const p of projects) {
-          const dist = haversine(lat, lon, p.lat, p.lon);
-          if (dist < bestDist) { bestDist = dist; bestSlug = p.slug; }
-        }
-      }
-
-      unassignedNames.push({ name, lat, lon, nearestProject: bestSlug, distanceKm: (bestDist / 1000).toFixed(1) });
+      // Reaproveita o vizinho mais próximo já computado no primeiro loop.
+      const nearest = nearestByName.get(name) || { lat: null, lon: null, bestSlug: null, bestDist: Infinity };
+      unassignedNames.push({
+        name,
+        lat: nearest.lat,
+        lon: nearest.lon,
+        nearestProject: nearest.bestSlug,
+        distanceKm: (nearest.bestDist / 1000).toFixed(1),
+      });
     }
   }
 
@@ -416,21 +448,37 @@ function computeMedianNearestDist(photoList) {
 
 /**
  * Builds a spatial grid with adaptive cell size for candidate search.
+ *
+ * O tamanho da célula em latitude vem direto do raio (graus de latitude). Para
+ * longitude, um grau cobre `cos(lat)` menos distância de solo, então a célula de
+ * longitude é ampliada por `1/cos(lat)` para que o anel de 1 célula garanta a
+ * captura de candidatos dentro do raio também na direção E/O em latitudes altas.
+ * Usa a latitude média do conjunto como referência (projetos cobrem área pequena).
+ *
  * @param {Array<{name: string, lat: number, lon: number}>} photoList
  * @param {number} radius - Search radius in meters
- * @returns {{grid: Map, cellDeg: number}}
+ * @returns {{grid: Map, cellLatDeg: number, cellLonDeg: number}}
  */
 function buildAdaptiveGrid(photoList, radius) {
-  const cellDeg = Math.max(0.001, (radius / EARTH_RADIUS) * RAD_TO_DEG * 1.2);
+  const cellLatDeg = Math.max(0.001, (radius / EARTH_RADIUS) * RAD_TO_DEG * 1.2);
+
+  // Latitude média do conjunto para o fator de correção de longitude.
+  let latSum = 0;
+  for (const p of photoList) latSum += p.lat;
+  const meanLat = photoList.length > 0 ? latSum / photoList.length : 0;
+  // Evita divisão por ~0 perto dos polos (irrelevante no domínio, mas seguro).
+  const cosLat = Math.max(0.01, Math.cos(meanLat * DEG_TO_RAD));
+  const cellLonDeg = cellLatDeg / cosLat;
+
   const grid = new Map();
 
   for (const p of photoList) {
-    const key = `${Math.floor(p.lat / cellDeg)},${Math.floor(p.lon / cellDeg)}`;
+    const key = `${Math.floor(p.lat / cellLatDeg)},${Math.floor(p.lon / cellLonDeg)}`;
     if (!grid.has(key)) grid.set(key, []);
     grid.get(key).push(p);
   }
 
-  return { grid, cellDeg };
+  return { grid, cellLatDeg, cellLonDeg };
 }
 
 /**
@@ -446,7 +494,7 @@ function buildAdaptiveGrid(photoList, radius) {
  * @returns {Map<string, Array<{targetName, distance, bearing}>>}
  */
 function generateSpatialTargetsForProject(projectPhotos, originalTargetMap, originalBearingsMap, radius, opts) {
-  const { grid, cellDeg } = buildAdaptiveGrid(projectPhotos, radius);
+  const { grid, cellLatDeg, cellLonDeg } = buildAdaptiveGrid(projectPhotos, radius);
   const sectorSize = 360 / opts.sectors;
   const result = new Map();
 
@@ -462,8 +510,8 @@ function generateSpatialTargetsForProject(projectPhotos, originalTargetMap, orig
     }
 
     // Find candidates within radius
-    const cellLat = Math.floor(photo.lat / cellDeg);
-    const cellLon = Math.floor(photo.lon / cellDeg);
+    const cellLat = Math.floor(photo.lat / cellLatDeg);
+    const cellLon = Math.floor(photo.lon / cellLonDeg);
     const candidates = [];
 
     for (let dlat = -1; dlat <= 1; dlat++) {
@@ -754,45 +802,52 @@ async function processImages(opts, projects, sequences, photoUUIDs, indexDb) {
       let processed = 0;
       let errors = 0;
 
-      // Process in batches: convert images with sharp (async), insert in transaction (sync)
-      const BATCH_SIZE = 100;
-      for (let batch = 0; batch < seq.length; batch += BATCH_SIZE) {
-        const batchEnd = Math.min(batch + BATCH_SIZE, seq.length);
-        const batchNames = seq.slice(batch, batchEnd);
+      // Tamanho do sub-lote de conversão = `opts.workers`. A concorrência real
+      // (e, portanto, o pico de memória) fica limitada a esse número de imagens
+      // simultâneas, ao contrário do `BATCH_SIZE=100` anterior que disparava
+      // todas as conversões de uma vez. Cada sub-lote é inserido numa única
+      // transação (preserva a performance de escrita) e seus buffers ficam
+      // elegíveis para GC logo em seguida — o pico passa a ser ~ workers buffers
+      // em vez de ~ 100.
+      const CHUNK_SIZE = Number.isInteger(opts.workers) && opts.workers > 0 ? opts.workers : 4;
 
-        const batchErrors = []; // collect errors for this batch
-        const promises = [];
-        for (const originalName of batchNames) {
+      for (let chunk = 0; chunk < seq.length; chunk += CHUNK_SIZE) {
+        const chunkEnd = Math.min(chunk + CHUNK_SIZE, seq.length);
+        const chunkNames = seq.slice(chunk, chunkEnd);
+
+        const chunkErrors = []; // coleta erros deste sub-lote
+
+        // Converte as imagens do sub-lote em paralelo (no máximo CHUNK_SIZE).
+        const tasks = chunkNames.map((originalName) => async () => {
           const uuid = photoUUIDs.get(originalName);
           const imgPath = join(opts.images, `${originalName}.jpg`);
 
           if (!existsSync(imgPath)) {
             errors++;
-            batchErrors.push({ originalName, reason: 'JPG file not found' });
-            continue;
+            chunkErrors.push({ originalName, reason: 'JPG file not found' });
+            return null;
           }
 
-          promises.push(
-            (async () => {
-              try {
-                const imgBuffer = readFileSync(imgPath);
-                const [fullBuf, prevBuf] = await Promise.all([
-                  sharp(imgBuffer).webp({ quality: 80 }).toBuffer(),
-                  sharp(imgBuffer).resize(512, 256, { fit: 'fill' }).webp({ quality: 70 }).toBuffer(),
-                ]);
-                return { uuid, fullBuf, prevBuf };
-              } catch (err) {
-                errors++;
-                batchErrors.push({ originalName, reason: err.message });
-                return null;
-              }
-            })()
-          );
-        }
+          try {
+            const imgBuffer = readFileSync(imgPath);
+            // Decodifica o JPG uma única vez; `clone()` reusa o pipeline já
+            // decodificado para gerar as duas saídas WebP (evita decode duplo).
+            const base = sharp(imgBuffer);
+            const [fullBuf, prevBuf] = await Promise.all([
+              base.clone().webp({ quality: 80 }).toBuffer(),
+              base.clone().resize(512, 256, { fit: 'fill' }).webp({ quality: 70 }).toBuffer(),
+            ]);
+            return { uuid, fullBuf, prevBuf };
+          } catch (err) {
+            errors++;
+            chunkErrors.push({ originalName, reason: err.message });
+            return null;
+          }
+        });
 
-        const results = await Promise.all(promises);
+        const results = await runWithConcurrency(tasks, CHUNK_SIZE);
 
-        // Insert in transaction (synchronous)
+        // Insere o sub-lote numa única transação (síncrono).
         const insertTransact = projDb.transaction(() => {
           for (const r of results) {
             if (!r) continue;
@@ -803,11 +858,14 @@ async function processImages(opts, projects, sequences, photoUUIDs, indexDb) {
         });
         insertTransact();
 
-        // Flush errors to CSV immediately after each batch
-        if (batchErrors.length > 0) {
-          const lines = batchErrors.map(e => `${p.slug},${e.originalName},"${e.reason.replace(/"/g, '""')}"`).join('\n') + '\n';
+        // Libera as referências aos buffers do sub-lote para o GC.
+        results.length = 0;
+
+        // Flush errors to CSV immediately after each chunk
+        if (chunkErrors.length > 0) {
+          const lines = chunkErrors.map(e => `${p.slug},${e.originalName},"${e.reason.replace(/"/g, '""')}"`).join('\n') + '\n';
           appendFileSync(errPath, lines, 'utf-8');
-          totalErrors += batchErrors.length;
+          totalErrors += chunkErrors.length;
         }
 
         process.stdout.write(`    ${processed}/${seq.length} processed (${errors} errors)\r`);
@@ -844,24 +902,36 @@ async function main() {
   console.log('');
 
   // Phase 1: Read metadata
-  const photos = readAllMetadata(opts.metadata);
+  // `let` em vez de `const` para permitir liberar as estruturas grandes antes da
+  // Phase 7 (processamento de imagens), reduzindo o baseline de heap.
+  let photos = readAllMetadata(opts.metadata);
 
   // Phase 2: Assign to projects
-  const { assignments, projectPhotos } = assignToProjects(photos, PROJECTS, opts);
+  let { assignments, projectPhotos } = assignToProjects(photos, PROJECTS, opts);
 
   // Phase 3: Sequence
   const sequences = sequenceAllProjects(PROJECTS, projectPhotos, photos);
 
   // Phase 4: UUIDs
-  const { projectUUIDs, photoUUIDs, photoDisplayNames } = generateUUIDs(PROJECTS, sequences);
+  let { projectUUIDs, photoUUIDs, photoDisplayNames } = generateUUIDs(PROJECTS, sequences);
 
   // Phase 5: Adaptive spatial analysis (skipped when --skip-targets)
-  const spatialTargets = opts.skipTargets
+  let spatialTargets = opts.skipTargets
     ? (console.log('[Phase 5/7] Skipping spatial analysis (--skip-targets).'), new Map())
     : adaptiveSpatialAnalysis(photos, photoUUIDs, opts, assignments, PROJECTS);
 
   // Phase 6: Populate metadata + targets in index.db
   const indexDb = populateMetadata(opts, photos, PROJECTS, sequences, projectUUIDs, photoUUIDs, photoDisplayNames, spatialTargets);
+
+  // Libera as estruturas de metadados não usadas pela Phase 7 (que só precisa de
+  // `sequences`, `photoUUIDs` e `indexDb`) para reduzir o pico de heap antes do
+  // processamento pesado de imagens.
+  photos = null;
+  assignments = null;
+  projectPhotos = null;
+  projectUUIDs = null;
+  photoDisplayNames = null;
+  spatialTargets = null;
 
   try {
     // Phase 7: Process images into per-project databases

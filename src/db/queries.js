@@ -9,6 +9,13 @@ import { getIndexDb, getProjectDb } from './connection.js';
 // Lazily initialized prepared statements
 let _stmts = null;
 
+// Cache de prepared statements de imagem por DB de projeto.
+// Map<dbFilename, { full_webp: Statement, preview_webp: Statement }>
+// As conexoes de projeto ja sao singletons cacheadas em connection.js, mas os
+// statements vivem nessas conexoes (nao no indexDb), entao cacheamos aqui para
+// evitar recompilar o SQL a cada requisicao de imagem (endpoint mais quente).
+const _imageStmts = new Map();
+
 function stmts() {
   if (_stmts) return _stmts;
 
@@ -18,17 +25,19 @@ function stmts() {
     // ---- Projects ----
     allProjects: db.prepare(`
       SELECT id, slug, name, description, capture_date, location,
-             center_lat, center_lon, entry_photo_id, photo_count, db_filename
+             center_lat, center_lon, entry_photo_id, photo_count
       FROM projects
       ORDER BY name
     `),
 
     projectBySlug: db.prepare(`
       SELECT id, slug, name, description, capture_date, location,
-             center_lat, center_lon, entry_photo_id, photo_count, db_filename
+             center_lat, center_lon, entry_photo_id, photo_count
       FROM projects
       WHERE slug = ?
     `),
+
+    projectCount: db.prepare('SELECT COUNT(*) AS count FROM projects'),
 
     projectByPhotoId: db.prepare(`
       SELECT p.id, p.slug, p.name, p.db_filename, p.capture_date
@@ -111,17 +120,22 @@ function stmts() {
       'SELECT source_id, target_id, is_original FROM targets WHERE source_id = ? AND target_id = ?'
     ),
 
+    // Lidera pelo R-tree (bounding box) para restringir o conjunto candidato
+    // ANTES de tocar em photos. O CROSS JOIN forca a ordem de juncao no SQLite
+    // (rtree como laco externo), garantindo que o indice espacial restrinja o
+    // conjunto pela bbox primeiro, em vez de varrer todas as fotos do projeto.
+    // Os anti-joins (target/deleted) e o filtro de projeto sao aplicados depois.
     nearbyPhotos: db.prepare(`
       SELECT ph.id, ph.display_name, ph.lat, ph.lon, ph.ele
-      FROM photos_rowid pr
-      JOIN photos_rtree rt ON rt.rowid_id = pr.rowid_id
-      JOIN photos ph ON ph.id = pr.photo_id
-      WHERE ph.project_id = (SELECT project_id FROM photos WHERE id = ?)
+      FROM photos_rtree rt
+      CROSS JOIN photos_rowid pr ON pr.rowid_id = rt.rowid_id
+      CROSS JOIN photos ph ON ph.id = pr.photo_id
+      WHERE rt.min_lon >= ? AND rt.max_lon <= ?
+        AND rt.min_lat >= ? AND rt.max_lat <= ?
+        AND ph.project_id = (SELECT project_id FROM photos WHERE id = ?)
         AND ph.id != ?
         AND ph.id NOT IN (SELECT target_id FROM targets WHERE source_id = ?)
         AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)
-        AND rt.min_lon >= ? AND rt.max_lon <= ?
-        AND rt.min_lat >= ? AND rt.max_lat <= ?
       ORDER BY ph.sequence_number
     `),
 
@@ -258,6 +272,15 @@ export function getAllProjects() {
   return stmts().allProjects.all();
 }
 
+/**
+ * Conta o numero total de projetos via prepared statement cacheado.
+ * Usado pelo health check para evitar re-preparar o SQL a cada chamada.
+ * @returns {number} Quantidade de projetos
+ */
+export function getProjectCount() {
+  return stmts().projectCount.get().count;
+}
+
 export function getProjectBySlug(slug) {
   return stmts().projectBySlug.get(slug);
 }
@@ -293,15 +316,25 @@ export function getVisibleTargetsBySourceId(sourceId) {
  * @returns {Buffer|null} The image data or null if not found
  */
 export function getImageBlob(dbFilename, photoId, column) {
-  const db = getProjectDb(dbFilename);
-  if (!db) return null;
-
   // Validate column name to prevent SQL injection
   const validColumns = ['full_webp', 'preview_webp'];
   if (!validColumns.includes(column)) return null;
 
-  // Use a fresh prepared statement per project DB
-  const stmt = db.prepare(`SELECT ${column} FROM images WHERE photo_id = ?`);
+  const db = getProjectDb(dbFilename);
+  if (!db) return null;
+
+  // Reaproveita o prepared statement cacheado por (dbFilename, column).
+  let entry = _imageStmts.get(dbFilename);
+  if (!entry) {
+    entry = {};
+    _imageStmts.set(dbFilename, entry);
+  }
+  let stmt = entry[column];
+  if (!stmt) {
+    stmt = db.prepare(`SELECT ${column} FROM images WHERE photo_id = ?`);
+    entry[column] = stmt;
+  }
+
   const row = stmt.get(photoId);
   return row ? row[column] : null;
 }
@@ -404,7 +437,8 @@ export function getTargetByPair(sourceId, targetId) {
  * @returns {Array} Array of nearby photo rows
  */
 export function getNearbyPhotos(sourceId, minLon, maxLon, minLat, maxLat) {
-  return stmts().nearbyPhotos.all(sourceId, sourceId, sourceId, minLon, maxLon, minLat, maxLat);
+  // Ordem dos binds segue a query: bbox (4) primeiro, depois sourceId (3x).
+  return stmts().nearbyPhotos.all(minLon, maxLon, minLat, maxLat, sourceId, sourceId, sourceId);
 }
 
 // ---- Calibration review functions ----
@@ -601,7 +635,10 @@ export function softDeletePhoto(photoId, projectId) {
 
 /**
  * Resets prepared statements (for testing or after schema changes).
+ * Limpa tanto os statements do indexDb quanto o cache de statements de imagem
+ * por DB de projeto, pois ambos apontam para conexoes que podem ter sido fechadas.
  */
 export function resetStatements() {
   _stmts = null;
+  _imageStmts.clear();
 }

@@ -34,12 +34,29 @@ let currentMeshRotationZ = 0;
 // Perspective grid
 let gridGroup = null;
 let gridVisible = false;
+// Materiais compartilhados das linhas do grid (descartados uma unica vez)
+let gridNormalMat = null;
+let gridEquatorMat = null;
 
 // Animation
 let animationFrameId = null;
 
+// Dirty-checking do render Three.js: recomputa lookAt + render apenas quando
+// algo muda (camera, textura, rotacao, fov, resize). O loop rAF continua, mas
+// pula o trabalho redundante com a cena estatica. A saida visual e identica.
+let needsRender = true;
+let lastRenderLon = NaN;
+let lastRenderLat = NaN;
+
 // Reusable Vector3 for lookAt target (avoids allocation in render loop)
 const _lookAtTarget = new THREE.Vector3();
+
+/**
+ * Marca a cena como suja para forcar um novo render no proximo frame.
+ */
+function markNeedsRender() {
+    needsRender = true;
+}
 
 // Callbacks
 let onRenderCallback = null;
@@ -86,7 +103,9 @@ export function initViewer(container, options = {}) {
 
     // Renderer
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
+    // Limita o DPR a 2 (igual ao preview viewer) — mesmo valor usado em onResize
+    // para que o buffer nao mude de resolucao ao redimensionar.
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
 
     canvasEl = renderer.domElement;
@@ -112,25 +131,50 @@ export function initViewer(container, options = {}) {
 
 const textureLoader = new THREE.TextureLoader();
 
+// Token de geracao para descartar carregamentos de textura obsoletos em
+// navegacao rapida (foto A resolve depois de B nao deve sobrescrever B).
+let loadGeneration = 0;
+
+/**
+ * Inicia uma nova geracao de carregamento e retorna seu id.
+ * Chamado por loadProgressive para que preview+full compartilhem a geracao,
+ * mas cargas de fotos diferentes invalidem as anteriores.
+ * @returns {number}
+ */
+function nextLoadGeneration() {
+    return ++loadGeneration;
+}
+
 /**
  * Loads a panorama image onto the sphere.
  * @param {string} url - Image URL
  * @param {boolean} [isPreview=false] - Whether this is a low-quality preview
+ * @param {number} [generation] - Token de geracao; se informado e ja obsoleto
+ *   quando a textura chega, a textura e descartada sem aplicar.
  * @returns {Promise<void>}
  */
-export function loadPanorama(url, isPreview = false) {
+export function loadPanorama(url, isPreview = false, generation = loadGeneration) {
     return new Promise((resolve, reject) => {
         textureLoader.load(
             url,
             (texture) => {
                 texture.colorSpace = THREE.SRGBColorSpace;
 
-                // Don't replace full-quality texture with preview
-                if (isPreview && material.map && material.map.userData?.isFull) {
+                // Carga obsoleta (outra foto comecou a carregar): descarta.
+                if (generation !== loadGeneration) {
+                    texture.dispose();
                     resolve();
                     return;
                 }
 
+                // Don't replace full-quality texture with preview
+                if (isPreview && material.map && material.map.userData?.isFull) {
+                    texture.dispose();
+                    resolve();
+                    return;
+                }
+
+                // Dispoe a textura antiga antes de aplicar a nova
                 if (material.map) {
                     material.map.dispose();
                 }
@@ -139,6 +183,7 @@ export function loadPanorama(url, isPreview = false) {
                 material.map = texture;
                 material.color.set(0xffffff);
                 material.needsUpdate = true;
+                markNeedsRender();
                 resolve();
             },
             undefined,
@@ -153,16 +198,19 @@ export function loadPanorama(url, isPreview = false) {
  * @param {string} fullUrl - Full quality image URL
  */
 export async function loadProgressive(previewUrl, fullUrl) {
+    // Nova geracao: invalida qualquer carga anterior ainda em voo.
+    const generation = nextLoadGeneration();
+
     // Load preview first for fast display
     try {
-        await loadPanorama(previewUrl, true);
+        await loadPanorama(previewUrl, true, generation);
     } catch {
         // Preview failed, will try full directly
     }
 
     // Then load full quality
     try {
-        await loadPanorama(fullUrl, false);
+        await loadPanorama(fullUrl, false, generation);
     } catch (err) {
         console.error('Failed to load full panorama:', err);
     }
@@ -181,6 +229,7 @@ export function setMeshRotationY(degrees) {
     if (sphere) {
         sphere.rotation.y = THREE.MathUtils.degToRad(degrees);
     }
+    markNeedsRender();
 }
 
 /**
@@ -200,6 +249,7 @@ export function setMeshRotationX(degrees) {
     if (sphere) {
         sphere.rotation.x = THREE.MathUtils.degToRad(degrees);
     }
+    markNeedsRender();
 }
 
 /**
@@ -211,6 +261,7 @@ export function setMeshRotationZ(degrees) {
     if (sphere) {
         sphere.rotation.z = THREE.MathUtils.degToRad(degrees);
     }
+    markNeedsRender();
 }
 
 // ============================================================================
@@ -318,6 +369,7 @@ function onWheel(e) {
         camera.fov = fov;
         camera.updateProjectionMatrix();
     }
+    markNeedsRender();
 }
 
 function onResize() {
@@ -326,7 +378,11 @@ function onResize() {
     const height = containerEl.clientHeight;
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
+    // Reaplica o devicePixelRatio (pode mudar ao trocar de monitor/zoom),
+    // limitado a 2 como no preview viewer. setPixelRatio antes de setSize.
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
+    markNeedsRender();
 }
 
 // ============================================================================
@@ -338,18 +394,29 @@ function animate() {
 
     if (!camera || !scene || !renderer) return;
 
-    // Update camera from lon/lat (matching EBGeo's explicit spherical math)
-    const phi = THREE.MathUtils.degToRad(90 - lat);
-    const theta = THREE.MathUtils.degToRad(lon);
+    // Render Three.js apenas quando a camera mudou ou a cena ficou suja.
+    // O onRenderCallback continua sendo chamado todo frame: o overlay do
+    // navigator tem seu proprio dirty-check e precisa reagir ao mouse, que o
+    // viewer nao rastreia. Pular o render aqui mantem o ultimo frame valido.
+    const cameraMoved = lon !== lastRenderLon || lat !== lastRenderLat;
+    if (needsRender || cameraMoved) {
+        // Update camera from lon/lat (matching EBGeo's explicit spherical math)
+        const phi = THREE.MathUtils.degToRad(90 - lat);
+        const theta = THREE.MathUtils.degToRad(lon);
 
-    _lookAtTarget.set(
-        500 * Math.sin(phi) * Math.cos(theta),
-        500 * Math.cos(phi),
-        500 * Math.sin(phi) * Math.sin(theta)
-    );
-    camera.lookAt(_lookAtTarget);
+        _lookAtTarget.set(
+            500 * Math.sin(phi) * Math.cos(theta),
+            500 * Math.cos(phi),
+            500 * Math.sin(phi) * Math.sin(theta)
+        );
+        camera.lookAt(_lookAtTarget);
 
-    renderer.render(scene, camera);
+        renderer.render(scene, camera);
+
+        needsRender = false;
+        lastRenderLon = lon;
+        lastRenderLat = lat;
+    }
 
     // Notify render callback with camera state
     if (onRenderCallback) {
@@ -383,20 +450,20 @@ const GRID_MERIDIANS = [
 function createGridGeometry() {
     gridGroup = new THREE.Group();
 
-    const normalMat = new THREE.LineBasicMaterial({
+    gridNormalMat = new THREE.LineBasicMaterial({
         color: 0x00c8ff, transparent: true, opacity: 0.35, depthTest: false,
     });
-    const equatorMat = new THREE.LineBasicMaterial({
+    gridEquatorMat = new THREE.LineBasicMaterial({
         color: 0x00ff88, transparent: true, opacity: 0.7, depthTest: false,
     });
 
     for (const lat of GRID_PARALLELS) {
-        const mat = lat === 0 ? equatorMat : normalMat;
+        const mat = lat === 0 ? gridEquatorMat : gridNormalMat;
         gridGroup.add(createParallelLine(lat, GRID_RADIUS, mat));
     }
 
     for (const lon of GRID_MERIDIANS) {
-        gridGroup.add(createMeridianLine(lon, GRID_RADIUS, normalMat));
+        gridGroup.add(createMeridianLine(lon, GRID_RADIUS, gridNormalMat));
     }
 
     scene.add(gridGroup);
@@ -464,6 +531,7 @@ export function setGridVisible(visible) {
     if (gridGroup) {
         gridGroup.visible = visible;
     }
+    markNeedsRender();
 }
 
 /**
@@ -497,12 +565,17 @@ export function dispose() {
     window.removeEventListener('resize', onResize);
 
     if (gridGroup) {
+        // Dispoe apenas as geometrias por linha; os 2 materiais sao
+        // compartilhados e descartados uma unica vez abaixo.
         gridGroup.traverse((child) => {
             if (child.geometry) child.geometry.dispose();
-            if (child.material) child.material.dispose();
         });
         gridGroup = null;
     }
+    gridNormalMat?.dispose();
+    gridEquatorMat?.dispose();
+    gridNormalMat = null;
+    gridEquatorMat = null;
 
     if (material?.map) {
         material.map.dispose();

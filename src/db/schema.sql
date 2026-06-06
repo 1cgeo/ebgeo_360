@@ -72,3 +72,9 @@ CREATE TABLE IF NOT EXISTS deleted_photos (
 CREATE INDEX IF NOT EXISTS idx_photos_project ON photos(project_id);
 CREATE INDEX IF NOT EXISTS idx_photos_original ON photos(original_name);
 CREATE INDEX IF NOT EXISTS idx_targets_source ON targets(source_id);
+-- Indexa o ramo target_id do DELETE em soft-delete (evita full table scan no OR)
+CREATE INDEX IF NOT EXISTS idx_targets_target ON targets(target_id);
+-- Satisfaz o ORDER BY (is_next DESC, distance_m ASC) das queries de targets por source,
+-- eliminando o uso de TEMP B-TREE para ordenacao
+CREATE INDEX IF NOT EXISTS idx_targets_source_order
+    ON targets(source_id, is_next DESC, distance_m ASC);

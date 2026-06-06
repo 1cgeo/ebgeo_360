@@ -6,7 +6,6 @@
 
 import {
   getPhotoById,
-  getTargetsBySourceId,
   getTargetByPair,
   updatePhotoMeshRotationY,
   updatePhotoCameraHeight,
@@ -267,8 +266,9 @@ export default async function calibrationRoutes(fastify) {
       return { error: 'Source photo not found' };
     }
 
-    const targets = getTargetsBySourceId(sourceId);
-    const targetExists = targets.some(t => t.target_id === targetId);
+    // Verifica existencia do target via lookup por PK (source_id, target_id),
+    // evitando o JOIN + fetch de todas as linhas de getTargetsBySourceId.
+    const targetExists = getTargetByPair(sourceId, targetId);
     if (!targetExists) {
       reply.code(404);
       return { error: 'Target not found for this source' };
@@ -467,35 +467,40 @@ export default async function calibrationRoutes(fastify) {
 
     const updated = {};
 
-    if (mesh_rotation_y !== undefined) {
-      const result = batchUpdateMeshRotationY(slug, mesh_rotation_y);
-      updated.mesh_rotation_y = { value: mesh_rotation_y, photosUpdated: result.changes };
-    }
+    // Aplica todos os UPDATEs em larga escala numa unica transacao: torna a
+    // operacao atomica (sem estado parcial em caso de falha no meio) e muito
+    // mais rapida que ate 6 commits isolados.
+    getIndexDb().transaction(() => {
+      if (mesh_rotation_y !== undefined) {
+        const result = batchUpdateMeshRotationY(slug, mesh_rotation_y);
+        updated.mesh_rotation_y = { value: mesh_rotation_y, photosUpdated: result.changes };
+      }
 
-    if (camera_height !== undefined) {
-      const result = batchUpdateCameraHeight(slug, camera_height);
-      updated.camera_height = { value: camera_height, photosUpdated: result.changes };
-    }
+      if (camera_height !== undefined) {
+        const result = batchUpdateCameraHeight(slug, camera_height);
+        updated.camera_height = { value: camera_height, photosUpdated: result.changes };
+      }
 
-    if (mesh_rotation_x !== undefined) {
-      const result = batchUpdateMeshRotationX(slug, mesh_rotation_x);
-      updated.mesh_rotation_x = { value: mesh_rotation_x, photosUpdated: result.changes };
-    }
+      if (mesh_rotation_x !== undefined) {
+        const result = batchUpdateMeshRotationX(slug, mesh_rotation_x);
+        updated.mesh_rotation_x = { value: mesh_rotation_x, photosUpdated: result.changes };
+      }
 
-    if (mesh_rotation_z !== undefined) {
-      const result = batchUpdateMeshRotationZ(slug, mesh_rotation_z);
-      updated.mesh_rotation_z = { value: mesh_rotation_z, photosUpdated: result.changes };
-    }
+      if (mesh_rotation_z !== undefined) {
+        const result = batchUpdateMeshRotationZ(slug, mesh_rotation_z);
+        updated.mesh_rotation_z = { value: mesh_rotation_z, photosUpdated: result.changes };
+      }
 
-    if (distance_scale !== undefined) {
-      const result = batchUpdateDistanceScale(slug, distance_scale);
-      updated.distance_scale = { value: distance_scale, photosUpdated: result.changes };
-    }
+      if (distance_scale !== undefined) {
+        const result = batchUpdateDistanceScale(slug, distance_scale);
+        updated.distance_scale = { value: distance_scale, photosUpdated: result.changes };
+      }
 
-    if (marker_scale !== undefined) {
-      const result = batchUpdateMarkerScale(slug, marker_scale);
-      updated.marker_scale = { value: marker_scale, photosUpdated: result.changes };
-    }
+      if (marker_scale !== undefined) {
+        const result = batchUpdateMarkerScale(slug, marker_scale);
+        updated.marker_scale = { value: marker_scale, photosUpdated: result.changes };
+      }
+    })();
 
     return { ok: true, updated };
   });
@@ -516,8 +521,9 @@ export default async function calibrationRoutes(fastify) {
       return { error: 'Source photo not found' };
     }
 
-    const targets = getTargetsBySourceId(sourceId);
-    const targetExists = targets.some(t => t.target_id === targetId);
+    // Verifica existencia do target via lookup por PK (source_id, target_id),
+    // evitando o JOIN + fetch de todas as linhas de getTargetsBySourceId.
+    const targetExists = getTargetByPair(sourceId, targetId);
     if (!targetExists) {
       reply.code(404);
       return { error: 'Target not found for this source' };
@@ -535,7 +541,14 @@ export default async function calibrationRoutes(fastify) {
   // GET /api/v1/photos/:uuid/nearby — find nearby unconnected photos
   fastify.get('/api/v1/photos/:uuid/nearby', async (request, reply) => {
     const { uuid } = request.params;
-    const radius = Number(request.query.radius) || 100;
+
+    // Sanitiza radius: numerico finito, com clamp em [1, 1000] metros.
+    // Evita bbox invertido (radius < 0 retornaria lista vazia silenciosa) e
+    // varreduras gigantes (radius enorme percorreria todas as fotos do projeto).
+    const parsedRadius = Number(request.query.radius);
+    const radius = Number.isFinite(parsedRadius)
+      ? Math.min(Math.max(parsedRadius, 1), 1000)
+      : 100;
 
     const photo = getPhotoById(uuid);
     if (!photo) {

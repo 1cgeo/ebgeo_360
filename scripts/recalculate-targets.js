@@ -101,6 +101,19 @@ function computeMedianNearestDist(photos) {
     grid.get(key).push(p);
   }
 
+  // Extensao da grade em celulas, usada para limitar a expansao do anel de busca.
+  let minCellLat = Infinity, maxCellLat = -Infinity;
+  let minCellLon = Infinity, maxCellLon = -Infinity;
+  for (const p of photos) {
+    const cl = Math.floor(p.lat / CELL_SIZE);
+    const cn = Math.floor(p.lon / CELL_SIZE);
+    if (cl < minCellLat) minCellLat = cl;
+    if (cl > maxCellLat) maxCellLat = cl;
+    if (cn < minCellLon) minCellLon = cn;
+    if (cn > maxCellLon) maxCellLon = cn;
+  }
+  const maxRing = Math.max(maxCellLat - minCellLat, maxCellLon - minCellLon);
+
   const nearestDists = [];
 
   for (const photo of photos) {
@@ -108,6 +121,7 @@ function computeMedianNearestDist(photos) {
     const cellLon = Math.floor(photo.lon / CELL_SIZE);
     let minDist = Infinity;
 
+    // Anel 1 = vizinhanca 3x3, identica ao original (mesmo resultado no caso denso).
     for (let dlat = -1; dlat <= 1; dlat++) {
       for (let dlon = -1; dlon <= 1; dlon++) {
         const cell = grid.get(`${cellLat + dlat},${cellLon + dlon}`);
@@ -120,11 +134,32 @@ function computeMedianNearestDist(photos) {
       }
     }
 
+    // Caso esparso: 3x3 vazio. O original fazia um full-scan O(n^2) para obter o
+    // vizinho mais proximo REAL. Reproduzimos o MESMO resultado expandindo aneis
+    // (anel 2, 3, ...) visitando so a borda de cada anel, com parada por cota
+    // inferior exata. A cota usa a escala de longitude (cos(lat), menor
+    // metros/celula) — conservadora, nunca para antes de cobrir um vizinho mais
+    // proximo. Evita o O(n^2) mas converge ao mesmo minimo global.
     if (minDist === Infinity) {
-      for (const other of photos) {
-        if (other.id === photo.id) continue;
-        const d = haversine(photo.lat, photo.lon, other.lat, other.lon);
-        if (d < minDist) minDist = d;
+      const metersPerCellLB = CELL_SIZE * EARTH_RADIUS * DEG_TO_RAD *
+        Math.abs(Math.cos(photo.lat * DEG_TO_RAD));
+
+      for (let ring = 2; ring <= maxRing + 1; ring++) {
+        // Distancia minima possivel a uma celula a `ring` celulas = (ring-1) lacunas.
+        if (minDist < Infinity && (ring - 1) * metersPerCellLB > minDist) break;
+        for (let dlat = -ring; dlat <= ring; dlat++) {
+          for (let dlon = -ring; dlon <= ring; dlon++) {
+            // So a borda do anel atual; as celulas internas ja foram vistas.
+            if (Math.abs(dlat) !== ring && Math.abs(dlon) !== ring) continue;
+            const cell = grid.get(`${cellLat + dlat},${cellLon + dlon}`);
+            if (!cell) continue;
+            for (const c of cell) {
+              if (c.id === photo.id) continue;
+              const d = haversine(photo.lat, photo.lon, c.lat, c.lon);
+              if (d < minDist) minDist = d;
+            }
+          }
+        }
       }
     }
 
@@ -140,17 +175,28 @@ function computeMedianNearestDist(photos) {
 // ============================================================
 
 function buildGrid(photos, radius) {
-  // Cell size must cover radius + margin so neighbor search stays within 1-cell ring
-  const cellDeg = Math.max(0.001, (radius / EARTH_RADIUS) * RAD_TO_DEG * 1.2);
+  // Tamanho da celula em graus de LATITUDE: deve cobrir raio + margem para que a
+  // busca de vizinhos fique dentro de um anel de 1 celula.
+  const cellLatDeg = Math.max(0.001, (radius / EARTH_RADIUS) * RAD_TO_DEG * 1.2);
+
+  // Um grau de LONGITUDE cobre cos(lat) menos distancia de solo. Sem corrigir,
+  // o anel de 1 celula sub-cobre o raio na direcao E/O em latitudes altas.
+  // Escala a celula de longitude por 1/cos(lat) usando a latitude media do projeto.
+  let latSum = 0;
+  for (const p of photos) latSum += p.lat;
+  const refLat = photos.length > 0 ? latSum / photos.length : 0;
+  const cosLat = Math.max(Math.cos(refLat * DEG_TO_RAD), 1e-6);
+  const cellLonDeg = cellLatDeg / cosLat;
+
   const grid = new Map();
 
   for (const p of photos) {
-    const key = `${Math.floor(p.lat / cellDeg)},${Math.floor(p.lon / cellDeg)}`;
+    const key = `${Math.floor(p.lat / cellLatDeg)},${Math.floor(p.lon / cellLonDeg)}`;
     if (!grid.has(key)) grid.set(key, []);
     grid.get(key).push(p);
   }
 
-  return { grid, cellDeg };
+  return { grid, cellLatDeg, cellLonDeg };
 }
 
 // ============================================================
@@ -158,7 +204,7 @@ function buildGrid(photos, radius) {
 // ============================================================
 
 function generateSpatialTargets(photos, originalTargets, radius, opts) {
-  const { grid, cellDeg } = buildGrid(photos, radius);
+  const { grid, cellLatDeg, cellLonDeg } = buildGrid(photos, radius);
   const sectorSize = 360 / opts.sectors;
 
   // Build lookup: photoId -> [{targetId, bearing}]
@@ -182,8 +228,8 @@ function generateSpatialTargets(photos, originalTargets, radius, opts) {
     }
 
     // Find candidates within radius
-    const cellLat = Math.floor(photo.lat / cellDeg);
-    const cellLon = Math.floor(photo.lon / cellDeg);
+    const cellLat = Math.floor(photo.lat / cellLatDeg);
+    const cellLon = Math.floor(photo.lon / cellLonDeg);
     const candidates = [];
 
     for (let dlat = -1; dlat <= 1; dlat++) {
@@ -260,16 +306,23 @@ function main() {
   try {
     const projects = db.prepare('SELECT id, slug, name, photo_count FROM projects ORDER BY name').all();
 
-    // Detect projects that should be skipped (have original targets but no spatial ones)
+    // Statements de COUNT preparados uma unica vez e reutilizados no loop.
+    const countSpatialStmt = db.prepare(
+      'SELECT COUNT(*) as c FROM targets t JOIN photos ph ON ph.id = t.source_id WHERE ph.project_id = ? AND t.is_original = 0'
+    );
+    const countOriginalStmt = db.prepare(
+      'SELECT COUNT(*) as c FROM targets t JOIN photos ph ON ph.id = t.source_id WHERE ph.project_id = ? AND t.is_original = 1'
+    );
+
+    // Detect projects that should be skipped (have original targets but no spatial ones).
+    // O spatial count e calculado uma vez por projeto e reaproveitado no loop principal.
     const skipSlugs = new Set();
+    const spatialCountByProject = new Map();
     for (const p of projects) {
-      const spatial = db.prepare(
-        'SELECT COUNT(*) as c FROM targets t JOIN photos ph ON ph.id = t.source_id WHERE ph.project_id = ? AND t.is_original = 0'
-      ).get(p.id);
-      const original = db.prepare(
-        'SELECT COUNT(*) as c FROM targets t JOIN photos ph ON ph.id = t.source_id WHERE ph.project_id = ? AND t.is_original = 1'
-      ).get(p.id);
-      if (spatial.c === 0 && original.c > 0) {
+      const spatialCount = countSpatialStmt.get(p.id).c;
+      const originalCount = countOriginalStmt.get(p.id).c;
+      spatialCountByProject.set(p.id, spatialCount);
+      if (spatialCount === 0 && originalCount > 0) {
         skipSlugs.add(p.slug);
       }
     }
@@ -314,9 +367,8 @@ function main() {
       const medianNN = computeMedianNearestDist(photos);
       const radius = Math.round(medianNN * opts.multiplier);
 
-      const oldSpatialCount = db.prepare(
-        'SELECT COUNT(*) as c FROM targets t JOIN photos ph ON ph.id = t.source_id WHERE ph.project_id = ? AND t.is_original = 0'
-      ).get(p.id).c;
+      // Reaproveita o spatial count ja computado na deteccao de skip.
+      const oldSpatialCount = spatialCountByProject.get(p.id) ?? 0;
 
       const originalTargets = getOriginalTargets.all(p.id);
       const newTargets = generateSpatialTargets(photos, originalTargets, radius, opts);

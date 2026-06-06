@@ -52,11 +52,32 @@ export function onChange(fn) {
     return () => listeners.delete(fn);
 }
 
+// Coalesce multiple notify() calls disparados na mesma "tick"/frame em uma unica
+// rodada de listeners, evitando rebuilds redundantes do painel quando uma acao
+// dispara varias mutacoes de estado em sequencia.
+let notifyScheduled = false;
+const scheduleFrame =
+    typeof requestAnimationFrame === 'function'
+        ? requestAnimationFrame
+        : (cb) => setTimeout(cb, 16);
+
+/**
+ * Executa todos os listeners com o estado atual.
+ */
+function flushListeners() {
+    notifyScheduled = false;
+    listeners.forEach(fn => fn(state));
+}
+
 /**
  * Notifies all listeners of a state change.
+ * As notificacoes sao agrupadas por frame: multiplas chamadas dentro do mesmo
+ * frame resultam em uma unica execucao dos listeners com o estado mais recente.
  */
 function notify() {
-    listeners.forEach(fn => fn(state));
+    if (notifyScheduled) return;
+    notifyScheduled = true;
+    scheduleFrame(flushListeners);
 }
 
 // ============================================================================

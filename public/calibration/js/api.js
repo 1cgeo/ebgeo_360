@@ -5,32 +5,84 @@
 
 const BASE = '/api/v1';
 
+/** Timeout padrao (ms) para todas as requisicoes do cliente de calibracao. */
+const DEFAULT_TIMEOUT_MS = 30000;
+
+/**
+ * Combina um AbortSignal externo (opcional) com um timeout, retornando um
+ * AbortSignal unico e uma funcao de limpeza do timer.
+ *
+ * Permite cancelar requisicoes obsoletas (signal do chamador) e tambem
+ * evita promessas penduradas indefinidamente se a rede travar (timeout).
+ *
+ * @param {AbortSignal} [externalSignal] - Signal opcional do chamador
+ * @param {number} [timeoutMs=DEFAULT_TIMEOUT_MS] - Timeout em milissegundos
+ * @returns {{ signal: AbortSignal, cleanup: () => void }}
+ */
+function withTimeout(externalSignal, timeoutMs = DEFAULT_TIMEOUT_MS) {
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    if (!externalSignal) {
+        return { signal: timeoutSignal, cleanup: () => {} };
+    }
+    // Aborta se qualquer um (chamador ou timeout) abortar.
+    if (typeof AbortSignal.any === 'function') {
+        return { signal: AbortSignal.any([externalSignal, timeoutSignal]), cleanup: () => {} };
+    }
+    // Fallback para browsers sem AbortSignal.any: encadeia manualmente.
+    const controller = new AbortController();
+    const onAbort = () => controller.abort(externalSignal.aborted ? externalSignal.reason : timeoutSignal.reason);
+    if (externalSignal.aborted || timeoutSignal.aborted) {
+        onAbort();
+    } else {
+        externalSignal.addEventListener('abort', onAbort, { once: true });
+        timeoutSignal.addEventListener('abort', onAbort, { once: true });
+    }
+    const cleanup = () => {
+        externalSignal.removeEventListener('abort', onAbort);
+        timeoutSignal.removeEventListener('abort', onAbort);
+    };
+    return { signal: controller.signal, cleanup };
+}
+
 /**
  * Fetches all projects from the service.
+ * @param {{ signal?: AbortSignal }} [options] - Opcoes de cancelamento
  * @returns {Promise<Array>} Array of project objects
  */
-export async function fetchProjects() {
-    const response = await fetch(`${BASE}/projects`);
-    if (!response.ok) {
-        throw new Error(`Failed to fetch projects (HTTP ${response.status})`);
+export async function fetchProjects({ signal } = {}) {
+    const { signal: reqSignal, cleanup } = withTimeout(signal);
+    try {
+        const response = await fetch(`${BASE}/projects`, { signal: reqSignal });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch projects (HTTP ${response.status})`);
+        }
+        const data = await response.json();
+        return data.projects;
+    } finally {
+        cleanup();
     }
-    const data = await response.json();
-    return data.projects;
 }
 
 /**
  * Fetches metadata for a photo by UUID.
  * @param {string} photoId - Photo UUID
+ * @param {{ signal?: AbortSignal }} [options] - Opcoes de cancelamento
  * @returns {Promise<Object>} Metadata with camera and targets
  */
-export async function fetchPhotoMetadata(photoId) {
-    const response = await fetch(`${BASE}/photos/${photoId}?include_hidden=true`, {
-        cache: 'no-cache',
-    });
-    if (!response.ok) {
-        throw new Error(`Photo not found: ${photoId} (HTTP ${response.status})`);
+export async function fetchPhotoMetadata(photoId, { signal } = {}) {
+    const { signal: reqSignal, cleanup } = withTimeout(signal);
+    try {
+        const response = await fetch(`${BASE}/photos/${photoId}?include_hidden=true`, {
+            cache: 'no-cache',
+            signal: reqSignal,
+        });
+        if (!response.ok) {
+            throw new Error(`Photo not found: ${photoId} (HTTP ${response.status})`);
+        }
+        return await response.json();
+    } finally {
+        cleanup();
     }
-    return response.json();
 }
 
 /**
@@ -151,16 +203,23 @@ export async function setPhotoReviewed(photoId, reviewed) {
 /**
  * Fetches the photo list for a project (calibration workflow).
  * @param {string} slug - Project slug
+ * @param {{ signal?: AbortSignal }} [options] - Opcoes de cancelamento
  * @returns {Promise<{photos: Array, reviewStats: {total: number, reviewed: number}}>}
  */
-export async function fetchProjectPhotos(slug) {
-    const response = await fetch(`${BASE}/projects/${slug}/photos`, {
-        cache: 'no-cache',
-    });
-    if (!response.ok) {
-        throw new Error(`Failed to fetch photos for project ${slug} (HTTP ${response.status})`);
+export async function fetchProjectPhotos(slug, { signal } = {}) {
+    const { signal: reqSignal, cleanup } = withTimeout(signal);
+    try {
+        const response = await fetch(`${BASE}/projects/${slug}/photos`, {
+            cache: 'no-cache',
+            signal: reqSignal,
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch photos for project ${slug} (HTTP ${response.status})`);
+        }
+        return await response.json();
+    } finally {
+        cleanup();
     }
-    return response.json();
 }
 
 /**
@@ -302,17 +361,24 @@ export async function saveTargetVisibility(sourceId, targetId, hidden) {
  * Fetches nearby unconnected photos for a given photo.
  * @param {string} photoId - Photo UUID
  * @param {number} [radius=100] - Search radius in meters
+ * @param {{ signal?: AbortSignal }} [options] - Opcoes de cancelamento
  * @returns {Promise<{photos: Array}>} Nearby photos with distance and bearing
  */
-export async function fetchNearbyPhotos(photoId, radius = 100) {
-    const response = await fetch(`${BASE}/photos/${photoId}/nearby?radius=${radius}`, {
-        cache: 'no-cache',
-    });
-    if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(`Failed to fetch nearby photos for ${photoId} (HTTP ${response.status}): ${text}`);
+export async function fetchNearbyPhotos(photoId, radius = 100, { signal } = {}) {
+    const { signal: reqSignal, cleanup } = withTimeout(signal);
+    try {
+        const response = await fetch(`${BASE}/photos/${photoId}/nearby?radius=${radius}`, {
+            cache: 'no-cache',
+            signal: reqSignal,
+        });
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            throw new Error(`Failed to fetch nearby photos for ${photoId} (HTTP ${response.status}): ${text}`);
+        }
+        return await response.json();
+    } finally {
+        cleanup();
     }
-    return response.json();
 }
 
 /**

@@ -6,6 +6,19 @@
 import { getAllProjects, getProjectBySlug } from '../db/queries.js';
 import { setMetadataCacheHeaders } from '../middleware/cache.js';
 
+/**
+ * Segmento do path dos thumbnails estaticos, relativo a base da API.
+ *
+ * Fonte de verdade unica para o path dos thumbnails dentro deste modulo,
+ * eliminando a string magica duplicada. O valor e retornado em
+ * `previewThumbnail` relativo a base da API: o consumidor concatena com
+ * `serviceUrl` (que ja termina em '/api/v1'), produzindo a URL completa servida
+ * pela rota estatica registrada em server.js ('/api/v1/thumbnails/'). Por isso
+ * o segmento NAO inclui o prefixo '/api/v1' (evita duplicacao na concatenacao).
+ * @constant {string}
+ */
+const THUMBNAILS_SEGMENT = '/thumbnails';
+
 export default async function projectRoutes(fastify) {
   // GET /api/v1/projects — list all projects
   fastify.get('/api/v1/projects', async (_request, reply) => {
@@ -42,7 +55,8 @@ function formatProject(row) {
     location: row.location,
     center: { lat: row.center_lat, lon: row.center_lon },
     entryPhotoId: row.entry_photo_id,
-    previewThumbnail: `/thumbnails/${row.slug}.webp`,
+    // Derivado de `THUMBNAILS_SEGMENT` (fonte unica do path) — ver constante.
+    previewThumbnail: `${THUMBNAILS_SEGMENT}/${row.slug}.webp`,
     photoCount: row.photo_count,
   };
 }

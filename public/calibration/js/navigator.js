@@ -10,7 +10,7 @@ import { NAV_CONSTANTS } from './constants.js';
 import { StreetViewProjector } from './projector.js';
 import { StreetViewRenderer } from './renderer.js';
 import { StreetViewHitTester } from './hit-tester.js';
-import { getEffectiveOverride, state, isTargetHidden } from './state.js';
+import { getEffectiveOverride, state, isTargetHidden, onChange } from './state.js';
 
 // ============================================================================
 // MODULE STATE
@@ -20,6 +20,11 @@ let projector = null;
 let navRenderer = null;
 let hitTester = null;
 let overlayCanvas = null;
+let navContainer = null;
+let unsubscribeStateChange = null;
+
+// Bounding rect cacheado do overlay (invalidado em resize/scroll)
+let cachedRect = null;
 
 // Camera and targets data
 let cameraConfig = null;
@@ -42,6 +47,35 @@ let hoveredId = null;
 let currentYaw = 0;
 let currentPitch = 0;
 let currentFov = 75;
+
+// ── Dirty-checking (evita reprojetar/repintar o overlay com a cena estatica) ──
+// O overlay so e recomputado quando a camera, o mouse, os dados ou o estado de
+// selecao mudam, ou enquanto uma animacao de hover esta em andamento.
+let navDirty = true;            // forca o primeiro frame e mudancas de dados
+let lastYaw = NaN;
+let lastPitch = NaN;
+let lastFov = NaN;
+let lastMouseX = NaN;
+let lastMouseY = NaN;
+
+// ── Cache da grade de chao (funcao pura de yaw/pitch/fov/cameraConfig) ──
+let groundGridCache = null;
+let gridCacheYaw = NaN;
+let gridCachePitch = NaN;
+let gridCacheFov = NaN;
+let gridCacheHeight = NaN;
+let gridCacheDistanceScale = NaN;
+
+/**
+ * Marca o overlay de navegacao como sujo para forcar a reprojecao/repintura
+ * no proximo frame. Chamado quando dados ou estado de selecao mudam.
+ */
+function markNavDirty() {
+    navDirty = true;
+    // Invalida o cache da grade de chao (cameraConfig pode ter mudado)
+    groundGridCache = null;
+    gridCacheYaw = NaN;
+}
 
 // Callbacks
 let onNavigateCallback = null;
@@ -79,18 +113,41 @@ export function initNavigator(container, options = {}) {
     navRenderer = new StreetViewRenderer(overlayCanvas);
     hitTester = new StreetViewHitTester();
 
+    navContainer = container;
+
     // Track mouse on the container
     container.addEventListener('mousemove', onMouseMove);
 
-    // Handle resize
-    window.addEventListener('resize', () => {
-        const w = container.clientWidth;
-        const h = container.clientHeight;
-        overlayCanvas.width = w;
-        overlayCanvas.height = h;
-        projector.resize(w, h);
-        navRenderer.resize(w, h);
-    });
+    // Invalida o rect cacheado em resize/scroll (evita reflow por mousemove)
+    window.addEventListener('resize', onWindowResize);
+    window.addEventListener('scroll', invalidateRectCache, true);
+
+    // Qualquer mudanca de estado (selecao, override, hidden, set-from-click)
+    // marca o overlay como sujo para que ele seja reprojetado no proximo frame.
+    unsubscribeStateChange = onChange(markNavDirty);
+}
+
+/**
+ * Handler nomeado de resize (removivel em disposeNavigator).
+ * Redimensiona overlay/projector/renderer e invalida caches.
+ */
+function onWindowResize() {
+    if (!navContainer || !overlayCanvas || !projector || !navRenderer) return;
+    const w = navContainer.clientWidth;
+    const h = navContainer.clientHeight;
+    overlayCanvas.width = w;
+    overlayCanvas.height = h;
+    projector.resize(w, h);
+    navRenderer.resize(w, h);
+    invalidateRectCache();
+    markNavDirty();
+}
+
+/**
+ * Invalida o bounding rect cacheado do overlay (usado por onMouseMove).
+ */
+function invalidateRectCache() {
+    cachedRect = null;
 }
 
 // ============================================================================
@@ -106,6 +163,7 @@ export function setCameraConfig(config) {
     if (projector) {
         projector.setCameraConfig(config);
     }
+    markNavDirty();
 }
 
 /**
@@ -115,6 +173,7 @@ export function setCameraConfig(config) {
 export function setTargets(newTargets) {
     targets = newTargets || [];
     updateNearestTarget();
+    markNavDirty();
 }
 
 /**
@@ -123,6 +182,7 @@ export function setTargets(newTargets) {
  */
 export function setNearbyPhotos(photos) {
     nearbyPhotos = photos || [];
+    markNavDirty();
 }
 
 /**
@@ -133,6 +193,7 @@ export function setNearbyPhotos(photos) {
 export function setNearbyPreviewMode(enabled, onClick = null) {
     nearbyPreviewEnabled = enabled;
     onNearbyClickCallback = onClick;
+    markNavDirty();
 }
 
 /**
@@ -199,6 +260,27 @@ export function update(cameraState) {
     currentPitch = pitch;
     currentFov = fov;
 
+    // ── Dirty-check: pula a reprojecao/repintura quando nada mudou ──
+    // Renderiza quando: dados/estado sujos (navDirty), camera mudou, mouse
+    // mudou, ou ha animacao de hover em andamento. Caso contrario, mantem o
+    // frame anterior intacto (mesma saida visual, sem trabalho redundante).
+    const cameraChanged = yaw !== lastYaw || pitch !== lastPitch || fov !== lastFov;
+    const mouseChanged = mouseX !== lastMouseX || mouseY !== lastMouseY;
+    const animating = navRenderer.isAnimating();
+    if (!navDirty && !cameraChanged && !mouseChanged && !animating) {
+        return;
+    }
+    navDirty = false;
+    lastYaw = yaw;
+    lastPitch = pitch;
+    lastFov = fov;
+    lastMouseX = mouseX;
+    lastMouseY = mouseY;
+
+    // Pre-computa invariantes trig do frame (yaw/pitch/fov) uma unica vez.
+    // Todas as chamadas a metersToScreen abaixo reaproveitam esse cache.
+    projector.beginFrame(yaw, pitch, fov);
+
     // ── FOV visibility (EBGeo pattern) ──
     const shouldShowMarkers = fov > NAV_CONSTANTS.HIDE_ARROWS_FOV;
     const scaleFactor = fov <= NAV_CONSTANTS.SCALE_ARROWS_FOV
@@ -255,9 +337,23 @@ export function update(cameraState) {
     // Set cursor nearest after updateGroundCursor computes it
     navRenderer.setCursorNearestMarker(cursorNearestTargetId);
 
-    // ── Ground grid ──
+    // ── Ground grid (cacheado: funcao pura de yaw/pitch/fov/altura/escala) ──
     if (groundGridVisible && cameraConfig) {
-        navRenderer.setGroundGrid(projectGroundGrid(yaw, pitch, fov));
+        const gridHeight = cameraConfig.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
+        const gridDistanceScale = cameraConfig.distance_scale ?? 1.0;
+        if (
+            !groundGridCache
+            || yaw !== gridCacheYaw || pitch !== gridCachePitch || fov !== gridCacheFov
+            || gridHeight !== gridCacheHeight || gridDistanceScale !== gridCacheDistanceScale
+        ) {
+            groundGridCache = projectGroundGrid(yaw, pitch, fov);
+            gridCacheYaw = yaw;
+            gridCachePitch = pitch;
+            gridCacheFov = fov;
+            gridCacheHeight = gridHeight;
+            gridCacheDistanceScale = gridDistanceScale;
+        }
+        navRenderer.setGroundGrid(groundGridCache);
     } else {
         navRenderer.setGroundGrid(null);
     }
@@ -752,10 +848,14 @@ export function handleClick(event) {
 // ============================================================================
 
 function onMouseMove(e) {
-    const rect = overlayCanvas?.getBoundingClientRect();
-    if (!rect) return;
-    mouseX = e.clientX - rect.left;
-    mouseY = e.clientY - rect.top;
+    if (!overlayCanvas) return;
+    // getBoundingClientRect forca reflow; cacheamos e so recalculamos apos
+    // resize/scroll (o overlay e position:absolute, top/left:0).
+    if (!cachedRect) {
+        cachedRect = overlayCanvas.getBoundingClientRect();
+    }
+    mouseX = e.clientX - cachedRect.left;
+    mouseY = e.clientY - cachedRect.top;
 }
 
 function refreshCursorStyle() {
@@ -817,6 +917,7 @@ export function setGroundGridVisible(visible) {
     if (!visible && navRenderer) {
         navRenderer.setGroundGrid(null);
     }
+    markNavDirty();
 }
 
 /**
@@ -838,18 +939,37 @@ export function refreshCursor() {
  * Disposes of the navigator.
  */
 export function disposeNavigator() {
-    if (overlayCanvas?.parentElement) {
+    if (navContainer) {
+        navContainer.removeEventListener('mousemove', onMouseMove);
+    } else if (overlayCanvas?.parentElement) {
         overlayCanvas.parentElement.removeEventListener('mousemove', onMouseMove);
+    }
+    window.removeEventListener('resize', onWindowResize);
+    window.removeEventListener('scroll', invalidateRectCache, true);
+    if (unsubscribeStateChange) {
+        unsubscribeStateChange();
+        unsubscribeStateChange = null;
+    }
+    if (overlayCanvas?.parentElement) {
+        overlayCanvas.parentElement.removeChild(overlayCanvas);
     }
     projector = null;
     navRenderer?.dispose();
     navRenderer = null;
     hitTester = null;
     overlayCanvas = null;
+    navContainer = null;
+    cachedRect = null;
     targets = [];
     nearbyPhotos = [];
     nearbyPreviewEnabled = false;
     onNearbyClickCallback = null;
     nearestTargetId = null;
     cursorNearestTargetId = null;
+    // Reseta dirty-flags e caches
+    navDirty = true;
+    lastYaw = NaN; lastPitch = NaN; lastFov = NaN;
+    lastMouseX = NaN; lastMouseY = NaN;
+    groundGridCache = null;
+    gridCacheYaw = NaN;
 }

@@ -20,8 +20,13 @@ export class StreetViewHitTester {
      * @param {Array} markers - Array of marker objects with screen positions
      */
     setMarkers(markers) {
-        // Sort by distance (near to far) for proper hit priority
-        this.markers = [...markers].sort((a, b) => a.distance - b.distance);
+        // Sort by distance (near to far) for proper hit priority.
+        // Reaproveita o buffer interno (copia + sort in-place) para evitar
+        // alocar um array novo a cada frame.
+        const buf = this.markers;
+        buf.length = 0;
+        for (const m of markers) buf.push(m);
+        buf.sort((a, b) => a.distance - b.distance);
     }
 
     /**

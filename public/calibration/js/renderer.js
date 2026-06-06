@@ -41,6 +41,11 @@ export class StreetViewRenderer {
 
         // Animation state
         this.hoverAnimation = new Map();
+
+        // Buffers reutilizaveis para ordenacao por frame (evita alocar arrays
+        // novos a cada render).
+        this._sortedMarkers = [];
+        this._sortedNearby = [];
     }
 
     /**
@@ -49,6 +54,38 @@ export class StreetViewRenderer {
      */
     setMarkers(markers) {
         this.markers = markers;
+        this.pruneHoverAnimation();
+    }
+
+    /**
+     * Remove entradas de animacao de hover de markers que nao existem mais
+     * (ex.: ao trocar de foto). Evita crescimento monotonico do Map ao longo
+     * da sessao quando um marker estava em meio a animacao na troca.
+     */
+    pruneHoverAnimation() {
+        if (this.hoverAnimation.size === 0) return;
+        const present = new Set();
+        for (const m of this.markers) present.add(m.id);
+        for (const id of this.hoverAnimation.keys()) {
+            if (!present.has(id)) {
+                this.hoverAnimation.delete(id);
+            }
+        }
+    }
+
+    /**
+     * Indica se ha alguma animacao de hover em andamento (escala fora do repouso
+     * ou alvo diferente de 1). Usado pelo dirty-check do navigator para continuar
+     * renderizando enquanto a animacao nao terminou.
+     * @returns {boolean}
+     */
+    isAnimating() {
+        for (const anim of this.hoverAnimation.values()) {
+            if (anim.target !== 1 || Math.abs(anim.scale - 1) >= 0.01) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -165,14 +202,22 @@ export class StreetViewRenderer {
 
         // Render nearby photo markers (behind regular markers)
         if (this.nearbyMarkers.length > 0) {
-            const sortedNearby = [...this.nearbyMarkers].sort((a, b) => b.distance - a.distance);
+            // Reaproveita o buffer de ordenacao (copia + sort in-place).
+            const sortedNearby = this._sortedNearby;
+            sortedNearby.length = 0;
+            for (const m of this.nearbyMarkers) sortedNearby.push(m);
+            sortedNearby.sort((a, b) => b.distance - a.distance);
             for (const marker of sortedNearby) {
                 this.renderNearbyMarker(marker);
             }
         }
 
-        // Sort markers by distance (far to near for proper overlap)
-        const sortedMarkers = [...this.markers].sort((a, b) => b.distance - a.distance);
+        // Sort markers by distance (far to near for proper overlap).
+        // Reaproveita o buffer de ordenacao.
+        const sortedMarkers = this._sortedMarkers;
+        sortedMarkers.length = 0;
+        for (const m of this.markers) sortedMarkers.push(m);
+        sortedMarkers.sort((a, b) => b.distance - a.distance);
 
         // Render markers
         for (const marker of sortedMarkers) {
@@ -544,11 +589,15 @@ export class StreetViewRenderer {
         const { lines } = this.groundGrid;
         const ctx = this.ctx;
 
+        // Um unico save/restore para todo o grid (as linhas nao aplicam
+        // transformacoes — apenas reatribuem strokeStyle/lineWidth — entao
+        // save/restore por linha era desnecessario).
+        ctx.save();
+
         // Draw grid lines
         for (const line of lines) {
             if (line.points.length < 2) continue;
 
-            ctx.save();
             ctx.beginPath();
 
             let started = false;
@@ -570,8 +619,9 @@ export class StreetViewRenderer {
             }
 
             ctx.stroke();
-            ctx.restore();
         }
+
+        ctx.restore();
     }
 
     // ====================================================================

@@ -31,6 +31,16 @@ const COLLAPSED_STORAGE_KEY = 'cal-panel-collapsed';
 let nearbyPreviewEnabled = false;
 let previewingNearbyId = null;
 
+// Ultima foto cujo item foi rolado para a vista — evita scrollIntoView (e o
+// layout thrashing associado) em re-renders que nao trocam a foto atual.
+let lastScrolledPhotoId = null;
+
+// Assinatura da estrutura do painel do ultimo render completo. Quando o proximo
+// render produz a mesma estrutura (mesmas listas, mesmas secoes, mesmo target
+// selecionado), aplicamos apenas atualizacoes pontuais (classes/valores) em vez
+// de reconstruir todo o DOM via innerHTML e re-anexar todos os listeners.
+let lastStructureSignature = null;
+
 // Callbacks set by app.js
 let onSaveCallback = null;
 let onDiscardCallback = null;
@@ -160,11 +170,176 @@ export function initPanel(container, options = {}) {
 // RENDER
 // ============================================================================
 
+/**
+ * Calcula uma assinatura da ESTRUTURA do painel (presenca, ordem e rotulos dos
+ * elementos + secoes colapsadas). Dois renders com a mesma assinatura possuem
+ * DOM identico salvo por estados puramente presentacionais (classes de selecao,
+ * valores de slider, badges), que podem ser atualizados em lugar sem reconstruir
+ * o DOM nem re-anexar listeners. Qualquer mudanca estrutural altera a assinatura
+ * e forca o rebuild completo (caminho seguro por padrao).
+ * @param {Object} s - Estado atual
+ * @param {Array} targets - Targets da foto atual
+ * @param {Object|undefined} selectedTarget - Target selecionado (se houver)
+ * @returns {string}
+ */
+function buildStructureSignature(s, targets, selectedTarget) {
+    const hasProject = s.projectPhotos.length > 0;
+    // Identidade/ordem/rotulos dos targets (texto que aparece no item, exceto
+    // classes de selecao/oculto e badges de override, tratados como pontuais).
+    const targetsSig = targets
+        .map(t => `${t.id}|${t.display_name || ''}|${t.next ? 1 : 0}|${t.distance != null ? t.distance.toFixed(1) : ''}|${t.is_original === false ? 1 : 0}`)
+        .join(',');
+    // Identidade/ordem dos itens da lista de fotos (rotulo + sequencia).
+    const photosSig = s.projectPhotos
+        .map(p => `${p.id}|${p.displayName}|${p.sequenceNumber}`)
+        .join(',');
+    // Identidade/ordem das fotos proximas.
+    const nearbySig = (s.nearbyPhotos || [])
+        .map(p => `${p.id}|${p.displayName || ''}|${p.distance != null ? p.distance.toFixed(1) : ''}`)
+        .join(',');
+    // Secoes colapsadas afetam quais corpos existem no DOM.
+    const collapsedSig = ['sliders', 'batch', 'targets', 'nearby']
+        .map(k => `${k}:${isSectionCollapsed(k) ? 1 : 0}`)
+        .join(',');
+    // Valores exibidos no editor de override (quando aberto). O editor de override
+    // nao e atualizado pelo caminho rapido, entao qualquer mudanca nesses valores
+    // deve forcar o rebuild completo para mante-lo sincronizado.
+    let overrideSig = '';
+    if (selectedTarget) {
+        const eff =
+            s.editedTargetOverrides.get(selectedTarget.id) ||
+            s.originalTargetOverrides.get(selectedTarget.id) ||
+            {};
+        // distance_scale entra na assinatura porque, sem override, a distancia
+        // default exibida no editor deriva dele.
+        overrideSig = `${eff.bearing ?? ''}|${eff.distance ?? ''}|${eff.height ?? ''}|${s.editedDistanceScale ?? ''}`;
+    }
+
+    return [
+        hasProject ? 1 : 0,
+        s.currentPhotoId || '',
+        // Badge "REVISADA" + rotulo/classe do botao de revisao dependem disto.
+        s.calibrationReviewed ? 1 : 0,
+        // Presenca/identidade do editor de override (estrutura distinta por target
+        // e por modo set-from-click / overrides existentes / oculto / manual).
+        selectedTarget ? selectedTarget.id : '',
+        selectedTarget ? (s.setFromClickMode ? 1 : 0) : 0,
+        selectedTarget ? (s.editedTargetOverrides.has(selectedTarget.id) ? 1 : 0) : 0,
+        selectedTarget ? (s.originalTargetOverrides.has(selectedTarget.id) ? 1 : 0) : 0,
+        selectedTarget ? (isTargetHidden(selectedTarget.id) ? 1 : 0) : 0,
+        selectedTarget ? (selectedTarget.is_original === false ? 1 : 0) : 0,
+        nearbyPreviewEnabled ? 1 : 0,
+        previewingNearbyId || '',
+        overrideSig,
+        collapsedSig,
+        targetsSig,
+        photosSig,
+        nearbySig,
+    ].join('||');
+}
+
+/**
+ * Aplica atualizacoes pontuais (sem reconstruir o DOM) quando a estrutura do
+ * painel nao mudou desde o ultimo render completo. Atualiza: selecao/oculto de
+ * targets e respectivos badges, foto atual/revisada na lista, valores dos
+ * sliders + textos de delta, contadores de progresso, badge de revisada e
+ * estado disabled de Salvar/Descartar.
+ * @param {Object} s - Estado atual
+ * @param {Array} targets - Targets da foto atual
+ * @param {boolean} dirty - Se ha alteracoes nao salvas
+ */
+function applyTargetedUpdates(s, targets, dirty) {
+    // --- Sliders + deltas (mudam no release/change) ---
+    const setSlider = (sliderId, inputId, value, decimals) => {
+        if (value == null) return;
+        const slider = document.getElementById(sliderId);
+        if (slider && document.activeElement !== slider) slider.value = value;
+        const input = document.getElementById(inputId);
+        if (input && document.activeElement !== input) input.value = value.toFixed(decimals);
+    };
+    setSlider('mesh-rot-slider', 'mesh-rot-input', s.editedMeshRotationY, 1);
+    setSlider('cam-height-slider', 'cam-height-input', s.editedCameraHeight, 1);
+    setSlider('mesh-rotx-slider', 'mesh-rotx-input', s.editedMeshRotationX, 1);
+    setSlider('mesh-rotz-slider', 'mesh-rotz-input', s.editedMeshRotationZ, 1);
+    setSlider('dist-scale-slider', 'dist-scale-input', s.editedDistanceScale, 2);
+    setSlider('marker-scale-slider', 'marker-scale-input', s.editedMarkerScale, 2);
+
+    const setDelta = (idx, edited, original, unit) => {
+        const deltas = panelEl.querySelectorAll('.cal-panel__delta');
+        if (deltas[idx]) deltas[idx].innerHTML = getDeltaText(edited, original, unit);
+    };
+    setDelta(0, s.editedMeshRotationY, s.originalMeshRotationY);
+    setDelta(1, s.editedCameraHeight, s.originalCameraHeight, 'm');
+    setDelta(2, s.editedMeshRotationX, s.originalMeshRotationX);
+    setDelta(3, s.editedMeshRotationZ, s.originalMeshRotationZ);
+    setDelta(4, s.editedDistanceScale, s.originalDistanceScale, 'x');
+    setDelta(5, s.editedMarkerScale, s.originalMarkerScale, 'x');
+
+    // --- Botoes de batch (rotulos refletem valores atuais) ---
+    const setText = (id, text) => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = text;
+    };
+    setText('btn-batch-mesh', `rotation_y &rarr; ${(s.editedMeshRotationY ?? 180).toFixed(1)}&deg;`);
+    setText('btn-batch-height', `height &rarr; ${(s.editedCameraHeight ?? 2.5).toFixed(1)}m`);
+    setText('btn-batch-rotx', `rotation_x &rarr; ${(s.editedMeshRotationX ?? 0).toFixed(1)}&deg;`);
+    setText('btn-batch-rotz', `rotation_z &rarr; ${(s.editedMeshRotationZ ?? 0).toFixed(1)}&deg;`);
+    setText('btn-batch-scale', `distance_scale &rarr; ${(s.editedDistanceScale ?? 1.0).toFixed(2)}x`);
+    setText('btn-batch-marker-scale', `marker_scale &rarr; ${(s.editedMarkerScale ?? 1.0).toFixed(2)}x`);
+
+    // --- Salvar/Descartar (estado disabled) ---
+    const saveBtn = document.getElementById('btn-save');
+    if (saveBtn) {
+        saveBtn.disabled = !dirty || isSaving;
+        saveBtn.textContent = isSaving ? 'Salvando...' : 'Salvar';
+    }
+    const discardBtn = document.getElementById('btn-discard');
+    if (discardBtn) discardBtn.disabled = !dirty || isSaving;
+
+    // --- Contadores de progresso / revisao ---
+    const reviewed = s.reviewStats?.reviewed ?? 0;
+    const total = s.reviewStats?.total ?? 0;
+    const pct = total > 0 ? Math.round((reviewed / total) * 100) : 0;
+    const counter = panelEl.querySelector('.cal-panel__review-counter');
+    if (counter) counter.textContent = `${reviewed}/${total} revisadas (${pct}%)`;
+    const fill = panelEl.querySelector('.cal-panel__progress-fill');
+    if (fill) fill.style.width = `${pct}%`;
+
+    // --- Lista de targets: selecao, oculto e badges de override ---
+    panelEl.querySelectorAll('[data-target-id]').forEach(item => {
+        const target = targets.find(t => t.id === item.dataset.targetId);
+        if (!target) return;
+        const isSelected = target.id === s.selectedTargetId;
+        const hidden = isTargetHidden(target.id);
+        item.classList.toggle('cal-panel__target-item--selected', isSelected);
+        item.classList.toggle('cal-panel__target-item--hidden', hidden);
+
+        const info = item.querySelector('.cal-panel__target-info');
+        if (info) {
+            const displayName = target.display_name || target.id.slice(0, 8);
+            const nextBadge = target.next ? '<span class="cal-panel__next-badge">next</span>' : '';
+            info.innerHTML = `
+                <span class="cal-panel__target-name">${displayName}</span>
+                ${nextBadge}
+                ${renderOverrideIndicator(target, s)}
+                ${hidden ? '<span class="cal-panel__hidden-badge">oculto</span>' : ''}
+            `;
+        }
+    });
+
+    // --- Lista de fotos: foto atual / revisada ---
+    panelEl.querySelectorAll('[data-photo-nav-id]').forEach(item => {
+        const photo = s.projectPhotos.find(p => p.id === item.dataset.photoNavId);
+        if (!photo) return;
+        item.classList.toggle('cal-panel__photo-item--current', photo.id === s.currentPhotoId);
+        item.classList.toggle('cal-panel__photo-item--reviewed', !!photo.reviewed);
+        const status = item.querySelector('.cal-panel__photo-status');
+        if (status) status.innerHTML = photo.reviewed ? '&#10003;' : '&#9675;';
+    });
+}
+
 function renderPanel(s) {
     if (!panelEl) return;
-
-    // Preserve scroll position across re-renders
-    const scrollTop = panelEl.scrollTop;
 
     const dirty = isDirty();
     const meta = s.currentMetadata;
@@ -176,12 +351,25 @@ function renderPanel(s) {
                 <p class="cal-panel__hint">Use ?photo=UUID na URL ou selecione um projeto</p>
             </div>
         `;
+        lastStructureSignature = null;
         return;
     }
 
     const camera = meta.camera || {};
     const targets = meta.targets || [];
     const selectedTarget = targets.find(t => t.id === s.selectedTargetId);
+
+    // Caminho rapido: se a estrutura nao mudou desde o ultimo render completo,
+    // atualiza apenas o que e presentacional, preservando o DOM e os listeners.
+    const signature = buildStructureSignature(s, targets, selectedTarget);
+    if (signature === lastStructureSignature) {
+        applyTargetedUpdates(s, targets, dirty);
+        return;
+    }
+    lastStructureSignature = signature;
+
+    // Preserve scroll position across re-renders
+    const scrollTop = panelEl.scrollTop;
 
     const hasProject = s.projectPhotos.length > 0;
     const photoIdx = getCurrentPhotoIndex();
@@ -437,23 +625,33 @@ function renderTargetsSection(targets, selectedTarget, s) {
     return renderCollapsibleSection('targets', 'Targets', content, { count: targets.length });
 }
 
-function renderTargetItem(target, s) {
-    const isSelected = target.id === s.selectedTargetId;
-    const hasOverride = s.editedTargetOverrides.has(target.id);
-    const isOriginalOverride = s.originalTargetOverrides.has(target.id);
-    const hidden = isTargetHidden(target.id);
-
-    let overrideIndicator = '';
-    if (hasOverride) {
+/**
+ * Renderiza o badge de override de um target (override editado/limpo/original).
+ * Extraido para ser reutilizado tanto no render completo quanto nas atualizacoes
+ * pontuais da lista de targets.
+ * @param {Object} target - Target
+ * @param {Object} s - Estado atual
+ * @returns {string} HTML do badge (vazio se nao houver override)
+ */
+function renderOverrideIndicator(target, s) {
+    if (s.editedTargetOverrides.has(target.id)) {
         const edited = s.editedTargetOverrides.get(target.id);
         if (edited.bearing === null && edited.distance === null) {
-            overrideIndicator = '<span class="cal-panel__override-badge cal-panel__override-badge--cleared">limpo</span>';
-        } else {
-            overrideIndicator = '<span class="cal-panel__override-badge cal-panel__override-badge--set">override</span>';
+            return '<span class="cal-panel__override-badge cal-panel__override-badge--cleared">limpo</span>';
         }
-    } else if (isOriginalOverride) {
-        overrideIndicator = '<span class="cal-panel__override-badge cal-panel__override-badge--original">override</span>';
+        return '<span class="cal-panel__override-badge cal-panel__override-badge--set">override</span>';
     }
+    if (s.originalTargetOverrides.has(target.id)) {
+        return '<span class="cal-panel__override-badge cal-panel__override-badge--original">override</span>';
+    }
+    return '';
+}
+
+function renderTargetItem(target, s) {
+    const isSelected = target.id === s.selectedTargetId;
+    const hidden = isTargetHidden(target.id);
+
+    const overrideIndicator = renderOverrideIndicator(target, s);
 
     const hiddenBadge = hidden ? '<span class="cal-panel__hidden-badge">oculto</span>' : '';
 
@@ -1120,10 +1318,14 @@ function attachEvents() {
         }
     });
 
-    // Scroll current photo into view in the photo list
-    const currentPhotoItem = document.querySelector('.cal-panel__photo-item--current');
-    if (currentPhotoItem) {
-        currentPhotoItem.scrollIntoView({ block: 'nearest' });
+    // Scroll current photo into view in the photo list — somente quando a foto
+    // atual realmente muda, evitando leitura/escrita de layout a cada re-render.
+    if (state.currentPhotoId !== lastScrolledPhotoId) {
+        const currentPhotoItem = document.querySelector('.cal-panel__photo-item--current');
+        if (currentPhotoItem) {
+            currentPhotoItem.scrollIntoView({ block: 'nearest' });
+        }
+        lastScrolledPhotoId = state.currentPhotoId;
     }
 }
 

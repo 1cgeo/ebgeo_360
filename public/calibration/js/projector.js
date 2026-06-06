@@ -18,6 +18,36 @@ export class StreetViewProjector {
         this.canvasWidth = canvasWidth;
         this.canvasHeight = canvasHeight;
         this.cameraConfig = null;
+
+        // Invariantes pre-computadas por frame (validas apenas apos beginFrame()).
+        // Evitam recalcular tan(fov/2)/aspect/sin/cos por marcador a cada chamada.
+        this._frame = null;
+        // Resultado reutilizavel de metersToScreen (evita alocacao por chamada).
+        this._screenResult = { screenX: 0, screenY: 0, distance: 0, visible: false };
+    }
+
+    /**
+     * Pre-computa as invariantes trigonometricas do frame atual (yaw/pitch/fov).
+     * Deve ser chamado uma vez por frame antes das chamadas a metersToScreen().
+     * As chamadas continuam recebendo yaw/pitch/fov e usam o cache apenas quando
+     * os valores coincidem, preservando 100% do comportamento numerico.
+     * @param {number} yaw - Camera yaw rotation in radians
+     * @param {number} pitch - Camera pitch rotation in radians
+     * @param {number} fov - Camera field of view in degrees
+     */
+    beginFrame(yaw, pitch, fov) {
+        const fovRad = (fov * Math.PI) / 180;
+        this._frame = {
+            yaw,
+            pitch,
+            fov,
+            cosYaw: Math.cos(yaw),
+            sinYaw: Math.sin(yaw),
+            cosPitch: Math.cos(-pitch),
+            sinPitch: Math.sin(-pitch),
+            aspectRatio: this.canvasWidth / this.canvasHeight,
+            tanHalfFov: Math.tan(fovRad / 2),
+        };
     }
 
     /**
@@ -68,30 +98,37 @@ export class StreetViewProjector {
      * @returns {{screenX: number, screenY: number, distance: number, visible: boolean}}
      */
     metersToScreen(x, y, z, yaw, pitch, fov) {
+        // Reutiliza invariantes pre-computadas em beginFrame() quando o frame
+        // coincide (yaw/pitch/fov identicos); caso contrario calcula localmente.
+        // O resultado numerico e identico em ambos os caminhos.
+        const f = this._frame;
+        const useFrame = f !== null && f.yaw === yaw && f.pitch === pitch && f.fov === fov;
+
+        const cosYaw = useFrame ? f.cosYaw : Math.cos(yaw);
+        const sinYaw = useFrame ? f.sinYaw : Math.sin(yaw);
+        const cosPitch = useFrame ? f.cosPitch : Math.cos(-pitch);
+        const sinPitch = useFrame ? f.sinPitch : Math.sin(-pitch);
+        const aspectRatio = useFrame ? f.aspectRatio : this.canvasWidth / this.canvasHeight;
+        const tanHalfFov = useFrame ? f.tanHalfFov : Math.tan(((fov * Math.PI) / 180) / 2);
+
+        const out = this._screenResult;
+
         // Apply camera rotation (yaw) - rotate world into camera space
-        const cosYaw = Math.cos(yaw);
-        const sinYaw = Math.sin(yaw);
         const rotatedX = x * cosYaw - z * sinYaw;
         const rotatedZ = x * sinYaw + z * cosYaw;
 
         // Check if point is behind camera (in camera space, forward is -Z)
         if (rotatedZ >= 0) {
-            return { screenX: 0, screenY: 0, distance: 0, visible: false };
+            out.screenX = 0; out.screenY = 0; out.distance = 0; out.visible = false;
+            return out;
         }
 
         // Calculate distance from camera
         const distance = Math.sqrt(x * x + y * y + z * z);
 
         // Apply pitch rotation - rotate around X axis
-        const cosPitch = Math.cos(-pitch);
-        const sinPitch = Math.sin(-pitch);
         const rotatedY = y * cosPitch - rotatedZ * sinPitch;
         const finalZ = y * sinPitch + rotatedZ * cosPitch;
-
-        // Perspective projection
-        const fovRad = (fov * Math.PI) / 180;
-        const aspectRatio = this.canvasWidth / this.canvasHeight;
-        const tanHalfFov = Math.tan(fovRad / 2);
 
         // Project to normalized device coordinates
         const ndcX = rotatedX / (-finalZ * tanHalfFov * aspectRatio);
@@ -100,14 +137,16 @@ export class StreetViewProjector {
         // Check if point is within FOV
         const margin = NAV_CONSTANTS.FOV_MARGIN / fov;
         if (Math.abs(ndcX) > 1 + margin || Math.abs(ndcY) > 1 + margin) {
-            return { screenX: 0, screenY: 0, distance, visible: false };
+            out.screenX = 0; out.screenY = 0; out.distance = distance; out.visible = false;
+            return out;
         }
 
         // Convert to screen coordinates
-        const screenX = (ndcX + 1) * 0.5 * this.canvasWidth;
-        const screenY = (1 - ndcY) * 0.5 * this.canvasHeight;
-
-        return { screenX, screenY, distance, visible: true };
+        out.screenX = (ndcX + 1) * 0.5 * this.canvasWidth;
+        out.screenY = (1 - ndcY) * 0.5 * this.canvasHeight;
+        out.distance = distance;
+        out.visible = true;
+        return out;
     }
 
     /**

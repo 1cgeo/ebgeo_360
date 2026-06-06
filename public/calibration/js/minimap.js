@@ -24,6 +24,8 @@ let currentTargets = [];
 let currentNearbyPhotos = [];
 let selectedTargetId = null;
 let nearbyLayerReady = false;
+// Posicao da camera atualmente exibida no minimapa (para detectar mudanca real)
+let lastCameraLngLat = null;
 
 // ============================================================================
 // INITIALIZATION
@@ -120,11 +122,23 @@ export function updateCamera(camera, headingOffset = 0) {
         cone.style.transform = `rotate(${totalHeading}deg)`;
     }
 
-    // Center map on camera
-    map.easeTo({
-        center: [camera.lon, camera.lat],
-        duration: 300,
-    });
+    // Recentrar o mapa apenas quando a posicao realmente muda.
+    // Na primeira carga usa jumpTo (sem animacao); depois anima so se houve deslocamento.
+    const moved =
+        !lastCameraLngLat ||
+        lastCameraLngLat[0] !== camera.lon ||
+        lastCameraLngLat[1] !== camera.lat;
+    if (moved) {
+        if (!lastCameraLngLat) {
+            map.jumpTo({ center: [camera.lon, camera.lat] });
+        } else {
+            map.easeTo({
+                center: [camera.lon, camera.lat],
+                duration: 300,
+            });
+        }
+        lastCameraLngLat = [camera.lon, camera.lat];
+    }
 }
 
 // ============================================================================
@@ -134,13 +148,17 @@ export function updateCamera(camera, headingOffset = 0) {
 function setupTargetLayer() {
     if (!map) return;
 
-    // Add source for targets
+    // Add source for targets.
+    // promoteId expoe o id do target como feature id, permitindo usar
+    // setFeatureState para a selecao sem reconstruir a GeoJSON inteira.
     map.addSource('targets', {
         type: 'geojson',
+        promoteId: 'id',
         data: { type: 'FeatureCollection', features: [] },
     });
 
-    // Target circles
+    // Target circles. O estado "selected" vem de feature-state (alternado via
+    // setFeatureState), nao de uma propriedade reconstruida a cada selecao.
     map.addLayer({
         id: 'targets-circle',
         type: 'circle',
@@ -148,20 +166,20 @@ function setupTargetLayer() {
         paint: {
             'circle-radius': [
                 'case',
-                ['==', ['get', 'selected'], true], 8,
+                ['==', ['feature-state', 'selected'], true], 8,
                 ['==', ['get', 'hasOverride'], true], 6,
                 5,
             ],
             'circle-color': [
                 'case',
-                ['==', ['get', 'selected'], true], '#fab387',
+                ['==', ['feature-state', 'selected'], true], '#fab387',
                 ['==', ['get', 'hasOverride'], true], '#89b4fa',
                 '#cdd6f4',
             ],
             'circle-stroke-width': 2,
             'circle-stroke-color': [
                 'case',
-                ['==', ['get', 'selected'], true], '#fab387',
+                ['==', ['feature-state', 'selected'], true], '#fab387',
                 '#45475a',
             ],
         },
@@ -206,10 +224,28 @@ export function updateTargets(targets) {
  * @param {string|null} targetId - Target ID to highlight, or null to clear
  */
 export function setSelectedTarget(targetId) {
+    // Curto-circuito: nada a fazer se a selecao nao mudou.
+    if (targetId === selectedTargetId) return;
+
+    const previousId = selectedTargetId;
     selectedTargetId = targetId;
+
+    // Alterna apenas o feature-state das features afetadas, sem reconstruir
+    // toda a GeoJSON (evita re-tesselar/repintar a source inteira).
     if (targetMarkersLayer) {
-        updateTargetsGeoJSON();
+        setTargetSelectedState(previousId, false);
+        setTargetSelectedState(targetId, true);
     }
+}
+
+/**
+ * Aplica o feature-state "selected" a um target especifico.
+ * @param {string|null} targetId - ID do target
+ * @param {boolean} selected - Novo estado de selecao
+ */
+function setTargetSelectedState(targetId, selected) {
+    if (!map || targetId == null || !map.getSource('targets')) return;
+    map.setFeatureState({ source: 'targets', id: targetId }, { selected });
 }
 
 function updateTargetsGeoJSON() {
@@ -217,13 +253,13 @@ function updateTargetsGeoJSON() {
 
     const features = currentTargets.map(t => ({
         type: 'Feature',
+        id: t.id,
         geometry: {
             type: 'Point',
             coordinates: [t.lon, t.lat],
         },
         properties: {
             id: t.id,
-            selected: t.id === selectedTargetId,
             hasOverride: t.override_bearing != null,
             displayName: t.display_name || t.id.slice(0, 8),
         },
@@ -233,6 +269,11 @@ function updateTargetsGeoJSON() {
         type: 'FeatureCollection',
         features,
     });
+
+    // setData limpa o feature-state; reaplica a selecao corrente.
+    if (selectedTargetId != null) {
+        setTargetSelectedState(selectedTargetId, true);
+    }
 }
 
 // ============================================================================
@@ -318,4 +359,10 @@ export function disposeMinimap() {
     containerEl = null;
     targetMarkersLayer = false;
     nearbyLayerReady = false;
+    // Reseta estado de selecao/posicao para um re-init limpo.
+    selectedTargetId = null;
+    lastCameraLngLat = null;
+    currentCamera = null;
+    currentTargets = [];
+    currentNearbyPhotos = [];
 }

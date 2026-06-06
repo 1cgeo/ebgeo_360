@@ -21,15 +21,37 @@ const dataDir = values['data-dir']
   ? resolve(values['data-dir'])
   : resolve(process.cwd(), 'data');
 
+let failures = 0;
+
 function checkpointDb(dbPath) {
   const label = dbPath.replace(dataDir, '.');
+  let db = null;
   try {
-    const db = new Database(dbPath);
+    db = new Database(dbPath);
     const result = db.pragma('wal_checkpoint(TRUNCATE)');
-    db.close();
-    console.log(`  OK  ${label}  (checkpoint: ${JSON.stringify(result[0])})`);
+    // wal_checkpoint retorna { busy, log, checkpointed }. busy != 0 indica que o
+    // DB esta em uso por outra conexao (ex.: servidor rodando) e o WAL NAO foi
+    // truncado — sinaliza como falha para nao mascarar handles/locks remanescentes.
+    const row = result[0] || {};
+    if (row.busy && row.busy !== 0) {
+      failures++;
+      console.error(`  BUSY  ${label}  (checkpoint nao truncou o WAL: ${JSON.stringify(row)})`);
+    } else {
+      console.log(`  OK  ${label}  (checkpoint: ${JSON.stringify(row)})`);
+    }
   } catch (err) {
+    failures++;
     console.error(`  FAIL  ${label}  ${err.message}`);
+  } finally {
+    // Garante o fechamento do handle mesmo se a pragma lancar; trata falhas de close.
+    if (db) {
+      try {
+        db.close();
+      } catch (closeErr) {
+        failures++;
+        console.error(`  FAIL close  ${label}  ${closeErr.message}`);
+      }
+    }
   }
 }
 
@@ -52,4 +74,9 @@ if (existsSync(projectsDir)) {
   }
 }
 
-console.log('\nDone. WAL/SHM files should now be removed.');
+if (failures > 0) {
+  console.error(`\nConcluido com ${failures} falha(s). WAL/SHM de alguns DBs podem nao ter sido removidos (DB em uso?).`);
+  process.exit(1);
+} else {
+  console.log('\nDone. WAL/SHM files should now be removed.');
+}

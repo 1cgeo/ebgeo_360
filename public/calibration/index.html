@@ -5,9 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EBGeo360 — Calibração</title>
 
-    <!-- MapLibre GL JS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.1.0/dist/maplibre-gl.css" />
-    <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.1.0/dist/maplibre-gl.js"></script>
+    <!-- Resource hints: pre-resolve DNS/TLS para as origens externas no caminho de carga.
+         cdn.jsdelivr.net serve MapLibre + Three; tile.openstreetmap.org serve os tiles do minimapa. -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link rel="preconnect" href="https://tile.openstreetmap.org" />
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+    <link rel="dns-prefetch" href="https://tile.openstreetmap.org" />
+
+    <!-- Three.js (importmap) resolvido tarde via app.js → viewer.js; precarrega o módulo
+         para que entre cedo na fila e fique visível ao preload scanner. -->
+    <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" />
+
+    <!-- MapLibre GL JS — CSS carregado de forma não-bloqueante (só necessário quando o
+         minimapa é montado). media=print + onload aplica a folha após o download sem
+         bloquear o render inicial; <noscript> garante o estilo sem JS. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.1.0/dist/maplibre-gl.css"
+          media="print" onload="this.media='all'" />
+    <noscript>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.1.0/dist/maplibre-gl.css" />
+    </noscript>
+
+    <!-- MapLibre GL JS — defer para não bloquear o parser. Scripts classic com defer
+         executam, em ordem de documento, antes dos módulos (app.js está no fim do body),
+         garantindo que window.maplibregl exista quando initMinimap rodar. -->
+    <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.1.0/dist/maplibre-gl.js" defer></script>
 
     <!-- Three.js via import map -->
     <script type="importmap">
@@ -74,8 +95,11 @@
             padding: 16px;
             gap: 12px;
             z-index: 20;
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            /* backdrop-filter: blur removido: o painel sobrepõe o canvas WebGL
+               re-renderizado em loop (rAF), e o compositor reamostraria/desfocaria a
+               região atrás do painel a cada frame — um dos efeitos mais caros de GPU.
+               O background rgba(24,24,37,0.92) já é quase opaco, então o ganho visual
+               do blur era marginal. Mantemos o fundo semi-opaco sólido existente. */
         }
 
         /* ================================================================

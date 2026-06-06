@@ -20,9 +20,9 @@
  *   --docker    Force using Docker even if tippecanoe is installed locally
  */
 
-import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, unlinkSync, createWriteStream } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import Database from 'better-sqlite3';
 
 // ============================================================
@@ -87,15 +87,24 @@ if (useDocker) {
 }
 
 /**
- * @param {string} tippecanoeArgs - tippecanoe CLI arguments (paths must use /data/ prefix for Docker)
- * @param {string} mountDir - host directory to mount as /data in Docker
+ * Executa o tippecanoe sem interpretacao de shell (execFileSync com array de
+ * argumentos), evitando command injection e problemas com paths que contenham
+ * espacos, `$`, backticks ou aspas.
+ *
+ * @param {string[]} tippecanoeArgs - argumentos do tippecanoe (paths devem usar prefixo /data/ no Docker)
+ * @param {string} mountDir - diretorio do host montado como /data no Docker
  */
 function runTippecanoe(tippecanoeArgs, mountDir) {
   if (useDocker) {
-    const cmd = `docker run --rm -v "${mountDir}:/data" tippecanoe:latest ${tippecanoeArgs}`;
-    execSync(cmd, { stdio: 'inherit' });
+    const dockerArgs = [
+      'run', '--rm',
+      '-v', `${mountDir}:/data`,
+      'tippecanoe:latest',
+      ...tippecanoeArgs,
+    ];
+    execFileSync('docker', dockerArgs, { stdio: 'inherit' });
   } else {
-    execSync(`tippecanoe ${tippecanoeArgs}`, { stdio: 'inherit' });
+    execFileSync('tippecanoe', tippecanoeArgs, { stdio: 'inherit' });
   }
 }
 
@@ -112,42 +121,58 @@ db.pragma('journal_mode = WAL');
 
 console.log('[1/2] Generating points GeoJSON...');
 
-const photos = db.prepare(`
+// Emite NDJSON (uma Feature GeoJSON por linha) em streaming via .iterate(),
+// mantendo memoria O(1) e sem o teto de string do V8 do JSON.stringify.
+// tippecanoe le NDJSON nativamente.
+const photosStmt = db.prepare(`
   SELECT p.id, p.original_name, p.display_name, p.lat, p.lon,
          p.heading, p.ele, p.sequence_number, p.floor_level,
          pr.slug AS project_slug
   FROM photos p
   JOIN projects pr ON pr.id = p.project_id
   ORDER BY pr.slug, p.sequence_number
-`).all();
-
-const pointFeatures = photos.map(p => ({
-  type: 'Feature',
-  geometry: {
-    type: 'Point',
-    coordinates: [p.lon, p.lat],
-  },
-  properties: {
-    // Both identifiers for backward compatibility
-    photo_uuid: p.id,
-    nome_img: p.original_name,
-    display_name: p.display_name,
-    project: p.project_slug,
-    heading: p.heading,
-    ele: p.ele,
-    seq: p.sequence_number,
-    floor_level: p.floor_level,
-  },
-}));
-
-const pointsGeoJSON = {
-  type: 'FeatureCollection',
-  features: pointFeatures,
-};
+`);
 
 const pointsPath = join(outputDir, '_fotos_points.geojson');
-writeFileSync(pointsPath, JSON.stringify(pointsGeoJSON));
-console.log(`  ${pointFeatures.length} point features written.`);
+const projectSlugs = new Set();
+let pointCount = 0;
+
+const stream = createWriteStream(pointsPath);
+try {
+  for (const p of photosStmt.iterate()) {
+    const feature = {
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: [p.lon, p.lat],
+      },
+      properties: {
+        // Both identifiers for backward compatibility
+        photo_uuid: p.id,
+        nome_img: p.original_name,
+        display_name: p.display_name,
+        project: p.project_slug,
+        heading: p.heading,
+        ele: p.ele,
+        seq: p.sequence_number,
+        floor_level: p.floor_level,
+      },
+    };
+    stream.write(`${JSON.stringify(feature)}\n`);
+    projectSlugs.add(p.project_slug);
+    pointCount++;
+  }
+} finally {
+  stream.end();
+}
+
+// Aguarda o flush completo no disco antes de invocar o tippecanoe.
+await new Promise((resolveStream, rejectStream) => {
+  stream.on('finish', resolveStream);
+  stream.on('error', rejectStream);
+});
+
+console.log(`  ${pointCount} point features written.`);
 
 // ============================================================
 // Phase 2: Run tippecanoe for points
@@ -157,55 +182,51 @@ console.log('[2/2] Running tippecanoe for points (fotos.pmtiles)...');
 
 const pointsOutput = join(outputDir, 'fotos.pmtiles');
 
-// Build tippecanoe arguments — when using Docker, paths are relative to /data mount
+// Argumentos do tippecanoe como array (sem shell) — no Docker os paths sao
+// relativos ao mount /data.
 const tippecanoeArgs = useDocker
   ? [
-      '-o /data/fotos.pmtiles',
-      '-l fotos',
+      '-o', '/data/fotos.pmtiles',
+      '-l', 'fotos',
       '-zg',
       '--no-feature-limit',
       '--no-tile-size-limit',
       '--force',
       '/data/_fotos_points.geojson',
-    ].join(' ')
+    ]
   : [
-      `-o "${pointsOutput}"`,
-      '-l fotos',
+      '-o', pointsOutput,
+      '-l', 'fotos',
       '-zg',
       '--no-feature-limit',
       '--no-tile-size-limit',
       '--force',
-      `"${pointsPath}"`,
-    ].join(' ');
+      pointsPath,
+    ];
 
+let exitCode = 0;
 try {
   runTippecanoe(tippecanoeArgs, outputDir);
   console.log(`  fotos.pmtiles generated at ${pointsOutput}`);
+
+  // Summary
+  console.log('\nDone!');
+  console.log(`  ${projectSlugs.size} projects`);
+  console.log(`  ${pointCount} photo points → fotos.pmtiles`);
+  console.log(`  Output: ${outputDir}`);
 } catch (error) {
   console.error('Error running tippecanoe for points:', error.message);
+  exitCode = 1;
+} finally {
+  // Remove o GeoJSON temporario tanto em sucesso quanto em falha.
+  try {
+    unlinkSync(pointsPath);
+  } catch {
+    // Ignore cleanup errors
+  }
   db.close();
-  process.exit(1);
 }
 
-// ============================================================
-// Cleanup temp files
-// ============================================================
-
-try {
-  unlinkSync(pointsPath);
-} catch {
-  // Ignore cleanup errors
+if (exitCode !== 0) {
+  process.exit(exitCode);
 }
-
-db.close();
-
-// Summary
-const stats = {
-  points: pointFeatures.length,
-  projects: new Set(photos.map(p => p.project_slug)).size,
-};
-
-console.log('\nDone!');
-console.log(`  ${stats.projects} projects`);
-console.log(`  ${stats.points} photo points → fotos.pmtiles`);
-console.log(`  Output: ${outputDir}`);

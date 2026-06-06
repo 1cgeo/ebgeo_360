@@ -862,6 +862,42 @@ describe('GET /api/v1/photos/:uuid/nearby', () => {
     const body = JSON.parse(res.body);
     assert.equal(body.photos.length, 0, 'No photos within 1m');
   });
+
+  it('negative radius is clamped (no silent empty list from inverted bbox)', async () => {
+    // radius negativo era aceito antes e invertia a bbox -> lista vazia silenciosa.
+    // Apos o clamp em [1, 1000], comporta-se como o radius minimo (1m).
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/nearby?radius=-100`,
+    });
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.body);
+    assert.ok(Array.isArray(body.photos));
+    // Com radius efetivo de 1m nao deve incluir PHOTO_3 (mais distante).
+    const photo3 = body.photos.find(p => p.id === SEEDS.PHOTO_3_ID);
+    assert.equal(photo3, undefined, 'No distant photos with clamped 1m radius');
+  });
+
+  it('non-numeric radius falls back to default 100m', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/nearby?radius=abc`,
+    });
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.body);
+    const photo3 = body.photos.find(p => p.id === SEEDS.PHOTO_3_ID);
+    assert.ok(photo3, 'PHOTO_3 should appear with default 100m radius');
+  });
+
+  it('oversized radius is clamped to 1000m (no project-wide scan blowup)', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/nearby?radius=999999`,
+    });
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.body);
+    assert.ok(Array.isArray(body.photos));
+  });
 });
 
 // ============================================================================

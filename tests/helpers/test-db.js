@@ -89,6 +89,11 @@ export function createTestData() {
   const indexDb = new Database(indexDbPath);
   indexDb.pragma('journal_mode = WAL');
   indexDb.exec(indexSchema);
+  // Garante os indices de performance tambem para DBs de teste (idempotente).
+  // schema.sql ja os cria, mas mantemos explicito para refletir as migracoes de startup.
+  indexDb.exec('CREATE INDEX IF NOT EXISTS idx_targets_target ON targets(target_id)');
+  indexDb.exec('CREATE INDEX IF NOT EXISTS idx_targets_source_order ON targets(source_id, is_next DESC, distance_m ASC)');
+  indexDb.exec('CREATE INDEX IF NOT EXISTS idx_deleted_photos ON deleted_photos(photo_id)');
   seedIndexDb(indexDb);
   indexDb.close();
 

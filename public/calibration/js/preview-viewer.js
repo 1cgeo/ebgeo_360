@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { getPhotoImageUrl } from './api.js';
 import { StreetViewProjector } from './projector.js';
 import { NAV_CONSTANTS } from './constants.js';
-import { getEffectiveOverride, state, isTargetHidden } from './state.js';
+import { getEffectiveOverride, state, isTargetHidden, onChange } from './state.js';
 
 // ============================================================================
 // CONSTANTS
@@ -54,6 +54,7 @@ let onCloseCallback = null;
 let onAddTargetCallback = null;
 let onHideCallback = null;
 let onSetClickCallback = null;
+let unsubscribeStateChange = null;
 
 // Camera orbit
 let lon = 0;
@@ -71,6 +72,9 @@ let dragStartLat = 0;
 let currentTargetId = null;
 let currentMode = 'rear'; // 'rear' | 'target'
 let rearPhotoId = null;
+// Foto cuja textura esta atualmente aplicada na esfera (evita recarregar a
+// mesma textura ao alternar target -> rear quando nada mudou).
+let currentSpherePhotoId = null;
 let rearRotationY = 180;
 let rearRotationX = 0;
 let rearRotationZ = 0;
@@ -86,6 +90,29 @@ let mainViewerFov = 75;
 // Reusable Vector3
 const _lookAtTarget = new THREE.Vector3();
 const textureLoader = new THREE.TextureLoader();
+
+// Token de geracao para descartar carregamentos de textura obsoletos quando
+// showRearView/showPreview/hidePreview sao chamados em sequencia rapida.
+let loadGeneration = 0;
+
+// Config reutilizavel do projetor de markers (evita alocar objeto por frame).
+const _rearProjectorConfig = {};
+// Assinatura do ultimo config aplicado ao projetor (evita setCameraConfig por frame).
+let _lastRearConfigKey = '';
+
+// ── Dirty-check dos markers do rear view ──
+// Redesenha os markers apenas quando a camera (lon/lat) ou o estado relevante
+// muda, em vez de a cada frame. Saida visual identica.
+let rearMarkersDirty = true;
+let _lastRearMarkerLon = NaN;
+let _lastRearMarkerLat = NaN;
+
+/**
+ * Marca os markers do rear view para redesenho no proximo frame.
+ */
+function markRearMarkersDirty() {
+    rearMarkersDirty = true;
+}
 
 // ============================================================================
 // INITIALIZATION
@@ -360,6 +387,10 @@ export function initPreviewViewer(parentContainer, options = {}) {
     containerEl.addEventListener('pointerdown', (e) => e.stopPropagation());
     containerEl.addEventListener('click', (e) => e.stopPropagation());
     containerEl.addEventListener('wheel', (e) => e.stopPropagation());
+
+    // Qualquer mudanca de estado (selecao, override, hidden, sliders) redesenha
+    // os markers do rear view no proximo frame.
+    unsubscribeStateChange = onChange(markRearMarkersDirty);
 }
 
 // ============================================================================
@@ -381,6 +412,7 @@ export async function showRearView(photoId, meshRotationY, meshRotationX = 0, me
     rearRotationY = meshRotationY;
     rearRotationX = meshRotationX;
     rearRotationZ = meshRotationZ;
+    markRearMarkersDirty();
 
     // Set rear view appearance
     containerEl.style.borderColor = BORDER_REAR;
@@ -411,22 +443,27 @@ export async function showRearView(photoId, meshRotationY, meshRotationX = 0, me
     // Start animation if not running
     if (!animationFrameId) animate();
 
-    // Load image only if photo changed
-    if (rearPhotoId !== photoId) {
+    // Recarrega a textura quando muda a foto traseira OU quando a esfera nao
+    // esta exibindo essa foto (ex.: voltando de um target via showPreview sem
+    // passar por hidePreview). Sem isso, a esfera ficaria com a imagem do
+    // target enquanto o modo ja e 'rear'.
+    if (rearPhotoId !== photoId || currentSpherePhotoId !== photoId) {
         rearPhotoId = photoId;
+        currentSpherePhotoId = photoId;
 
+        const generation = ++loadGeneration;
         const previewUrl = getPhotoImageUrl(photoId, 'preview');
         const fullUrl = getPhotoImageUrl(photoId, 'full');
 
         try {
-            await loadTexture(previewUrl, true);
+            await loadTexture(previewUrl, true, generation);
         } catch {
             // Preview failed
         }
 
         if (currentMode === 'rear' && rearPhotoId === photoId) {
             try {
-                await loadTexture(fullUrl, false);
+                await loadTexture(fullUrl, false, generation);
             } catch (err) {
                 console.error('Preview viewer: failed to load full image:', err);
             }
@@ -477,6 +514,10 @@ export function setRearViewTargets(targets, cameraConfig) {
     if (markerProjector) {
         markerProjector.setCameraConfig(cameraConfig);
     }
+    // Invalida o cache do config do projetor de markers (sera reaplicado com os
+    // valores editados no proximo renderRearMarkers).
+    _lastRearConfigKey = '';
+    markRearMarkersDirty();
 }
 
 /**
@@ -530,11 +571,13 @@ export async function showPreview(targetId, displayName, meshRotationY = 180, me
     if (!animationFrameId) animate();
 
     // Load panorama (preview first for speed, then full)
+    currentSpherePhotoId = targetId;
+    const generation = ++loadGeneration;
     const previewUrl = getPhotoImageUrl(targetId, 'preview');
     const fullUrl = getPhotoImageUrl(targetId, 'full');
 
     try {
-        await loadTexture(previewUrl, true);
+        await loadTexture(previewUrl, true, generation);
     } catch {
         // Preview failed
     }
@@ -542,7 +585,7 @@ export async function showPreview(targetId, displayName, meshRotationY = 180, me
     // Only load full if still showing same target
     if (currentTargetId === targetId) {
         try {
-            await loadTexture(fullUrl, false);
+            await loadTexture(fullUrl, false, generation);
         } catch (err) {
             console.error('Preview viewer: failed to load full image:', err);
         }
@@ -563,6 +606,7 @@ export function hidePreview() {
     if (rearPhotoId) {
         currentMode = 'rear';
         currentTargetId = null;
+        markRearMarkersDirty();
 
         containerEl.style.borderColor = BORDER_REAR;
         const label = document.getElementById('preview-viewer-label');
@@ -582,11 +626,17 @@ export function hidePreview() {
         lon = 0;
         lat = 0;
 
-        // Reload rear photo texture
-        const previewUrl = getPhotoImageUrl(rearPhotoId, 'preview');
-        const fullUrl = getPhotoImageUrl(rearPhotoId, 'full');
-        loadTexture(previewUrl, true).catch(() => {});
-        loadTexture(fullUrl, false).catch(() => {});
+        // Recarrega a textura da foto traseira apenas se a esfera nao a estiver
+        // exibindo (ex.: voltando de um target). Se ja estiver, evita o
+        // decode/upload de GPU redundante.
+        if (currentSpherePhotoId !== rearPhotoId) {
+            currentSpherePhotoId = rearPhotoId;
+            const generation = ++loadGeneration;
+            const previewUrl = getPhotoImageUrl(rearPhotoId, 'preview');
+            const fullUrl = getPhotoImageUrl(rearPhotoId, 'full');
+            loadTexture(previewUrl, true, generation).catch(() => {});
+            loadTexture(fullUrl, false, generation).catch(() => {});
+        }
 
         if (!animationFrameId) animate();
     } else {
@@ -674,14 +724,22 @@ function clearMarkerOverlay() {
 // TEXTURE LOADING
 // ============================================================================
 
-function loadTexture(url, isPreview) {
+function loadTexture(url, isPreview, generation = loadGeneration) {
     return new Promise((resolve, reject) => {
         textureLoader.load(
             url,
             (texture) => {
                 texture.colorSpace = THREE.SRGBColorSpace;
 
+                // Carga obsoleta (outro show*/hide* foi disparado): descarta.
+                if (generation !== loadGeneration) {
+                    texture.dispose();
+                    resolve();
+                    return;
+                }
+
                 if (isPreview && material.map && material.map.userData?.isFull) {
+                    texture.dispose();
                     resolve();
                     return;
                 }
@@ -753,25 +811,50 @@ function renderRearMarkers() {
         return;
     }
 
-    markerCtx.clearRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
-
-    if (!rearTargets.length || !markerProjector) return;
-
     // Use current edited state values (same values the main navigator uses)
     // so that markers stay in sync when the user adjusts sliders.
+    // Lido ANTES do dirty-check: os sliders de altura/escala usam silent=true
+    // durante o arraste (sem notify/onChange), entao precisamos detectar a
+    // mudanca aqui para manter os markers do rear em sincronia ao vivo.
     const cameraHeight = state.editedCameraHeight ?? rearCameraConfig.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
     const distanceScale = state.editedDistanceScale ?? rearCameraConfig.distance_scale ?? 1.0;
     const markerScale = state.editedMarkerScale ?? rearCameraConfig.marker_scale ?? 1.0;
 
-    // Update projector's camera config so calculateMarkerSize/calculateFlattenRatio
-    // use the same values as the main navigator.
-    const currentConfig = {
-        ...rearCameraConfig,
-        height: cameraHeight,
-        distance_scale: distanceScale,
-        marker_scale: markerScale,
-    };
-    markerProjector.setCameraConfig(currentConfig);
+    // Assinatura do config do projetor (reaproveitada no dirty-check e no
+    // setCameraConfig). Inclui os valores editados via slider.
+    const configKey = `${cameraHeight}|${distanceScale}|${markerScale}|${rearCameraConfig.lon}|${rearCameraConfig.lat}|${rearCameraConfig.heading}`;
+
+    // Dirty-check: redesenha quando a camera (lon/lat), o estado de selecao
+    // (rearMarkersDirty) ou os valores editados via slider (configKey) mudam.
+    const cameraMoved = lon !== _lastRearMarkerLon || lat !== _lastRearMarkerLat;
+    const configChanged = configKey !== _lastRearConfigKey;
+    if (!rearMarkersDirty && !cameraMoved && !configChanged) {
+        return;
+    }
+    rearMarkersDirty = false;
+    _lastRearMarkerLon = lon;
+    _lastRearMarkerLat = lat;
+
+    markerCtx.clearRect(0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
+
+    if (!rearTargets.length || !markerProjector) {
+        // Sem targets: marca o config como aplicado para nao redesenhar a cada
+        // frame ocioso (o canvas ja foi limpo acima).
+        _lastRearConfigKey = configKey;
+        return;
+    }
+
+    // Atualiza o config do projetor reaproveitando um objeto unico e so
+    // chama setCameraConfig quando algum valor relevante muda (evita alocacao
+    // e reatribuicao por frame).
+    if (configChanged) {
+        Object.assign(_rearProjectorConfig, rearCameraConfig);
+        _rearProjectorConfig.height = cameraHeight;
+        _rearProjectorConfig.distance_scale = distanceScale;
+        _rearProjectorConfig.marker_scale = markerScale;
+        markerProjector.setCameraConfig(_rearProjectorConfig);
+        _lastRearConfigKey = configKey;
+    }
 
     // Compute projection yaw for rear view.
     // Main viewer: worldHeading = imageHeading + lon → yaw = -worldHeading * PI/180
@@ -780,6 +863,9 @@ function renderRearMarkers() {
     const rearWorldHeading = imageHeading + 180 + lon;
     const yaw = -(rearWorldHeading * Math.PI) / 180;
     const pitch = (lat * Math.PI) / 180;
+
+    // Pre-computa as invariantes trig do frame para reaproveitar em metersToScreen.
+    markerProjector.beginFrame(yaw, pitch, fov);
 
     for (const target of rearTargets) {
         const hidden = isTargetHidden(target.id);
@@ -926,6 +1012,11 @@ export function disposePreviewViewer() {
         canvasEl.removeEventListener('pointerup', onPointerUp);
     }
 
+    if (unsubscribeStateChange) {
+        unsubscribeStateChange();
+        unsubscribeStateChange = null;
+    }
+
     if (material?.map) {
         material.map.dispose();
     }
@@ -951,6 +1042,7 @@ export function disposePreviewViewer() {
     setClickBtn = null;
     currentTargetId = null;
     rearPhotoId = null;
+    currentSpherePhotoId = null;
     currentMode = 'rear';
     onNavigateCallback = null;
     onCloseCallback = null;

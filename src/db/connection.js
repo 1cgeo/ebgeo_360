@@ -9,6 +9,7 @@ import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import config from '../config.js';
+import { resetStatements } from './queries.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -31,58 +32,70 @@ export function getIndexDb() {
   indexDb.pragma('journal_mode = WAL');
   indexDb.pragma('synchronous = NORMAL');
   indexDb.pragma('cache_size = -64000'); // 64 MB cache
+  indexDb.pragma('busy_timeout = 5000'); // espera ate 5s em vez de falhar com SQLITE_BUSY
 
   // Initialize schema
   const schema = readFileSync(resolve(__dirname, 'schema.sql'), 'utf-8');
   indexDb.exec(schema);
 
-  // Migrate: add columns if missing (for existing DBs)
-  const cols = indexDb.pragma('table_info(photos)');
-  if (!cols.some(c => c.name === 'calibration_reviewed')) {
-    indexDb.exec('ALTER TABLE photos ADD COLUMN calibration_reviewed INTEGER DEFAULT 0');
-  }
-  if (!cols.some(c => c.name === 'mesh_rotation_x')) {
-    indexDb.exec('ALTER TABLE photos ADD COLUMN mesh_rotation_x REAL DEFAULT 0');
-  }
-  if (!cols.some(c => c.name === 'mesh_rotation_z')) {
-    indexDb.exec('ALTER TABLE photos ADD COLUMN mesh_rotation_z REAL DEFAULT 0');
-  }
-  if (!cols.some(c => c.name === 'distance_scale')) {
-    indexDb.exec('ALTER TABLE photos ADD COLUMN distance_scale REAL DEFAULT 1.0');
-  }
-  if (!cols.some(c => c.name === 'marker_scale')) {
-    indexDb.exec('ALTER TABLE photos ADD COLUMN marker_scale REAL DEFAULT 1.0');
-  }
+  // Aplica todas as migracoes de startup numa unica transacao (atomicidade)
+  indexDb.transaction(() => {
+    // Migrate: add columns if missing (for existing DBs)
+    const cols = indexDb.pragma('table_info(photos)');
+    if (!cols.some(c => c.name === 'calibration_reviewed')) {
+      indexDb.exec('ALTER TABLE photos ADD COLUMN calibration_reviewed INTEGER DEFAULT 0');
+    }
+    if (!cols.some(c => c.name === 'mesh_rotation_x')) {
+      indexDb.exec('ALTER TABLE photos ADD COLUMN mesh_rotation_x REAL DEFAULT 0');
+    }
+    if (!cols.some(c => c.name === 'mesh_rotation_z')) {
+      indexDb.exec('ALTER TABLE photos ADD COLUMN mesh_rotation_z REAL DEFAULT 0');
+    }
+    if (!cols.some(c => c.name === 'distance_scale')) {
+      indexDb.exec('ALTER TABLE photos ADD COLUMN distance_scale REAL DEFAULT 1.0');
+    }
+    if (!cols.some(c => c.name === 'marker_scale')) {
+      indexDb.exec('ALTER TABLE photos ADD COLUMN marker_scale REAL DEFAULT 1.0');
+    }
 
-  // Migrate: rename override columns in targets table
-  const targetCols = indexDb.pragma('table_info(targets)');
-  if (targetCols.some(c => c.name === 'override_heading') && !targetCols.some(c => c.name === 'override_bearing')) {
-    indexDb.exec('ALTER TABLE targets RENAME COLUMN override_heading TO override_bearing');
-    indexDb.exec('ALTER TABLE targets RENAME COLUMN override_pitch TO override_distance');
-    // Fix old override_pitch=0 values (angle 0°) → valid distance default (5m)
-    indexDb.exec('UPDATE targets SET override_distance = 5 WHERE override_distance IS NOT NULL AND override_distance < 0.5');
-  }
+    // Migrate: rename override columns in targets table
+    const targetCols = indexDb.pragma('table_info(targets)');
+    if (targetCols.some(c => c.name === 'override_heading') && !targetCols.some(c => c.name === 'override_bearing')) {
+      indexDb.exec('ALTER TABLE targets RENAME COLUMN override_heading TO override_bearing');
+      indexDb.exec('ALTER TABLE targets RENAME COLUMN override_pitch TO override_distance');
+      // Fix old override_pitch=0 values (angle 0°) → valid distance default (5m)
+      indexDb.exec('UPDATE targets SET override_distance = 5 WHERE override_distance IS NOT NULL AND override_distance < 0.5');
+    }
 
-  // Migrate: add hidden column to targets table
-  const targetCols2 = indexDb.pragma('table_info(targets)');
-  if (!targetCols2.some(c => c.name === 'hidden')) {
-    indexDb.exec('ALTER TABLE targets ADD COLUMN hidden INTEGER DEFAULT 0');
-  }
+    // Migrate: add hidden column to targets table
+    const targetCols2 = indexDb.pragma('table_info(targets)');
+    if (!targetCols2.some(c => c.name === 'hidden')) {
+      indexDb.exec('ALTER TABLE targets ADD COLUMN hidden INTEGER DEFAULT 0');
+    }
 
-  // Migrate: add override_height column to targets table
-  const targetCols3 = indexDb.pragma('table_info(targets)');
-  if (!targetCols3.some(c => c.name === 'override_height')) {
-    indexDb.exec('ALTER TABLE targets ADD COLUMN override_height REAL');
-  }
+    // Migrate: add override_height column to targets table
+    const targetCols3 = indexDb.pragma('table_info(targets)');
+    if (!targetCols3.some(c => c.name === 'override_height')) {
+      indexDb.exec('ALTER TABLE targets ADD COLUMN override_height REAL');
+    }
 
-  // Migrate: create deleted_photos table if missing
-  const delTable = indexDb.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='deleted_photos'").all();
-  if (delTable.length === 0) {
-    indexDb.exec(`CREATE TABLE IF NOT EXISTS deleted_photos (
-      photo_id TEXT PRIMARY KEY REFERENCES photos(id),
-      deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )`);
-  }
+    // Migrate: create deleted_photos table if missing
+    const delTable = indexDb.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='deleted_photos'").all();
+    if (delTable.length === 0) {
+      indexDb.exec(`CREATE TABLE IF NOT EXISTS deleted_photos (
+        photo_id TEXT PRIMARY KEY REFERENCES photos(id),
+        deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`);
+    }
+
+    // Migrate: indices criados para DBs existentes (idempotente)
+    // - idx_targets_target: indexa o ramo target_id do DELETE em soft-delete
+    // - idx_targets_source_order: satisfaz o ORDER BY das queries de targets por source
+    // - idx_deleted_photos: PK ja indexa photo_id, mas garantimos o filtro NOT IN
+    indexDb.exec('CREATE INDEX IF NOT EXISTS idx_targets_target ON targets(target_id)');
+    indexDb.exec('CREATE INDEX IF NOT EXISTS idx_targets_source_order ON targets(source_id, is_next DESC, distance_m ASC)');
+    indexDb.exec('CREATE INDEX IF NOT EXISTS idx_deleted_photos ON deleted_photos(photo_id)');
+  })();
 
   return indexDb;
 }
@@ -103,8 +116,12 @@ export function getProjectDb(dbFilename) {
   }
 
   const db = new Database(dbPath, { readonly: true });
-  db.pragma('journal_mode = WAL');
+  // journal_mode=WAL nao se aplica em conexao readonly (no-op): o modo ja vem
+  // persistido do arquivo (definido em createProjectDb). Reforcamos query_only.
+  db.pragma('query_only = true');
   db.pragma('cache_size = -32000'); // 32 MB cache per project DB
+  db.pragma('busy_timeout = 5000'); // espera ate 5s em vez de falhar com SQLITE_BUSY
+  db.pragma('mmap_size = 268435456'); // 256 MB: le BLOBs via memory-map, reduz syscalls read()
 
   projectDbs.set(dbFilename, db);
   return db;
@@ -128,6 +145,7 @@ export function createProjectDb(dbFilename) {
   db.pragma('page_size = 65536');
   db.pragma('journal_mode = WAL');
   db.pragma('synchronous = NORMAL');
+  db.pragma('mmap_size = 268435456'); // 256 MB: le BLOBs via memory-map, reduz syscalls read()
 
   // Initialize schema
   const schema = readFileSync(resolve(__dirname, 'project-schema.sql'), 'utf-8');
@@ -141,6 +159,10 @@ export function createProjectDb(dbFilename) {
  * Closes all database connections. Call on graceful shutdown.
  */
 export function closeAll() {
+  // Invalida o cache de prepared statements antes de fechar a conexao:
+  // os statements em _stmts apontam para indexDb e ficariam invalidos.
+  resetStatements();
+
   if (indexDb) {
     indexDb.close();
     indexDb = null;

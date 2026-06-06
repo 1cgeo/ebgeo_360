@@ -3,16 +3,17 @@
  * @description Health check endpoint.
  */
 
-import { getIndexDb } from '../db/connection.js';
+import { getProjectCount } from '../db/queries.js';
 
 export default async function healthRoutes(fastify) {
   fastify.get('/health', async (_request, reply) => {
     try {
-      const db = getIndexDb();
-      const row = db.prepare('SELECT count(*) as cnt FROM projects').get();
+      // Usa o prepared statement cacheado de queries.js em vez de re-preparar
+      // o COUNT(*) a cada probe (mantem o padrao "prepare once").
+      const projects = getProjectCount();
       return {
         status: 'ok',
-        projects: row.cnt,
+        projects,
       };
     } catch (err) {
       reply.code(503);
