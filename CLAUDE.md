@@ -22,8 +22,8 @@ npm start              # Start server (node src/server.js)
 npm run dev            # Dev server with auto-restart (--watch)
 npm run migrate        # Import JSON metadata + JPG images into SQLite
 npm run generate-pmtiles  # Generate PMTiles for map markers
-npm run verify         # Validate database integrity
-npm run estimate-slope-roll  # (Deprecated) Estimate mesh_rotation_z from elevation data
+npm run recalculate-targets  # Recompute navigation graph (targets)
+npm run cleanup-wal    # Checkpoint/clean SQLite WAL files
 npm test               # Run tests (node:test built-in)
 npm run lint           # ESLint (--max-warnings 0)
 npm run lint:fix       # ESLint auto-fix
@@ -52,8 +52,8 @@ src/
 scripts/
 ├── migrate.js             # JSON+JPG → SQLite migration (7-phase)
 ├── generate-pmtiles.js    # PMTiles generation for mapping
-├── estimate-slope-roll.js # (Deprecated) Estimate mesh_rotation_z from elevation
-└── verify.js              # Data validation
+├── recalculate-targets.js # Recompute navigation graph (targets)
+└── cleanup-wal.js         # Checkpoint/clean SQLite WAL files
 
 public/calibration/        # Calibration web interface
 ├── index.html
@@ -267,8 +267,8 @@ Both `projector.calculateFlattenRatio()` and `projector.calculateMarkerSize()` a
 ### Target Override Projection
 Override markers use a **ground-plane model**: bearing + ground distance + height are projected onto `y = -cameraHeight + overrideHeight` plane, NOT spherical coordinates. Both `navigator.js` (calibration) and `navigation/navigator.js` (ebgeo_web) use `projectFromOverride()` for this. When `override_height` is NULL/0, the marker sits on the ground plane exactly where the user clicked.
 
-### Slope Roll Estimation (Deprecated)
-`scripts/estimate-slope-roll.js` previously estimated `mesh_rotation_z` from elevation data. This is deprecated — elevation data is no longer used for projection. The standalone script remains available with a deprecation warning; its `--clear` mode can reset `mesh_rotation_z` to 0.
+### Slope Roll Estimation (Removed)
+Estimating `mesh_rotation_z` from elevation data is deprecated and the standalone script has been removed — elevation is no longer used for projection (flat ground model). `mesh_rotation_z` is now set only via the calibration UI.
 
 ## Calibration UI Architecture
 
