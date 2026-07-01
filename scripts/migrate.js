@@ -69,6 +69,12 @@ function parseArgs() {
 // ============================================================
 
 const PROJECTS = [
+  // === Lote 2026 (SANTIAGO/METADADOS + FAXINAL + SAICA, fonte D:\360\data\Nao_Processados) — JÁ IMPORTADOS, comentados (UUIDs randômicos: re-rodar duplicaria; apagar linhas do slug antes de re-migrar) ===
+  // { name: 'Santa Cruz', slug: 'santa_cruz', description: 'Imagens panorâmicas em Santa Cruz', capture_date: '2026-02-25', location: 'Santa Cruz do Sul, RS', lat: -29.819208, lon: -52.374102, entryPhoto: 'PIC_20260225_112413_26_02_25_14_14_49_output_079' },
+  // { name: 'Santiago', slug: 'santiago', description: 'Imagens panorâmicas em Santiago', capture_date: '2026-02-26', location: 'Santiago, RS', lat: -29.125918, lon: -54.919573, entryPhoto: 'PIC_20260301_100418_26_03_01_10_46_39_output_124' },
+  // { name: 'São Gabriel', slug: 'sao_gabriel', description: 'Imagens panorâmicas em São Gabriel', capture_date: '2026-03-03', location: 'São Gabriel, RS', lat: -30.345903, lon: -54.375882, entryPhoto: 'PIC_20260303_180354_26_03_04_10_04_49_output_06' },
+  // { name: 'Saicã', slug: 'saica', description: 'Imagens panorâmicas em Saicã', capture_date: '2026-04-29', location: 'Cacequi, RS', lat: -30.064847, lon: -54.998178, entryPhoto: 'PIC_20260430_140913_26_05_07_12_36_59_output_64' },
+  // { name: 'Faxinal', slug: 'faxinal', description: 'Imagens panorâmicas em Faxinal', capture_date: '2026-04-26', location: 'Santa Maria, RS', lat: -29.622570, lon: -53.428371, entryPhoto: 'PIC_20260427_090836_26_05_05_16_25_51_output_005' },
   // { name: 'Alegrete', slug: 'alegrete', description: 'Imagens panorâmicas em Alegrete', capture_date: '2025-05-27', location: 'Alegrete, RS', lat: -29.784988, lon: -55.774959, entryPhoto: 'MULTICAPTURA_0466_001369' },
   // { name: 'Parque Osório', slug: 'parque_osorio', description: 'Imagens panorâmicas no Parque Osório', capture_date: '2025-04-22', location: 'Tramandaí, RS', lat: -29.984937, lon: -50.219546, entryPhoto: 'MULTICAPTURA_7476_000027' },
   // { name: 'Uruguaiana', slug: 'uruguaiana', description: 'Imagens panorâmicas em Uruguaiana', capture_date: '2022-08-22', location: 'Uruguaiana, RS', lat: -29.779807, lon: -57.088023, entryPhoto: 'MULTICAPTURA_3559_002909' },
