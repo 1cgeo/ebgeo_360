@@ -61,10 +61,13 @@ await fastify.register(fastifyCompress, {
 await fastify.register(cors, { origin: config.corsOrigin });
 
 // Static files — calibration interface
+// prefix sem barra final + redirect: true faz o @fastify/static registrar um
+// redirect 301 de /calibration para /calibration/ (senão cai no 404 handler).
 await fastify.register(fastifyStatic, {
   root: resolve(__dirname, '..', 'public', 'calibration'),
-  prefix: '/calibration/',
+  prefix: '/calibration',
   decorateReply: false,
+  redirect: true,
 });
 
 // Static files — project thumbnails ({slug}.webp in /data/thumbnails/)
