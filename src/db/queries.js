@@ -92,22 +92,12 @@ function stmts() {
       'UPDATE photos SET mesh_rotation_y = ? WHERE id = ?'
     ),
 
-    updateCameraHeight: db.prepare(
-      'UPDATE photos SET camera_height = ? WHERE id = ?'
-    ),
-
-    updateTargetOverride: db.prepare(
-      'UPDATE targets SET override_bearing = ?, override_distance = ?, override_height = ? WHERE source_id = ? AND target_id = ?'
-    ),
-
-    clearTargetOverride: db.prepare(
-      'UPDATE targets SET override_bearing = NULL, override_distance = NULL, override_height = NULL WHERE source_id = ? AND target_id = ?'
-    ),
-
     updateTargetVisibility: db.prepare(
       'UPDATE targets SET hidden = ? WHERE source_id = ? AND target_id = ?'
     ),
 
+    // Conexao criada pelo operador: is_original = 0, como qualquer alvo que nao
+    // veio da captura. Removivel pelo deleteTarget, que so barra is_original = 1.
     insertTarget: db.prepare(
       'INSERT INTO targets (source_id, target_id, distance_m, bearing_deg, is_next, is_original) VALUES (?, ?, ?, ?, 0, 0)'
     ),
@@ -183,14 +173,6 @@ function stmts() {
 
     updateMeshRotationZ: db.prepare(
       'UPDATE photos SET mesh_rotation_z = ? WHERE id = ?'
-    ),
-
-    updateDistanceScale: db.prepare(
-      'UPDATE photos SET distance_scale = ? WHERE id = ?'
-    ),
-
-    updateMarkerScale: db.prepare(
-      'UPDATE photos SET marker_scale = ? WHERE id = ?'
     ),
 
     batchUpdateMeshRotationX: db.prepare(`
@@ -352,39 +334,6 @@ export function updatePhotoMeshRotationY(photoId, meshRotationY) {
 }
 
 /**
- * Updates the camera height for a photo.
- * @param {string} photoId - Photo UUID
- * @param {number} cameraHeight - Height in meters (0.5-10)
- * @returns {Object} Run result with changes count
- */
-export function updatePhotoCameraHeight(photoId, cameraHeight) {
-  return stmts().updateCameraHeight.run(cameraHeight, photoId);
-}
-
-/**
- * Sets override bearing/distance/height for a target.
- * @param {string} sourceId - Source photo UUID
- * @param {string} targetId - Target photo UUID
- * @param {number|null} overrideBearing - Bearing 0-360 degrees or null
- * @param {number|null} overrideDistance - Ground distance 0.5-500 meters or null
- * @param {number|null} [overrideHeight=null] - Vertical offset in meters or null (0 = ground)
- * @returns {Object} Run result with changes count
- */
-export function updateTargetOverride(sourceId, targetId, overrideBearing, overrideDistance, overrideHeight = null) {
-  return stmts().updateTargetOverride.run(overrideBearing, overrideDistance, overrideHeight, sourceId, targetId);
-}
-
-/**
- * Clears override bearing/distance for a target (sets to NULL).
- * @param {string} sourceId - Source photo UUID
- * @param {string} targetId - Target photo UUID
- * @returns {Object} Run result with changes count
- */
-export function clearTargetOverride(sourceId, targetId) {
-  return stmts().clearTargetOverride.run(sourceId, targetId);
-}
-
-/**
  * Sets the hidden flag for a target.
  * @param {string} sourceId - Source photo UUID
  * @param {string} targetId - Target photo UUID
@@ -483,16 +432,6 @@ export function batchUpdateMeshRotationY(slug, meshRotationY) {
   return stmts().batchUpdateMeshRotationY.run(meshRotationY, slug);
 }
 
-/**
- * Updates camera_height for all photos in a project.
- * @param {string} slug - Project slug
- * @param {number} cameraHeight - Height in meters
- * @returns {Object} Run result with changes count
- */
-export function batchUpdateCameraHeight(slug, cameraHeight) {
-  return stmts().batchUpdateCameraHeight.run(cameraHeight, slug);
-}
-
 // ---- Mesh rotation X/Z, distance scale, and review reset ----
 
 /**
@@ -516,26 +455,6 @@ export function updatePhotoMeshRotationZ(photoId, meshRotationZ) {
 }
 
 /**
- * Updates distance_scale for a photo.
- * @param {string} photoId - Photo UUID
- * @param {number} distanceScale - Scale multiplier (0.1-5.0)
- * @returns {Object} Run result with changes count
- */
-export function updatePhotoDistanceScale(photoId, distanceScale) {
-  return stmts().updateDistanceScale.run(distanceScale, photoId);
-}
-
-/**
- * Updates marker_scale for a photo.
- * @param {string} photoId - Photo UUID
- * @param {number} markerScale - Scale multiplier (0.1-5.0)
- * @returns {Object} Run result with changes count
- */
-export function updatePhotoMarkerScale(photoId, markerScale) {
-  return stmts().updateMarkerScale.run(markerScale, photoId);
-}
-
-/**
  * Updates mesh_rotation_x for all photos in a project.
  * @param {string} slug - Project slug
  * @param {number} meshRotationX - Rotation in degrees
@@ -553,26 +472,6 @@ export function batchUpdateMeshRotationX(slug, meshRotationX) {
  */
 export function batchUpdateMeshRotationZ(slug, meshRotationZ) {
   return stmts().batchUpdateMeshRotationZ.run(meshRotationZ, slug);
-}
-
-/**
- * Updates distance_scale for all photos in a project.
- * @param {string} slug - Project slug
- * @param {number} distanceScale - Scale multiplier
- * @returns {Object} Run result with changes count
- */
-export function batchUpdateDistanceScale(slug, distanceScale) {
-  return stmts().batchUpdateDistanceScale.run(distanceScale, slug);
-}
-
-/**
- * Updates marker_scale for all photos in a project.
- * @param {string} slug - Project slug
- * @param {number} markerScale - Scale multiplier
- * @returns {Object} Run result with changes count
- */
-export function batchUpdateMarkerScale(slug, markerScale) {
-  return stmts().batchUpdateMarkerScale.run(markerScale, slug);
 }
 
 /**

@@ -30,6 +30,8 @@ coverage/
 # dotenv environment variables
 .env
 .env.*
+# ...menos o catalogo sem segredo, que precisa ser versionado
+!.env.example
 
 # macOS
 .DS_Store

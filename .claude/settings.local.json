@@ -18,7 +18,6 @@
       "Bash(tasklist:*)",
       "Bash(npm run lint:*)",
       "Bash(node scripts/generate-pmtiles.js:*)",
-      "Bash(node scripts/recalculate-targets.js:*)",
       "Bash(docker-compose exec:*)",
       "Bash(git stash:*)",
       "Bash(node --test:*)",

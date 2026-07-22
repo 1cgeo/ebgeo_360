@@ -149,164 +149,134 @@ export class StreetViewProjector {
         return out;
     }
 
-    /**
-     * Converts screen coordinates to a point on the ground plane
-     * @param {number} screenX - Screen X coordinate
-     * @param {number} screenY - Screen Y coordinate
-     * @param {number} yaw - Camera yaw rotation in radians
-     * @param {number} pitch - Camera pitch rotation in radians
-     * @param {number} fov - Camera field of view in degrees
-     * @returns {{x: number, z: number}|null} Ground position in meters, or null if not hitting ground
+        /**
+     * How much a target shrinks for being the Nth in its direction.
+     * A constant fraction per rank, so the decay is relative: the second icon is
+     * always the same fraction of the first, whether the corridor is 3 m or 300.
+     *
+     * @param {number} rank - 0 for the first target in a direction
+     * @returns {number} Multiplier in (0, 1]
      */
-    screenToGround(screenX, screenY, yaw, pitch, fov) {
-        const cameraHeight = this.cameraConfig?.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
-
-        // Convert screen to normalized device coordinates
-        const ndcX = (screenX / this.canvasWidth) * 2 - 1;
-        const ndcY = 1 - (screenY / this.canvasHeight) * 2;
-
-        // Calculate ray direction in camera space (looking at -Z)
-        const fovRad = (fov * Math.PI) / 180;
-        const aspectRatio = this.canvasWidth / this.canvasHeight;
-        const tanHalfFov = Math.tan(fovRad / 2);
-
-        let rayX = ndcX * tanHalfFov * aspectRatio;
-        let rayY = ndcY * tanHalfFov;
-        let rayZ = -1;
-
-        // Apply inverse pitch rotation
-        const cosPitch = Math.cos(pitch);
-        const sinPitch = Math.sin(pitch);
-        const tempY = rayY * cosPitch - rayZ * sinPitch;
-        const tempZ1 = rayY * sinPitch + rayZ * cosPitch;
-        rayY = tempY;
-        rayZ = tempZ1;
-
-        // Apply inverse yaw rotation
-        const cosYaw = Math.cos(yaw);
-        const sinYaw = Math.sin(yaw);
-        const tempX = rayX * cosYaw + rayZ * sinYaw;
-        const tempZ2 = -rayX * sinYaw + rayZ * cosYaw;
-        rayX = tempX;
-        rayZ = tempZ2;
-
-        // Check if ray points upward (won't hit ground)
-        if (rayY >= 0) {
-            return null;
-        }
-
-        // Calculate intersection with ground plane (y = -cameraHeight)
-        const t = -cameraHeight / rayY;
-
-        if (t < 0) {
-            return null;
-        }
-
-        return {
-            x: rayX * t,
-            z: rayZ * t,
-        };
+    rankRatio(rank) {
+        return Math.pow(NAV_CONSTANTS.HORIZON_RANK_DECAY, Math.max(0, rank));
     }
 
     /**
-     * Converts screen coordinates to spherical coordinates (heading/pitch)
-     * @param {number} screenX - Screen X coordinate
-     * @param {number} screenY - Screen Y coordinate
-     * @param {number} yaw - Camera yaw rotation in radians
-     * @param {number} pitch - Camera pitch rotation in radians
-     * @param {number} fov - Camera field of view in degrees
-     * @returns {{heading: number, pitch: number, distance: number}}
+     * The rank actually used for size and height: the position in the queue of a
+     * direction, nudged by where the target sits in the distance ORDER of the
+     * whole photo.
+     *
+     * Fractional on purpose. The queue position alone would draw a lone target
+     * 80 m away exactly like a lone target 3 m away, and the operator would lose
+     * every cue of depth. The nudge is bounded by HORIZON_DISTANCE_RANK_WEIGHT,
+     * so the farthest target of the photo is at most that fraction of one rank
+     * smaller and higher than its queue position asks for.
+     *
+     * @param {number} queueRank - Position along the direction, 0 = first
+     * @param {number} distanceRatio - Place in the photo's distance order, 0 = nearest, 1 = farthest
+     * @returns {number} Effective rank, possibly fractional
      */
-    screenToSpherical(screenX, screenY, yaw, pitch, fov) {
-        // Convert screen to normalized device coordinates
-        const ndcX = (screenX / this.canvasWidth) * 2 - 1;
-        const ndcY = 1 - (screenY / this.canvasHeight) * 2;
-
-        // Calculate ray direction in camera space
-        const fovRad = (fov * Math.PI) / 180;
-        const aspectRatio = this.canvasWidth / this.canvasHeight;
-        const tanHalfFov = Math.tan(fovRad / 2);
-
-        let rayX = ndcX * tanHalfFov * aspectRatio;
-        let rayY = ndcY * tanHalfFov;
-        let rayZ = -1;
-
-        // Normalize ray
-        const length = Math.sqrt(rayX * rayX + rayY * rayY + rayZ * rayZ);
-        rayX /= length;
-        rayY /= length;
-        rayZ /= length;
-
-        // Apply inverse pitch rotation
-        const cosPitch = Math.cos(pitch);
-        const sinPitch = Math.sin(pitch);
-        const tempY = rayY * cosPitch - rayZ * sinPitch;
-        const tempZ1 = rayY * sinPitch + rayZ * cosPitch;
-        rayY = tempY;
-        rayZ = tempZ1;
-
-        // Apply inverse yaw rotation
-        const cosYaw = Math.cos(yaw);
-        const sinYaw = Math.sin(yaw);
-        const tempX = rayX * cosYaw + rayZ * sinYaw;
-        const tempZ2 = -rayX * sinYaw + rayZ * cosYaw;
-        rayX = tempX;
-        rayZ = tempZ2;
-
-        // Convert to spherical coordinates
-        const heading = Math.atan2(rayX, -rayZ);
-        const rayPitch = Math.asin(rayY);
-
-        // Convert heading to degrees (0-360)
-        let headingDegrees = (heading * 180) / Math.PI;
-        if (headingDegrees < 0) {
-            headingDegrees += 360;
-        }
-
-        return {
-            heading: headingDegrees,
-            pitch: rayPitch,
-            distance: 5,
-        };
+    effectiveRank(queueRank, distanceRatio) {
+        return queueRank
+            + NAV_CONSTANTS.HORIZON_DISTANCE_RANK_WEIGHT * Math.min(1, Math.max(0, distanceRatio));
     }
 
     /**
-     * Calculates the flattening ratio for elliptical markers based on camera height and distance.
-     * Uses perspective-correct formula: flattenRatio = verticalDrop / sqrt(verticalDrop^2 + d^2)
-     * where verticalDrop = cameraHeight - heightOffset.
-     * @param {number} horizontalDistance - Distance from camera in meters
+     * Projects the point on the CAMERA HORIZON that lies at a given bearing.
+     *
+     * This is the only geometry the marker needs from the world: a direction.
+     * Distance never reaches the screen; it only decides the order along the
+     * direction, and the layout above the horizon is computed from the icons'
+     * own sizes. Camera height, terrain, distance_scale and the old per-target
+     * overrides are not merely unused, they are gone.
+     *
+     * The horizon here is the CORRECTED one: the sphere is levelled by
+     * mesh_rotation_x/z before anything is drawn, so the camera's horizontal
+     * plane is the image's true horizon.
+     *
+     * @param {number} bearingDeg - World bearing of the target (0 = North, 90 = East)
+     * @param {number} yaw - Camera yaw in radians
      * @param {number} pitch - Camera pitch in radians
-     * @param {number} [heightOffset=0] - Height offset from ground plane (e.g. override_height)
-     * @returns {number} Flatten ratio (0-1), where lower values are flatter
+     * @param {number} fov - Camera vertical FOV in degrees
+     * @returns {{screenX: number, screenY: number, visible: boolean, azimuthRelDeg: number}}
      */
-    calculateFlattenRatio(horizontalDistance, pitch, heightOffset = 0) {
-        const cameraHeight = this.cameraConfig?.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
+    projectOnHorizon(bearingDeg, yaw, pitch, fov, elevationDeg = 0) {
+        // A point at an arbitrary radius: only the angles matter, the
+        // perspective divide cancels the radius out.
+        const R = 10;
+        const bearingRad = (bearingDeg * Math.PI) / 180;
+        // metersToScreen returns a REUSED object here, so read it immediately.
+        const projected = this.metersToScreen(
+            Math.sin(bearingRad) * R,
+            R * Math.tan((elevationDeg * Math.PI) / 180),
+            -Math.cos(bearingRad) * R,
+            yaw, pitch, fov
+        );
 
-        const h = cameraHeight - heightOffset;
-        const d = Math.max(0.1, horizontalDistance);
-        const baseFlatten = Math.abs(h) / Math.sqrt(h * h + d * d);
+        const yawDeg = -(yaw * 180) / Math.PI;
+        const azimuthRelDeg = ((bearingDeg - yawDeg + 540) % 360) - 180;
 
-        // Pitch correction: looking straight down -> markers appear circular
-        const pitchFactor = Math.abs(Math.cos(pitch));
-        const flattenRatio = 1 - pitchFactor * (1 - baseFlatten);
-
-        return Math.max(0.15, Math.min(0.9, flattenRatio));
+        return {
+            screenX: projected.screenX,
+            screenY: projected.screenY,
+            visible: projected.visible,
+            azimuthRelDeg
+        };
     }
 
     /**
-     * Checks if a screen position is within the camera's field of view
-     * @param {number} screenX - Screen X coordinate
-     * @param {number} screenY - Screen Y coordinate
-     * @param {number} margin - Additional margin in pixels
-     * @returns {boolean} True if within FOV
+     * Marker radius in pixels: a fixed angular size for the first target in a
+     * direction, shrinking by a constant fraction for each one behind it.
+     *
+     * Kept angular rather than in pixels so zooming into the photograph grows
+     * the icons along with the scene.
+     *
+     * @param {number} rank - Position in the queue along this direction, 0 = first
+     * @param {number} fov - Camera vertical FOV in degrees
+     * @returns {number} Radius in pixels
      */
-    isInFOV(screenX, screenY, margin = 0) {
-        return (
-            screenX >= -margin &&
-            screenX <= this.canvasWidth + margin &&
-            screenY >= -margin &&
-            screenY <= this.canvasHeight + margin
-        );
+    angularMarkerRadius(rank, fov) {
+        const radius = this.focalLength(fov)
+            * Math.tan((this.angularRadiusDeg(rank) * Math.PI) / 180);
+
+        const max = this.canvasHeight * NAV_CONSTANTS.HORIZON_MAX_SIZE_REL;
+        return Math.min(max, radius);
+    }
+
+    /**
+     * Angular radius of the icon at a given rank, in degrees.
+     *
+     * NOT floored: flooring it would break the guarantee that every centre falls
+     * outside the disc in front, because the gap keeps shrinking while a floored
+     * radius would not. A queue ends by not being drawn (see angularRadiusDeg
+     * against HORIZON_MIN_ANGULAR_DRAW), never by being clamped.
+     *
+     * @param {number} rank - 0 for the first target in a direction
+     * @returns {number} Angular radius in degrees
+     */
+    angularRadiusDeg(rank) {
+        return NAV_CONSTANTS.HORIZON_ANGULAR_NEAR * this.rankRatio(rank);
+    }
+
+    /**
+     * Height of the icon at a given rank, in degrees above the corrected horizon.
+     * Negative means below it, which is where the first icon of a queue sits.
+     *
+     * Approaches HORIZON_CEILING_ELEVATION_DEG asymptotically, so no queue, of
+     * any length, ever climbs past the ceiling.
+     *
+     * @param {number} rank - 0 for the first target in a direction
+     * @returns {number} Elevation in degrees (positive = above the horizon)
+     */
+    elevationDeg(rank) {
+        const base = NAV_CONSTANTS.HORIZON_BASE_DEPRESSION_DEG;
+        const ceiling = NAV_CONSTANTS.HORIZON_CEILING_ELEVATION_DEG;
+        const band = base + ceiling;
+
+        // O teto e limite, nao aproximacao: sem este clamp o arredondamento de
+        // ponto flutuante deixa a fila profunda alguns milionesimos de grau
+        // acima dele.
+        return Math.min(ceiling, -base + band * (1 - this.rankRatio(rank)));
     }
 
     /**
@@ -319,23 +289,4 @@ export class StreetViewProjector {
         return (this.canvasHeight / 2) / Math.tan(fovRad / 2);
     }
 
-    /**
-     * Calculates marker size based on physical world radius, distance, and FOV.
-     * Uses physically-based perspective projection matching EBGeo.
-     * @param {number} worldRadius - Physical radius in meters
-     * @param {number} horizontalDistance - Distance from camera in meters
-     * @param {number} fov - Camera FOV in degrees
-     * @param {number} [heightOffset=0] - Height offset from ground plane (e.g. override_height)
-     * @returns {number} Marker radius in pixels
-     */
-    calculateMarkerSize(worldRadius, horizontalDistance, fov, heightOffset = 0) {
-        const cameraHeight = this.cameraConfig?.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
-        const markerScale = this.cameraConfig?.marker_scale ?? 1.0;
-        const verticalDrop = cameraHeight - heightOffset;
-        const slant = Math.sqrt(horizontalDistance * horizontalDistance + verticalDrop * verticalDrop);
-        const d = Math.max(0.5, slant);
-        const f = this.focalLength(fov);
-        const size = (worldRadius * markerScale) * f / d;
-        return Math.max(NAV_CONSTANTS.MARKER_MIN_SIZE, Math.min(NAV_CONSTANTS.MARKER_MAX_SIZE, size));
-    }
 }

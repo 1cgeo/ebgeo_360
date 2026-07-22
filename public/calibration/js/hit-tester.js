@@ -30,98 +30,65 @@ export class StreetViewHitTester {
     }
 
     /**
-     * Tests if a point hits any marker
+     * Tests if a point hits any marker, and returns the BEST match rather than
+     * the first one found.
+     *
+     * "First that contains the point, nearest first" looks reasonable and is
+     * wrong: the click areas are deliberately larger than the drawings, so a
+     * near icon's area swallows the centre of the one behind it and that target
+     * becomes unreachable. Measured on the museum's first photo, the second icon
+     * of the queue sat 46 px from the first, whose click radius is 49.5 px.
+     *
+     * Comparing distance normalised by each marker's own radius makes every icon
+     * own its neighbourhood: on its own centre it always wins.
+     *
      * @param {number} screenX - Screen X coordinate
      * @param {number} screenY - Screen Y coordinate
      * @returns {Object|null} The hit marker or null
      */
     testPoint(screenX, screenY) {
-        for (const marker of this.markers) {
-            if (this.isPointInMarker(screenX, screenY, marker)) {
-                return marker;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Finds the closest marker to a point within a maximum distance
-     * @param {number} screenX - Screen X coordinate
-     * @param {number} screenY - Screen Y coordinate
-     * @param {number} maxDistance - Maximum distance in pixels
-     * @returns {Object|null} The closest marker or null
-     */
-    findClosest(screenX, screenY, maxDistance) {
-        let closestMarker = null;
-        let closestDistance = maxDistance;
+        let best = null;
+        let bestScore = Infinity;
 
         for (const marker of this.markers) {
-            const distance = this.getDistanceToMarker(screenX, screenY, marker);
-            if (distance < closestDistance) {
-                closestDistance = distance;
-                closestMarker = marker;
+            if (!this.isPointInMarker(screenX, screenY, marker)) continue;
+
+            const hitRadius = marker.hitRadius
+                ?? (marker.radius * NAV_CONSTANTS.HIT_RADIUS_MULTIPLIER);
+            const dx = screenX - marker.screenX;
+            const dy = screenY - marker.screenY;
+            const score = Math.hypot(dx, dy) / Math.max(1e-6, hitRadius);
+
+            if (score < bestScore) {
+                bestScore = score;
+                best = marker;
             }
         }
 
-        return closestMarker;
+        return best;
     }
 
-    /**
-     * Checks if a point is inside a marker's hit area.
-     * Uses elliptical hit testing matching EBGeo (accounts for perspective flattening).
+        /**
+     * Checks if a point is inside a marker.
+     *
+     * A plain circle: the flattened ellipse belonged to the ground model, where
+     * markers pretended to be discs lying on the floor.
+     *
      * @param {number} screenX - Screen X coordinate
      * @param {number} screenY - Screen Y coordinate
      * @param {Object} marker - Marker object
      * @returns {boolean} True if point is inside
      */
     isPointInMarker(screenX, screenY, marker) {
-        const { screenX: mx, screenY: my, radius, flattenY } = marker;
+        const { screenX: mx, screenY: my, radius } = marker;
 
-        const hitRadius = radius * NAV_CONSTANTS.HIT_RADIUS_MULTIPLIER;
+        // O navigator calcula hitRadius quando conhece o tamanho do canvas, que
+        // e o que permite o piso relativo; sem ele, cai no multiplicador puro.
+        const hitRadius = marker.hitRadius ?? (radius * NAV_CONSTANTS.HIT_RADIUS_MULTIPLIER);
         const dx = screenX - mx;
         const dy = screenY - my;
 
-        // Elliptical hit test: (dx/rx)^2 + (dy/ry)^2 <= 1
-        // rx = hitRadius, ry = hitRadius * flattenY
-        const fy = flattenY || 1;
-        const normX = dx / hitRadius;
-        const normY = dy / (hitRadius * fy);
-
-        return (normX * normX + normY * normY) <= 1;
+        return (dx * dx + dy * dy) <= hitRadius * hitRadius;
     }
 
-    /**
-     * Gets the distance from a point to a marker's center
-     * @param {number} screenX - Screen X coordinate
-     * @param {number} screenY - Screen Y coordinate
-     * @param {Object} marker - Marker object
-     * @returns {number} Distance in pixels
-     */
-    getDistanceToMarker(screenX, screenY, marker) {
-        const dx = screenX - marker.screenX;
-        const dy = screenY - marker.screenY;
-        return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    /**
-     * Gets all markers within a certain distance from a point
-     * @param {number} screenX - Screen X coordinate
-     * @param {number} screenY - Screen Y coordinate
-     * @param {number} maxDistance - Maximum distance in pixels
-     * @returns {Array} Array of markers within distance
-     */
-    getMarkersNear(screenX, screenY, maxDistance) {
-        return this.markers.filter(marker => {
-            const distance = this.getDistanceToMarker(screenX, screenY, marker);
-            return distance <= maxDistance;
-        });
-    }
-
-    /**
-     * Gets all markers that are currently visible
-     * @returns {Array} Array of visible markers
-     */
-    getVisibleMarkers() {
-        return this.markers.filter(marker => marker.visible !== false);
-    }
-}
+            }

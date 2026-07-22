@@ -12,7 +12,7 @@ let dataDir;
 // Query functions are imported dynamically after env setup
 let getAllProjects, getProjectBySlug, getProjectByPhotoId, getProjectCount;
 let getPhotoById, getPhotoByOriginalName, getTargetsBySourceId, getImageBlob;
-let updatePhotoMeshRotationY, updateTargetOverride, clearTargetOverride;
+let updatePhotoMeshRotationY;
 let getTargetByPair, getNearbyPhotos;
 
 before(async () => {
@@ -29,8 +29,6 @@ before(async () => {
   getTargetsBySourceId = queries.getTargetsBySourceId;
   getImageBlob = queries.getImageBlob;
   updatePhotoMeshRotationY = queries.updatePhotoMeshRotationY;
-  updateTargetOverride = queries.updateTargetOverride;
-  clearTargetOverride = queries.clearTargetOverride;
   getProjectCount = queries.getProjectCount;
   getTargetByPair = queries.getTargetByPair;
   getNearbyPhotos = queries.getNearbyPhotos;
@@ -274,56 +272,5 @@ describe('updatePhotoMeshRotationY', () => {
 });
 
 // ============================================================================
-// updateTargetOverride
 // ============================================================================
 
-describe('updateTargetOverride', () => {
-  it('updates override fields and returns changes: 1', () => {
-    const result = updateTargetOverride(SEEDS.PHOTO_1_ID, SEEDS.PHOTO_2_ID, 100.0, 8.0);
-    assert.equal(result.changes, 1);
-
-    const targets = getTargetsBySourceId(SEEDS.PHOTO_1_ID);
-    assert.equal(targets[0].override_bearing, 100.0);
-    assert.equal(targets[0].override_distance, 8.0);
-  });
-
-  it('accepts null values to clear overrides', () => {
-    const result = updateTargetOverride(SEEDS.PHOTO_1_ID, SEEDS.PHOTO_2_ID, null, null);
-    assert.equal(result.changes, 1);
-
-    const targets = getTargetsBySourceId(SEEDS.PHOTO_1_ID);
-    assert.equal(targets[0].override_bearing, null);
-    assert.equal(targets[0].override_distance, null);
-  });
-
-  it('returns changes: 0 for non-existent target pair', () => {
-    const result = updateTargetOverride('00000000-0000-0000-0000-000000000000', SEEDS.PHOTO_2_ID, 0, 0);
-    assert.equal(result.changes, 0);
-  });
-});
-
-// ============================================================================
-// clearTargetOverride
-// ============================================================================
-
-describe('clearTargetOverride', () => {
-  it('sets override fields to NULL', () => {
-    // Re-set override first (previous tests may have cleared it)
-    updateTargetOverride(SEEDS.PHOTO_1_ID, SEEDS.PHOTO_2_ID, 50.0, 10.0);
-    let targets = getTargetsBySourceId(SEEDS.PHOTO_1_ID);
-    assert.ok(targets[0].override_bearing !== null);
-
-    const result = clearTargetOverride(SEEDS.PHOTO_1_ID, SEEDS.PHOTO_2_ID);
-    assert.equal(result.changes, 1);
-
-    // Verify cleared
-    targets = getTargetsBySourceId(SEEDS.PHOTO_1_ID);
-    assert.equal(targets[0].override_bearing, null);
-    assert.equal(targets[0].override_distance, null);
-  });
-
-  it('returns changes: 0 for non-existent target pair', () => {
-    const result = clearTargetOverride('00000000-0000-0000-0000-000000000000', SEEDS.PHOTO_2_ID);
-    assert.equal(result.changes, 0);
-  });
-});

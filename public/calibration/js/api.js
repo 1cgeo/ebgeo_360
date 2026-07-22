@@ -116,72 +116,6 @@ export async function saveCalibration(photoId, meshRotationY) {
 }
 
 /**
- * Saves the camera_height calibration value for a photo.
- * @param {string} photoId - Photo UUID
- * @param {number} cameraHeight - New camera height in meters
- * @returns {Promise<Object>} Server response
- */
-export async function saveCameraHeight(photoId, cameraHeight) {
-    const response = await fetch(`${BASE}/photos/${photoId}/height`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ camera_height: cameraHeight }),
-    });
-    if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(`Failed to save camera height for ${photoId} (HTTP ${response.status}): ${text}`);
-    }
-    return response.json();
-}
-
-/**
- * Saves a target bearing/distance/height override.
- * @param {string} sourceId - Source photo UUID
- * @param {string} targetId - Target photo UUID
- * @param {number} bearing - Override bearing in degrees (0-360)
- * @param {number} distance - Override ground distance in meters (0.5-500)
- * @param {number} [height=0] - Vertical offset in meters (-10 to +10)
- * @returns {Promise<Object>} Server response
- */
-export async function saveTargetOverride(sourceId, targetId, bearing, distance, height = 0) {
-    const response = await fetch(`${BASE}/targets/${sourceId}/${targetId}/override`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            override_bearing: bearing,
-            override_distance: distance,
-            override_height: height || null,
-        }),
-    });
-    if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(
-            `Failed to save target override ${sourceId} -> ${targetId} (HTTP ${response.status}): ${text}`
-        );
-    }
-    return response.json();
-}
-
-/**
- * Clears a target bearing/distance override.
- * @param {string} sourceId - Source photo UUID
- * @param {string} targetId - Target photo UUID
- * @returns {Promise<Object>} Server response
- */
-export async function clearTargetOverride(sourceId, targetId) {
-    const response = await fetch(`${BASE}/targets/${sourceId}/${targetId}/override`, {
-        method: 'DELETE',
-    });
-    if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(
-            `Failed to clear target override ${sourceId} -> ${targetId} (HTTP ${response.status}): ${text}`
-        );
-    }
-    return response.json();
-}
-
-/**
  * Marks a photo as reviewed or unreviewed.
  * @param {string} photoId - Photo UUID
  * @param {boolean} reviewed - Whether the photo is reviewed
@@ -256,44 +190,6 @@ export async function saveMeshRotationZ(photoId, meshRotationZ) {
     if (!response.ok) {
         const text = await response.text().catch(() => '');
         throw new Error(`Failed to save mesh_rotation_z for ${photoId} (HTTP ${response.status}): ${text}`);
-    }
-    return response.json();
-}
-
-/**
- * Saves the distance_scale calibration value for a photo.
- * @param {string} photoId - Photo UUID
- * @param {number} distanceScale - New distance scale multiplier
- * @returns {Promise<Object>} Server response
- */
-export async function saveDistanceScale(photoId, distanceScale) {
-    const response = await fetch(`${BASE}/photos/${photoId}/distance-scale`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ distance_scale: distanceScale }),
-    });
-    if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(`Failed to save distance_scale for ${photoId} (HTTP ${response.status}): ${text}`);
-    }
-    return response.json();
-}
-
-/**
- * Saves the marker_scale calibration value for a photo.
- * @param {string} photoId - Photo UUID
- * @param {number} markerScale - New marker scale multiplier
- * @returns {Promise<Object>} Server response
- */
-export async function saveMarkerScale(photoId, markerScale) {
-    const response = await fetch(`${BASE}/photos/${photoId}/marker-scale`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ marker_scale: markerScale }),
-    });
-    if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(`Failed to save marker_scale for ${photoId} (HTTP ${response.status}): ${text}`);
     }
     return response.json();
 }

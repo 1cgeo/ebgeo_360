@@ -11,7 +11,6 @@
 // ============================================================================
 
 let map = null;
-let containerEl = null;
 let cameraMarkerEl = null;
 let targetMarkersLayer = false;
 
@@ -38,10 +37,9 @@ let lastCameraLngLat = null;
  * @param {Function} [options.onTargetClick] - Called when a target marker is clicked
  */
 export function initMinimap(container, options = {}) {
-    containerEl = container;
     onTargetClickCallback = options.onTargetClick || null;
+    onTargetHoverCallback = options.onTargetHover || null;
 
-    // eslint-disable-next-line no-undef
     map = new maplibregl.Map({
         container,
         style: {
@@ -72,6 +70,15 @@ export function initMinimap(container, options = {}) {
         setupNearbyLayer();
     });
 
+    // Sair do minimapa inteiro limpa o realce. O mouseleave da CAMADA nao basta:
+    // saindo rapido pela borda do mapa ele nem sempre dispara, e a esfera ficava
+    // acesa no 360 sem nada apontando para ela.
+    map.getCanvas().addEventListener('mouseleave', () => {
+        if (hoveredTargetId === null) return;
+        setHoveredTarget(null);
+        onTargetHoverCallback?.(null);
+    });
+
     // Camera marker (custom HTML element)
     cameraMarkerEl = createCameraMarkerEl();
 }
@@ -82,6 +89,35 @@ export function initMinimap(container, options = {}) {
 
 let cameraMapMarker = null;
 
+// Alvo sob o mouse, seja no minimapa ou no visualizador 360.
+let hoveredTargetId = null;
+let onTargetHoverCallback = null;
+
+/**
+ * Realca no minimapa o alvo que esta sob o mouse.
+ *
+ * Chamado dos dois lados: pelo proprio minimapa quando o mouse passa sobre um
+ * ponto, e pelo visualizador 360 quando o mouse passa sobre um marcador. E o
+ * que amarra as duas telas: o operador ve na planta onde fica o alvo que esta
+ * mirando na foto, e vice-versa.
+ *
+ * @param {string|null} id - Id do alvo, ou null para limpar
+ */
+export function setHoveredTarget(id) {
+    if (!map || !map.getSource('targets')) {
+        hoveredTargetId = id;
+        return;
+    }
+
+    if (hoveredTargetId !== null && hoveredTargetId !== id) {
+        map.setFeatureState({ source: 'targets', id: hoveredTargetId }, { hovered: false });
+    }
+    if (id !== null) {
+        map.setFeatureState({ source: 'targets', id }, { hovered: true });
+    }
+    hoveredTargetId = id;
+}
+
 function createCameraMarkerEl() {
     const el = document.createElement('div');
     el.className = 'minimap-camera-marker';
@@ -90,6 +126,48 @@ function createCameraMarkerEl() {
         <div class="minimap-camera-marker__cone"></div>
     `;
     return el;
+}
+
+/**
+ * Correcao de sentido do cone de visada, em graus.
+ *
+ * Zero porque a geometria agora e inequivoca: o vertice do cone fica no ponto e
+ * ele abre na direcao do olhar, entao `rotate(rumo)` aponta o feixe para o rumo.
+ * O 180 que existiu aqui compensava um cone desenhado ao contrario.
+ *
+ * Confere com o acervo: a sequencia do museu sobe para o norte (a foto 1 e a
+ * mais ao sul e os alvos tem rumo ~340), logo o feixe tem que apontar para cima
+ * no minimapa quando se olha para os marcadores.
+ */
+const CONE_HEADING_OFFSET = 0;
+
+/**
+ * Aponta o cone do minimapa para onde o operador esta olhando AGORA.
+ *
+ * Separado de updateCamera de proposito: updateCamera reposiciona e recentra o
+ * mapa, e roda uma vez por foto. Isto roda a cada frame e so gira o cone, que
+ * antes ficava congelado no rumo gravado da foto.
+ *
+ * @param {number} headingOffsetDeg - Rotacao do visualizador em graus (lon)
+ * @param {number} [fovDeg] - Campo de visao atual, para abrir ou fechar o cone
+ */
+export function setViewDirection(headingOffsetDeg, fovDeg) {
+    if (!cameraMarkerEl) return;
+    const cone = cameraMarkerEl.querySelector('.minimap-camera-marker__cone');
+    if (!cone) return;
+
+    const total = (currentCamera?.heading ?? 0) + headingOffsetDeg + CONE_HEADING_OFFSET;
+    // O translate faz parte do posicionamento: escrever so o rotate apaga a
+    // centralizacao e o cone salta para o lado.
+    cone.style.transform = `translate(-50%, -100%) rotate(${total}deg)`;
+
+    // A largura do cone acompanha o zoom: fechar o campo de visao estreita o
+    // cone, o que mostra de relance o quanto esta sendo enquadrado.
+    if (typeof fovDeg === 'number' && Number.isFinite(fovDeg)) {
+        const half = Math.max(6, 30 * Math.tan(((fovDeg * Math.PI) / 180) / 2));
+        cone.style.borderLeftWidth = `${half}px`;
+        cone.style.borderRightWidth = `${half}px`;
+    }
 }
 
 /**
@@ -104,7 +182,6 @@ export function updateCamera(camera, headingOffset = 0) {
 
     // Update or create camera marker
     if (!cameraMapMarker) {
-        // eslint-disable-next-line no-undef
         cameraMapMarker = new maplibregl.Marker({
             element: cameraMarkerEl,
             anchor: 'center',
@@ -116,10 +193,11 @@ export function updateCamera(camera, headingOffset = 0) {
     }
 
     // Rotate the marker to show heading direction
-    const totalHeading = (camera.heading ?? 0) + headingOffset;
+    // Mesma convencao de setViewDirection (ver CONE_HEADING_OFFSET).
+    const totalHeading = (camera.heading ?? 0) + headingOffset + CONE_HEADING_OFFSET;
     const cone = cameraMarkerEl.querySelector('.minimap-camera-marker__cone');
     if (cone) {
-        cone.style.transform = `rotate(${totalHeading}deg)`;
+        cone.style.transform = `translate(-50%, -100%) rotate(${totalHeading}deg)`;
     }
 
     // Recentrar o mapa apenas quando a posicao realmente muda.
@@ -166,19 +244,26 @@ function setupTargetLayer() {
         paint: {
             'circle-radius': [
                 'case',
+                ['==', ['feature-state', 'hovered'], true], 10,
                 ['==', ['feature-state', 'selected'], true], 8,
                 ['==', ['get', 'hasOverride'], true], 6,
                 5,
             ],
             'circle-color': [
                 'case',
+                ['==', ['feature-state', 'hovered'], true], '#a6e3a1',
                 ['==', ['feature-state', 'selected'], true], '#fab387',
                 ['==', ['get', 'hasOverride'], true], '#89b4fa',
                 '#cdd6f4',
             ],
-            'circle-stroke-width': 2,
+            'circle-stroke-width': [
+                'case',
+                ['==', ['feature-state', 'hovered'], true], 3,
+                2,
+            ],
             'circle-stroke-color': [
                 'case',
+                ['==', ['feature-state', 'hovered'], true], '#ffffff',
                 ['==', ['feature-state', 'selected'], true], '#fab387',
                 '#45475a',
             ],
@@ -192,12 +277,22 @@ function setupTargetLayer() {
         }
     });
 
-    // Hover cursor for targets
-    map.on('mouseenter', 'targets-circle', () => {
+    // Hover: muda o cursor E avisa o visualizador 360, para que o mesmo alvo
+    // acenda nos dois lugares. O vinculo vale nos dois sentidos.
+    map.on('mousemove', 'targets-circle', (e) => {
         if (map) map.getCanvas().style.cursor = 'pointer';
+        const id = e.features?.[0]?.properties?.id ?? null;
+        if (id !== hoveredTargetId) {
+            setHoveredTarget(id);
+            onTargetHoverCallback?.(id);
+        }
     });
     map.on('mouseleave', 'targets-circle', () => {
         if (map) map.getCanvas().style.cursor = '';
+        if (hoveredTargetId !== null) {
+            setHoveredTarget(null);
+            onTargetHoverCallback?.(null);
+        }
     });
 
     targetMarkersLayer = true;
@@ -285,6 +380,7 @@ function setupNearbyLayer() {
 
     map.addSource('nearby-photos', {
         type: 'geojson',
+        promoteId: 'id',
         data: { type: 'FeatureCollection', features: [] },
     });
 
@@ -293,6 +389,9 @@ function setupNearbyLayer() {
         type: 'circle',
         source: 'nearby-photos',
         paint: {
+            // Sem realce de mouse: estas sao as fotos NAO conectadas, que nao
+            // sao destino de navegacao. Dar a elas o mesmo efeito dos alvos
+            // sugeria que dava para ir ate la, o que nao e verdade.
             'circle-radius': 4,
             'circle-color': '#6c7086',
             'circle-stroke-width': 1,
@@ -356,7 +455,6 @@ export function disposeMinimap() {
         map.remove();
         map = null;
     }
-    containerEl = null;
     targetMarkersLayer = false;
     nearbyLayerReady = false;
     // Reseta estado de selecao/posicao para um re-init limpo.

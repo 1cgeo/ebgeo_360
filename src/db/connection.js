@@ -63,8 +63,11 @@ export function getIndexDb() {
     if (targetCols.some(c => c.name === 'override_heading') && !targetCols.some(c => c.name === 'override_bearing')) {
       indexDb.exec('ALTER TABLE targets RENAME COLUMN override_heading TO override_bearing');
       indexDb.exec('ALTER TABLE targets RENAME COLUMN override_pitch TO override_distance');
-      // Fix old override_pitch=0 values (angle 0°) → valid distance default (5m)
-      indexDb.exec('UPDATE targets SET override_distance = 5 WHERE override_distance IS NOT NULL AND override_distance < 0.5');
+      // O UPDATE que reescrevia override_distance < 0.5 para 5 saiu daqui.
+      // Ele existia para consertar um valor que alimentava o desenho; hoje o
+      // override e inerte e serve como REGISTRO de quais fotos estao mal
+      // posicionadas, entao reescreve-lo a cada partida adulterava a unica
+      // coisa que esses campos ainda valem.
     }
 
     // Migrate: add hidden column to targets table

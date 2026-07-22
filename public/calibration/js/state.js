@@ -281,16 +281,6 @@ export function setMeshRotationY(value, silent = false) {
 }
 
 /**
- * Updates the edited camera_height value.
- * @param {number} value - New height value in meters
- * @param {boolean} [silent=false] - If true, skip notifying listeners (for live slider dragging)
- */
-export function setCameraHeight(value, silent = false) {
-    state.editedCameraHeight = value;
-    if (!silent) notify();
-}
-
-/**
  * Updates the edited mesh_rotation_x value.
  * @param {number} value - New rotation value in degrees
  * @param {boolean} [silent=false] - If true, skip notifying listeners
@@ -307,39 +297,6 @@ export function setMeshRotationX(value, silent = false) {
  */
 export function setMeshRotationZ(value, silent = false) {
     state.editedMeshRotationZ = value;
-    if (!silent) notify();
-}
-
-/**
- * Updates the edited distance_scale value.
- * @param {number} value - New distance scale multiplier
- * @param {boolean} [silent=false] - If true, skip notifying listeners
- */
-export function setDistanceScale(value, silent = false) {
-    state.editedDistanceScale = value;
-    if (!silent) notify();
-}
-
-/**
- * Updates the edited marker_scale value.
- * @param {number} value - New marker scale multiplier
- * @param {boolean} [silent=false] - If true, skip notifying listeners
- */
-export function setMarkerScale(value, silent = false) {
-    state.editedMarkerScale = value;
-    if (!silent) notify();
-}
-
-/**
- * Sets a target override (bearing/distance/height).
- * @param {string} targetId - Target photo UUID
- * @param {number} bearing - Override bearing in degrees (0-360)
- * @param {number} distance - Override ground distance in meters (0.5-500)
- * @param {number} [height=0] - Vertical offset in meters (-10 to +10)
- * @param {boolean} [silent=false] - If true, skip notifying listeners (for live slider dragging)
- */
-export function setTargetOverride(targetId, bearing, distance, height = 0, silent = false) {
-    state.editedTargetOverrides.set(targetId, { bearing, distance, height });
     if (!silent) notify();
 }
 
@@ -372,23 +329,6 @@ export function isTargetHidden(targetId) {
  */
 export function setNearbyPhotos(photos) {
     state.nearbyPhotos = photos;
-    notify();
-}
-
-/**
- * Clears the edited override for a target (reverts to original or removes).
- * @param {string} targetId - Target photo UUID
- */
-export function clearTargetOverrideEdit(targetId) {
-    // If there was an original override, revert to it
-    const original = state.originalTargetOverrides.get(targetId);
-    if (original) {
-        // Mark as "cleared" by setting bearing/distance/height to null
-        state.editedTargetOverrides.set(targetId, { bearing: null, distance: null, height: null });
-    } else {
-        // No original override, just remove the edit
-        state.editedTargetOverrides.delete(targetId);
-    }
     notify();
 }
 
@@ -468,58 +408,6 @@ export function markSaved() {
         }
     }
 
-    notify();
-}
-
-/**
- * Returns the effective override for a target (edited if exists, else original).
- * @param {string} targetId - Target photo UUID
- * @returns {{bearing: number|null, distance: number|null}|null}
- */
-export function getEffectiveOverride(targetId) {
-    if (state.editedTargetOverrides.has(targetId)) {
-        const edited = state.editedTargetOverrides.get(targetId);
-        // Null bearing/distance means override was cleared
-        if (edited.bearing === null && edited.distance === null) {
-            return null;
-        }
-        return edited;
-    }
-
-    if (state.originalTargetOverrides.has(targetId)) {
-        return state.originalTargetOverrides.get(targetId);
-    }
-
-    return null;
-}
-
-/**
- * Updates only the height field of an existing target override, preserving bearing and distance.
- * @param {string} targetId - Target photo UUID
- * @param {number} height - Vertical offset in meters
- * @param {boolean} [silent=false] - If true, skip notifying listeners
- */
-export function setTargetOverrideHeight(targetId, height, silent = false) {
-    let current = state.editedTargetOverrides.get(targetId);
-    if (!current) {
-        // Auto-create override from original or with null bearing/distance
-        const original = state.originalTargetOverrides.get(targetId);
-        current = original
-            ? { bearing: original.bearing, distance: original.distance, height }
-            : { bearing: null, distance: null, height };
-        state.editedTargetOverrides.set(targetId, current);
-    } else {
-        current.height = height;
-    }
-    if (!silent) notify();
-}
-
-/**
- * Enables or disables "set from click" mode for capturing bearing/distance from the viewer.
- * @param {boolean} active - Whether the mode is active
- */
-export function setSetFromClickMode(active) {
-    state.setFromClickMode = active;
     notify();
 }
 

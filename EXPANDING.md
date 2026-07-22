@@ -21,7 +21,12 @@ Fotos 360 (JPG) + Metadados (JSON)
 
 ## Pre-requisitos
 
-- Node.js 22+
+- Node.js 22+ (o servico roda direto no host, sem container)
+- Dependencias instaladas com `npm install` (os modulos nativos `better-sqlite3`
+  e `sharp` baixam binario pronto; nao e preciso compilador C++)
+- Arquivo `.env` na raiz: `cp .env.example .env`. O `npm start` usa
+  `node --env-file=.env` e falha se o arquivo nao existir, mesmo com todos os
+  valores no padrao
 - tippecanoe instalado (para gerar PMTiles)
 - Fotos panoramicas 360 em formato JPG
 - Metadados de cada foto em formato JSON
@@ -73,7 +78,44 @@ Campos da camera:
 - **heading** — Azimute da camera em graus (0-360, 0=Norte)
 - **height** — Altura da camera em metros (geralmente ~2.5m)
 - **mesh_rotation_y** — Rotacao da malha 3D em graus (padrao 180)
+- **mesh_rotation_x / mesh_rotation_z** — Correcao de pitch e roll em graus (padrao 0)
+- **orientation** — Pose da panoramica como quaternion (alternativa aos tres angulos)
 - **floor_level** — Andar da foto (padrao 1, usado para indoor maps)
+
+#### Pose por quaternion (`orientation`)
+
+Scanner, rig de SLAM e reconstrucao por SfM ja produzem a pose de cada panoramica
+como quaternion. Nesse caso, em vez de calibrar os tres angulos a mao foto a foto,
+basta emitir `orientation` no JSON:
+
+```json
+{
+  "camera": {
+    "lat": -30.031805,
+    "lon": -51.235408,
+    "orientation": [0.804644, -0.0000087, -0.0000146, 0.593758]
+  }
+}
+```
+
+- Aceita `[qw, qx, qy, qz]` (a ordem usada por praticamente todo CSV de scanner),
+  ou um objeto com as chaves `w/x/y/z` ou `qw/qx/qy/qz`.
+- O quaternion e assumido num referencial **Z-up destro** (X leste, Y norte, Z cima),
+  que e o que instrumento de campo emite. A conversao para o referencial Y-up do
+  Three.js esta em `scripts/lib/orientation.js`.
+- Quando `heading` nao vier, ele e derivado do proprio quaternion. Isso resolve o
+  caso do acervo do museu, onde `heading` e NULL em todas as fotos.
+
+**Precedencia, que nao muda:** angulo explicito (`mesh_rotation_*`) vence sempre,
+para que o acervo ja calibrado a mao nunca seja sobrescrito; o quaternion so entra
+quando nenhum angulo foi dado; sem os dois, valem os padroes historicos (180/0/0).
+
+> Atencao: o sinal e a fase da conversao ainda **nao** foram confirmados contra um
+> instrumento real, porque nenhum conjunto do acervo carrega quaternion ate agora.
+> Confira o primeiro lote real antes de aplicar em massa. O ajuste se faz pela
+> opcao `frame` de `resolveMeshRotation`, em `scripts/lib/orientation.js`; hoje o
+> `migrate.js` a chama sem opcoes e **nao ha flag de linha de comando** para isso,
+> entao mudar o referencial exige editar a chamada.
 
 Campos de cada target:
 - **img** — Nome do arquivo da foto alvo (sem extensao `.jpg`)
@@ -82,6 +124,13 @@ Campos de cada target:
 - **icon** — `"next"` para indicar proximo na sequencia
 
 ## Passo 2: Registrar o Novo Projeto
+
+> **ATENCAO:** o array `PROJECTS` em `scripts/migrate.js` esta hoje
+> **inteiramente comentado**. Isso e proposital (os UUIDs sao gerados por
+> `randomUUID`, entao re-rodar um projeto ja migrado o duplicaria), mas
+> significa que rodar a migracao sem descomentar nada e um no-op silencioso:
+> zero fotos atribuidas, e tudo cai no relatorio `_unassigned_photos.csv`.
+> Descomente apenas o projeto que voce vai migrar, ou acrescente o novo.
 
 Edite o array `PROJECTS` em `scripts/migrate.js` e adicione uma nova entrada:
 
@@ -141,8 +190,8 @@ node scripts/migrate.js \
 3. **Sequencia fotos** — Segue a cadeia `next:true` a partir da foto de entrada, depois BFS, depois orfas
 4. **Gera UUIDs** — Cada projeto e foto recebe um UUID v4 unico
 5. **Analise espacial** — Cria links extras entre fotos proximas (raio 50m, separacao angular 15 graus)
-6. **Processa imagens** — Converte JPG para WebP (full + preview 512x256) em lotes de 100
-7. **Popula bancos** — Insere tudo no `index.db` e no `{slug}.db` por projeto
+6. **Popula metadados** — Insere fotos, alvos e indice espacial no `index.db`
+7. **Processa imagens** — Converte JPG para WebP (full + preview 512x256) em lotes de 100, gravando no `{slug}.db`
 
 ### Parametros opcionais
 
@@ -152,6 +201,14 @@ node scripts/migrate.js \
 | `--radius` | 50 | Raio em metros para busca de alvos espaciais |
 | `--skip-images` | false | Pula conversao de imagens (so metadados) |
 | `--skip-targets` | false | Pula geracao automatica de alvos espaciais (usa apenas targets do JSON) |
+| `--multiplier` | 5 | Raio adaptativo = mediana da distancia ao vizinho mais proximo x este fator |
+| `--max-targets` | — | Teto de alvos espaciais por foto |
+| `--sectors` | 4 | Setores angulares usados na selecao de alvos |
+| `--per-sector` | 3 | Maximo de alvos por setor |
+
+Um projeto pode ainda trazer `skipTargets: true` na propria entrada de `PROJECTS`,
+que pula a geracao automatica so daquele projeto (distinto do `--skip-targets`,
+que vale para todos).
 
 ### Importante: Migracao e aditiva
 
@@ -188,7 +245,8 @@ Crie uma imagem de thumbnail para o novo projeto no diretorio de thumbnails:
 - A imagem sera servida na API em `GET /api/v1/thumbnails/{slug}.webp`
 - Usada pelo catalogo do EBGeo Web como preview do projeto
 
-No Docker, o diretorio e `/data/thumbnails/`. Localmente, depende do `.env` (`STREETVIEW_DATA_DIR`).
+O diretorio e `thumbnails/` dentro do `STREETVIEW_DATA_DIR` definido no `.env`
+(padrao `./data/thumbnails/`).
 
 ## Passo 6: Verificar
 
@@ -243,16 +301,20 @@ npm test
 
 ## Passo 6: Deploy
 
-### Docker (producao)
+### Reiniciar o servico
+
+O servico roda direto no Node, sem container. Como os bancos SQLite sao lidos do
+disco a cada abertura, basta apontar o `STREETVIEW_DATA_DIR` para o `data/`
+atualizado e reiniciar:
 
 ```bash
-# Copiar data/ atualizado para o volume do container
-# Se o data/ esta montado como volume, so reiniciar:
-docker-compose restart ebgeo360
-
-# Ou rebuild completo:
-docker-compose up -d --build
+npm start        # ou `npm run dev` durante desenvolvimento
 ```
+
+Se um projeto novo foi acrescentado com o servico no ar, e preciso reiniciar: as
+conexoes com os bancos de projeto sao abertas sob demanda e ficam em cache por
+nome de arquivo (`src/db/connection.js`), e o `index.db` e aberto uma vez na
+partida.
 
 ### Atualizacao no EBGeo Web
 

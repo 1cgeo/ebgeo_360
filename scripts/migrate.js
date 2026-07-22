@@ -18,8 +18,8 @@ import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
+import { resolveMeshRotation, quaternionToHeading } from './lib/orientation.js';
 
-const __filename = fileURLToPath(import.meta.url);
 
 // ============================================================
 // CLI Arguments
@@ -706,10 +706,15 @@ function populateMetadata(opts, photos, projects, sequences, projectUUIDs, photo
         const meta = photos.get(originalName);
         const cam = meta.camera;
 
+        // Pose may arrive as a quaternion (scanner, SLAM rig, SfM). Explicit
+        // angles always win, so a hand-calibrated archive is never overwritten.
+        const rotation = resolveMeshRotation(cam);
+        const heading = cam.heading ?? quaternionToHeading(cam.orientation);
+
         insertPhoto.run(
           uuid, projectId, originalName, displayName, i + 1,
-          cam.lat, cam.lon, cam.ele, cam.heading, cam.cameraHeight || cam.height || null,
-          cam.mesh_rotation_y ?? 180, cam.mesh_rotation_x ?? 0, cam.mesh_rotation_z ?? 0,
+          cam.lat, cam.lon, cam.ele, heading, cam.cameraHeight || cam.height || null,
+          rotation.mesh_rotation_y, rotation.mesh_rotation_x, rotation.mesh_rotation_z,
           cam.distance_scale ?? 1.0, cam.floor_level ?? 1,
           null, null // sizes filled during image processing
         );

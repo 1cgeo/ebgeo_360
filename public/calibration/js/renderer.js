@@ -9,6 +9,146 @@
 import { NAV_CONSTANTS } from './constants.js';
 
 /**
+ * Draws a navigation target as an armillary sphere: rings rather than a solid
+ * ball, so it reads as a sphere and as a panorama at once, and being open it
+ * sits over the photograph instead of punching a hole in it.
+ *
+ * Exported and state-driven because three places draw this exact marker: the
+ * viewer overlay, the calibration overlay and the calibration rear view. A
+ * fourth hand-rolled copy is how they drifted apart in the first place.
+ *
+ * The ring geometry is real, not decorative: a parallel at height h on a unit
+ * sphere has radius sqrt(1 - h^2). Every ring is drawn at every size, so the
+ * marker never changes identity as the operator walks towards it.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Context, already translated to the centre
+ * @param {number} radius - Sphere radius in pixels
+ * @param {Object} [state] - Visual state
+ * @param {boolean} [state.highlighted] - The target a click would take
+ * @param {boolean} [state.selected] - Selected for editing (calibration only)
+ * @param {boolean} [state.hidden] - Hidden from navigation (calibration only)
+ * @param {number} [state.opacity] - Fades markers further down the queue
+ */
+export function drawArmillarySphere(ctx, radius, state = {}) {
+    const { highlighted = false, selected = false, hidden = false, opacity = 1 } = state;
+    const r = Math.max(1, radius);
+    const TILT = 0.30;
+
+    let ring, fill;
+    if (hidden) {
+        // Unmistakably off: red, dashed, and struck through. Dimming alone was
+        // read as "far away" rather than "disabled".
+        ring = 'rgba(255, 138, 138, 0.95)';
+        fill = 'rgba(70, 12, 12, 0.42)';
+    } else if (selected) {
+        ring = 'rgba(255, 240, 214, 0.98)';
+        fill = 'rgba(217, 119, 6, 0.42)';
+    } else if (highlighted) {
+        ring = 'rgba(255, 255, 255, 1)';
+        fill = 'rgba(37, 99, 235, 0.62)';
+    } else {
+        ring = 'rgba(255, 255, 255, 0.95)';
+        fill = 'rgba(17, 24, 36, 0.26)';
+    }
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, opacity));
+
+    // Halo, only when highlighted: the cue that says "this is the one a click
+    // takes you to" has to survive a busy photograph.
+    if (highlighted && !hidden) {
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 1.45, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.28)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 1.28, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(147, 197, 253, 0.85)';
+        ctx.lineWidth = Math.max(1, r * 0.09);
+        ctx.stroke();
+    }
+
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+    ctx.shadowBlur = Math.max(1.5, r * 0.3);
+
+    // Body: translucent, just enough to separate from the scene
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+
+    ctx.strokeStyle = ring;
+    ctx.lineCap = 'round';
+    if (hidden) {
+        ctx.setLineDash([Math.max(2, r * 0.28), Math.max(2, r * 0.2)]);
+    }
+
+    // Outer ring
+    ctx.lineWidth = Math.max(1, r * (highlighted ? 0.12 : 0.09));
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Equator
+    ctx.lineWidth = Math.max(0.8, r * (highlighted ? 0.09 : 0.07));
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r, r * TILT, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Two parallels, each at the true radius for its height
+    for (const h of [-0.55, 0.55]) {
+        const rx = r * Math.sqrt(1 - h * h);
+        ctx.beginPath();
+        ctx.ellipse(0, r * h * (1 - TILT * 0.5), rx, rx * TILT, 0, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    // Meridian through the poles
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.34, r, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // The tilted band, what makes it read as armillary rather than wireframe
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.97, r * 0.24, -0.42, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+
+    // Strike-through for a disabled target
+    if (hidden) {
+        const d = r * 0.78;
+        ctx.beginPath();
+        ctx.moveTo(-d, d);
+        ctx.lineTo(d, -d);
+        ctx.strokeStyle = 'rgba(255, 90, 90, 0.95)';
+        ctx.lineWidth = Math.max(1.5, r * 0.16);
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+/**
+ * Opacity for a marker at a given rank in its direction.
+ * The one a click would take is never faded: it has to stay the most solid
+ * thing on screen no matter how far down the queue it sits.
+ *
+ * @param {number} rank - Position in the queue, 0 = first
+ * @param {boolean} isHighlighted - Whether this is the click target
+ * @returns {number} Alpha in [0, 1]
+ */
+export function rankOpacity(rank, isHighlighted = false) {
+    if (isHighlighted) return 1;
+    return Math.max(
+        NAV_CONSTANTS.HORIZON_RANK_FADE_MIN,
+        Math.pow(NAV_CONSTANTS.HORIZON_RANK_FADE, Math.max(0, rank))
+    );
+}
+
+
+/**
  * Renders navigation elements on a Canvas 2D overlay.
  */
 export class StreetViewRenderer {
@@ -27,17 +167,11 @@ export class StreetViewRenderer {
         this.selectedMarkerId = null;
         this.visible = true;
 
-        // Ground cursor state
-        this.groundCursor = null; // { screenX, screenY, flattenY, arrowAngle }
 
         // Nearby markers state
         this.nearbyMarkers = [];
 
-        // Ground grid state
-        this.groundGrid = null; // { lines: Array<{points: Array<{x,y}>}>, color, opacity }
 
-        // Ghost marker state (set-from-click preview)
-        this.ghostMarker = null; // { screenX, screenY, radius, flattenY, bearing, distance }
 
         // Animation state
         this.hoverAnimation = new Map();
@@ -121,23 +255,6 @@ export class StreetViewRenderer {
     }
 
     /**
-     * Sets the ground cursor position and direction
-     * @param {Object|null} cursor - Cursor data { screenX, screenY, flattenY, arrowAngle } or null to hide
-     */
-    setGroundCursor(cursor) {
-        this.groundCursor = cursor;
-    }
-
-    /**
-     * Sets the ground grid lines to render.
-     * @param {Object|null} grid - Grid data or null to hide
-     * @param {Array<{points: Array<{x: number, y: number}>, highlight: boolean}>} grid.lines - Projected line segments
-     */
-    setGroundGrid(grid) {
-        this.groundGrid = grid;
-    }
-
-    /**
      * Sets the nearby photo markers to render (grey, smaller).
      * @param {Array} markers - Array of nearby marker objects
      */
@@ -145,26 +262,7 @@ export class StreetViewRenderer {
         this.nearbyMarkers = markers || [];
     }
 
-    /**
-     * Sets the ghost marker for set-from-click preview.
-     * @param {Object|null} data - Ghost marker data or null to hide
-     */
-    setGhostMarker(data) {
-        this.ghostMarker = data;
-    }
-
-    /**
-     * Sets visibility of the overlay
-     * @param {boolean} visible - Whether to show the overlay
-     */
-    setVisible(visible) {
-        this.visible = visible;
-        if (!visible) {
-            this.clear();
-        }
-    }
-
-    /**
+        /**
      * Clears the canvas
      */
     clear() {
@@ -195,10 +293,6 @@ export class StreetViewRenderer {
 
         this.clear();
 
-        // Render ground grid behind markers
-        if (this.groundGrid) {
-            this.renderGroundGrid();
-        }
 
         // Render nearby photo markers (behind regular markers)
         if (this.nearbyMarkers.length > 0) {
@@ -224,15 +318,7 @@ export class StreetViewRenderer {
             this.renderMarker(marker);
         }
 
-        // Render ghost marker for set-from-click preview
-        if (this.ghostMarker) {
-            this.renderGhostMarker();
-        }
 
-        // Render ground cursor on top
-        if (this.groundCursor) {
-            this.renderGroundCursor();
-        }
     }
 
     // ====================================================================
@@ -245,20 +331,13 @@ export class StreetViewRenderer {
      * @param {Object} marker - Marker data
      */
     renderMarker(marker) {
-        const { id, screenX, screenY, radius, flattenY } = marker;
-
-        // Draw original GPS position indicator for override markers
-        if (marker.hasOverride && marker.originalScreenX != null) {
-            this.renderOriginalPositionIndicator(marker);
-        }
+        const { id, screenX, screenY, radius } = marker;
 
         const isHovered = this.hoveredMarkerId === id;
-        const isNearest = this.nearestMarkerId === id;
         const isCursorNearest = this.cursorNearestMarkerId === id;
         const isCalibrationSelected = marker.isCalibrationSelected === true;
         const isHidden = marker.isHidden === true;
 
-        // Calculate animation scale
         const targetScale = isHovered ? NAV_CONSTANTS.HOVER_SCALE : 1;
         const currentScale = this.getAnimatedScale(id, targetScale);
 
@@ -266,162 +345,50 @@ export class StreetViewRenderer {
         ctx.save();
         ctx.translate(screenX, screenY);
 
-        // Apply scale
         const finalRadius = radius * currentScale;
 
-        this.renderNavigationMarker(ctx, finalRadius, flattenY, isHovered, isNearest, isCursorNearest, isCalibrationSelected, isHidden);
+        if (marker.offscreen) {
+            this.renderEdgeArrow(ctx, finalRadius, marker.offscreenSide, isHovered || isCursorNearest);
+        } else {
+            drawArmillarySphere(ctx, finalRadius, {
+                highlighted: isHovered || isCursorNearest,
+                selected: isCalibrationSelected,
+                hidden: isHidden,
+                opacity: rankOpacity(marker.rank ?? 0, isHovered || isCursorNearest || isCalibrationSelected),
+            });
+        }
 
         ctx.restore();
     }
 
     /**
-     * Renders a navigation marker (Google Street View style - circle with inner dot).
-     * Logic is verbatim EBGeo; the only addition is the orange calibration highlight.
+     * Renders a chevron at the canvas edge for a target that sits outside the
+     * horizontal field of view, so the operator knows a way out exists there.
      *
-     * @param {CanvasRenderingContext2D} ctx - Canvas context
-     * @param {number} radius - Marker radius
-     * @param {number} flattenY - Y-axis flatten ratio (perspective-based)
-     * @param {boolean} isHovered - Whether marker is hovered
-     * @param {boolean} isNearest - Whether this is the nearest marker to camera
-     * @param {boolean} isCursorNearest - Whether this is the nearest marker to cursor position
-     * @param {boolean} isCalibrationSelected - Whether this marker is selected for calibration
+     * @param {CanvasRenderingContext2D} ctx - Canvas context, already translated
+     * @param {number} radius - Marker radius in pixels
+     * @param {'left'|'right'} side - Which edge the target lies beyond
+     * @param {boolean} isHighlighted - Whether to draw it in the highlight colour
      */
-    renderNavigationMarker(ctx, radius, flattenY, isHovered, isNearest, isCursorNearest, isCalibrationSelected, isHidden) {
-        // Apply perspective scaling (ellipse on ground plane)
+    renderEdgeArrow(ctx, radius, side, isHighlighted) {
+        const direction = side === 'right' ? 1 : -1;
+        const w = radius * 0.8;
+        const h = radius * 1.1;
+
         ctx.save();
-        ctx.scale(1, flattenY);
-
-        // Hidden markers: render at reduced opacity
-        if (isHidden) {
-            ctx.globalAlpha = 0.35;
-        }
-
-        // Determine style based on state
-        // isCursorNearest takes priority - it's the one the user will navigate to on click
-        const isHighlighted = isHovered || isCursorNearest;
-
-        // Shadow below marker
         ctx.beginPath();
-        ctx.arc(0, 4 / flattenY, radius * 1.1, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-        ctx.fill();
+        ctx.moveTo(-direction * w * 0.4, -h);
+        ctx.lineTo(direction * w * 0.6, 0);
+        ctx.lineTo(-direction * w * 0.4, h);
+        ctx.closePath();
 
-        // ── Calibration-only: orange glow for selected target ──
-        if (isCalibrationSelected) {
-            ctx.beginPath();
-            ctx.arc(0, 0, radius * 1.4, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(250, 179, 135, 0.35)';
-            ctx.fill();
-
-            ctx.beginPath();
-            ctx.arc(0, 0, radius * 1.2, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(250, 179, 135, 0.8)';
-            ctx.lineWidth = 3;
-            ctx.stroke();
-        }
-
-        // Draw glow effect for cursor nearest marker (EBGeo)
-        if (isCursorNearest && !isHovered && !isCalibrationSelected) {
-            ctx.beginPath();
-            ctx.arc(0, 0, radius * 1.3, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(59, 130, 246, 0.25)';
-            ctx.fill();
-        }
-
-        // Outer circle - fill (white background)
-        ctx.beginPath();
-        ctx.arc(0, 0, radius, 0, Math.PI * 2);
         ctx.fillStyle = isHighlighted
-            ? 'rgba(255, 255, 255, 0.95)'
-            : 'rgba(255, 255, 255, 0.7)';
+            ? 'rgba(59, 130, 246, 0.9)'
+            : 'rgba(255, 255, 255, 0.75)';
         ctx.fill();
-
-        // Outer circle - border
-        if (isCalibrationSelected) {
-            ctx.strokeStyle = 'rgba(250, 179, 135, 0.95)';
-            ctx.lineWidth = 3;
-        } else if (isHighlighted) {
-            ctx.strokeStyle = 'rgba(59, 130, 246, 0.9)'; // Blue border when highlighted
-            ctx.lineWidth = 3;
-        } else {
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
-            ctx.lineWidth = 2;
-        }
-        ctx.stroke();
-
-        // Inner circle (dot) - key Google Street View style element
-        const innerRadius = radius * 0.45;
-        ctx.beginPath();
-        ctx.arc(0, 0, innerRadius, 0, Math.PI * 2);
-        if (isCalibrationSelected) {
-            ctx.fillStyle = 'rgba(250, 179, 135, 0.95)';
-        } else if (isHighlighted) {
-            ctx.fillStyle = 'rgba(59, 130, 246, 0.95)'; // Blue when highlighted
-        } else {
-            ctx.fillStyle = 'rgba(100, 100, 100, 0.5)'; // Gray when not
-        }
-        ctx.fill();
-
-        // Hidden markers: draw red X over the marker
-        if (isHidden) {
-            ctx.globalAlpha = 1.0;
-            const xSize = radius * 0.5;
-            ctx.beginPath();
-            ctx.moveTo(-xSize, -xSize);
-            ctx.lineTo(xSize, xSize);
-            ctx.moveTo(xSize, -xSize);
-            ctx.lineTo(-xSize, xSize);
-            ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)';
-            ctx.lineWidth = Math.max(2, radius * 0.12);
-            ctx.lineCap = 'round';
-            ctx.stroke();
-        }
-
-        ctx.restore();
-    }
-
-    // ====================================================================
-    // ORIGINAL POSITION INDICATOR  (override visual feedback)
-    // ====================================================================
-
-    /**
-     * Renders the original GPS position as a ghost marker with a dashed
-     * line connecting it to the override position.
-     * @param {Object} marker - Marker data with originalScreenX/Y fields
-     */
-    renderOriginalPositionIndicator(marker) {
-        const { screenX, screenY, originalScreenX, originalScreenY, originalRadius, originalFlattenY } = marker;
-        const ctx = this.ctx;
-
-        ctx.save();
-
-        // Dashed line from original to override position
-        ctx.beginPath();
-        ctx.setLineDash([6, 4]);
-        ctx.moveTo(originalScreenX, originalScreenY);
-        ctx.lineTo(screenX, screenY);
-        ctx.strokeStyle = 'rgba(255, 200, 80, 0.5)';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        // Ghost marker at original position (outline only)
-        ctx.translate(originalScreenX, originalScreenY);
-        ctx.scale(1, originalFlattenY);
-        ctx.globalAlpha = 0.35;
-
-        ctx.beginPath();
-        ctx.arc(0, 0, originalRadius, 0, Math.PI * 2);
-        ctx.setLineDash([4, 3]);
-        ctx.strokeStyle = 'rgba(255, 200, 80, 0.7)';
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
         ctx.lineWidth = 2;
         ctx.stroke();
-
-        // Small dot at center
-        ctx.beginPath();
-        ctx.arc(0, 0, originalRadius * 0.25, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 200, 80, 0.5)';
-        ctx.fill();
-
         ctx.restore();
     }
 
@@ -435,18 +402,11 @@ export class StreetViewRenderer {
      * @param {Object} marker - Nearby marker data
      */
     renderNearbyMarker(marker) {
-        const { screenX, screenY, radius, flattenY } = marker;
+        const { screenX, screenY, radius } = marker;
 
         const ctx = this.ctx;
         ctx.save();
         ctx.translate(screenX, screenY);
-        ctx.scale(1, flattenY);
-
-        // Shadow below marker
-        ctx.beginPath();
-        ctx.arc(0, 3 / flattenY, radius * 1.1, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-        ctx.fill();
 
         // Outer circle - green fill (Catppuccin green #a6e3a1)
         ctx.beginPath();
@@ -464,217 +424,6 @@ export class StreetViewRenderer {
         ctx.arc(0, 0, radius * 0.35, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(166, 227, 161, 0.5)';
         ctx.fill();
-
-        ctx.restore();
-    }
-
-    // ====================================================================
-    // GROUND CURSOR  (verbatim EBGeo renderGroundCursor + renderCursorArrow)
-    // ====================================================================
-
-    /**
-     * Renders the ground cursor that follows the mouse.
-     * Large cursor with circle on ground and chevron arrow INSIDE the circle
-     * pointing to nearest marker.  Styled like Google Street View navigation cursor.
-     */
-    renderGroundCursor() {
-        const { screenX, screenY, flattenY, arrowAngle, distance, fov } = this.groundCursor;
-        const ctx = this.ctx;
-
-        ctx.save();
-        ctx.translate(screenX, screenY);
-
-        // Physically-based cursor sizing: worldRadius * focalLength / distance
-        const d = Math.max(0.5, distance || 1);
-        const fovRad = ((fov || 75) * Math.PI) / 180;
-        const focalLength = (this.canvas.height / 2) / Math.tan(fovRad / 2);
-        let cursorSize = NAV_CONSTANTS.CURSOR_WORLD_RADIUS * focalLength / d;
-        cursorSize = Math.max(NAV_CONSTANTS.CURSOR_MIN_SIZE, Math.min(NAV_CONSTANTS.CURSOR_MAX_SIZE, cursorSize));
-
-        // Draw cursor circle (ellipse with perspective) - Google Street View style
-        ctx.save();
-        ctx.scale(1, flattenY);
-
-        // Outer shadow
-        ctx.beginPath();
-        ctx.arc(0, 5 / flattenY, cursorSize * 0.52, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-        ctx.fill();
-
-        // Outer ring with white fill (semi-transparent)
-        ctx.beginPath();
-        ctx.arc(0, 0, cursorSize * 0.5, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-        ctx.fill();
-
-        // White border ring
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
-        ctx.lineWidth = Math.max(3, cursorSize * 0.07);
-        ctx.stroke();
-
-        ctx.restore();
-
-        // Draw chevron arrow INSIDE the circle, centered, pointing to nearest marker
-        if (arrowAngle !== null && arrowAngle !== undefined) {
-            this.renderCursorArrow(ctx, cursorSize, flattenY, arrowAngle);
-        }
-
-        ctx.restore();
-    }
-
-    /**
-     * Renders the arrow on the ground cursor pointing to nearest marker.
-     * Large chevron style CENTERED inside the cursor circle.
-     * @param {CanvasRenderingContext2D} ctx - Canvas context
-     * @param {number} cursorSize - Size of the cursor
-     * @param {number} flattenY - Y-axis flatten ratio for perspective
-     * @param {number} angle - Rotation angle in radians (0 = pointing up/forward)
-     */
-    renderCursorArrow(ctx, cursorSize, flattenY, angle) {
-        ctx.save();
-
-        // Apply perspective first (same as cursor circle)
-        ctx.scale(1, flattenY);
-
-        // Then rotate around center - arrow stays centered and rotates
-        ctx.rotate(angle);
-
-        // Chevron dimensions - sized to fit nicely inside the circle
-        const chevronWidth = cursorSize * 0.55;
-        const chevronHeight = cursorSize * 0.38;
-        const strokeWidth = Math.max(4, cursorSize * 0.09);
-
-        // Offset the chevron slightly in the direction it's pointing
-        // This creates a visual indication of direction while staying centered
-        const offsetAmount = cursorSize * 0.08;
-        ctx.translate(0, -offsetAmount);
-
-        // Draw shadow first (behind)
-        ctx.beginPath();
-        ctx.moveTo(-chevronWidth / 2, chevronHeight / 2);
-        ctx.lineTo(0, -chevronHeight / 2);
-        ctx.lineTo(chevronWidth / 2, chevronHeight / 2);
-
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.lineWidth = strokeWidth + 4;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.stroke();
-
-        // Draw main white chevron
-        ctx.beginPath();
-        ctx.moveTo(-chevronWidth / 2, chevronHeight / 2);
-        ctx.lineTo(0, -chevronHeight / 2);
-        ctx.lineTo(chevronWidth / 2, chevronHeight / 2);
-
-        ctx.strokeStyle = 'rgba(255, 255, 255, 1)';
-        ctx.lineWidth = strokeWidth;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.stroke();
-
-        ctx.restore();
-    }
-
-    // ====================================================================
-    // GROUND GRID
-    // ====================================================================
-
-    /**
-     * Renders the ground-plane grid lines projected onto the viewport.
-     * Lines are pre-projected by the navigator using metersToScreen().
-     * Uses warm yellow tones distinct from the cyan spherical grid.
-     */
-    renderGroundGrid() {
-        const { lines } = this.groundGrid;
-        const ctx = this.ctx;
-
-        // Um unico save/restore para todo o grid (as linhas nao aplicam
-        // transformacoes — apenas reatribuem strokeStyle/lineWidth — entao
-        // save/restore por linha era desnecessario).
-        ctx.save();
-
-        // Draw grid lines
-        for (const line of lines) {
-            if (line.points.length < 2) continue;
-
-            ctx.beginPath();
-
-            let started = false;
-            for (const pt of line.points) {
-                if (!started) {
-                    ctx.moveTo(pt.x, pt.y);
-                    started = true;
-                } else {
-                    ctx.lineTo(pt.x, pt.y);
-                }
-            }
-
-            if (line.highlight) {
-                ctx.strokeStyle = 'rgba(255, 200, 80, 0.6)';
-                ctx.lineWidth = 2;
-            } else {
-                ctx.strokeStyle = 'rgba(255, 200, 80, 0.3)';
-                ctx.lineWidth = 1.5;
-            }
-
-            ctx.stroke();
-        }
-
-        ctx.restore();
-    }
-
-    // ====================================================================
-    // GHOST MARKER  (set-from-click preview)
-    // ====================================================================
-
-    /**
-     * Renders a ghost marker at the mouse position during set-from-click mode.
-     * Shows a semi-transparent marker with bearing/distance label.
-     */
-    renderGhostMarker() {
-        const { screenX, screenY, radius, flattenY, bearing, distance } = this.ghostMarker;
-        const ctx = this.ctx;
-
-        ctx.save();
-        ctx.translate(screenX, screenY);
-        ctx.globalAlpha = 0.45;
-
-        // Elliptical perspective
-        ctx.save();
-        ctx.scale(1, flattenY);
-
-        // Dashed orange circle
-        ctx.beginPath();
-        ctx.arc(0, 0, radius, 0, Math.PI * 2);
-        ctx.setLineDash([6, 4]);
-        ctx.strokeStyle = 'rgba(250, 179, 135, 0.9)';
-        ctx.lineWidth = 2.5;
-        ctx.stroke();
-
-        // Semi-transparent fill
-        ctx.beginPath();
-        ctx.arc(0, 0, radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(250, 179, 135, 0.2)';
-        ctx.fill();
-
-        ctx.restore(); // undo scale
-
-        // Label above marker
-        ctx.globalAlpha = 0.85;
-        const label = `${bearing.toFixed(0)}\u00B0 / ${distance.toFixed(1)}m`;
-        ctx.font = '12px monospace';
-        const metrics = ctx.measureText(label);
-        const labelX = -metrics.width / 2;
-        const labelY = -(radius * flattenY) - 10;
-
-        // Label background
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        ctx.fillRect(labelX - 4, labelY - 12, metrics.width + 8, 16);
-
-        // Label text
-        ctx.fillStyle = '#fab387';
-        ctx.fillText(label, labelX, labelY);
 
         ctx.restore();
     }

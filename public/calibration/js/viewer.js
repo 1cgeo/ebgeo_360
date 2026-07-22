@@ -233,14 +233,6 @@ export function setMeshRotationY(degrees) {
 }
 
 /**
- * Gets the current mesh rotation Y in degrees.
- * @returns {number}
- */
-export function getMeshRotationY() {
-    return currentMeshRotationY;
-}
-
-/**
  * Sets the mesh rotation X (pitch tilt for calibration).
  * @param {number} degrees - Rotation in degrees (-30 to +30)
  */
@@ -269,18 +261,6 @@ export function setMeshRotationZ(degrees) {
 // ============================================================================
 
 /**
- * Gets the current camera orientation.
- * @returns {{ yaw: number, pitch: number, fov: number }}
- */
-export function getCameraState() {
-    // yaw: horizontal rotation in radians (matching Three.js convention)
-    const yawRad = THREE.MathUtils.degToRad(lon);
-    // pitch: vertical rotation in radians
-    const pitchRad = THREE.MathUtils.degToRad(lat);
-    return { yaw: yawRad, pitch: pitchRad, fov };
-}
-
-/**
  * Sets the camera to look at a specific heading.
  * @param {number} heading - Heading in degrees (0-360, 0 = North)
  */
@@ -289,22 +269,23 @@ export function setHeading(heading) {
 }
 
 /**
+ * Gets the camera's current heading, relative to the image centre.
+ *
+ * Needed to carry the viewing direction across a photo change: the world
+ * direction being looked at is imageHeading + this.
+ *
+ * @returns {number} Heading in degrees
+ */
+export function getHeading() {
+    return lon;
+}
+
+/**
  * Gets the canvas element.
  * @returns {HTMLCanvasElement}
  */
 export function getCanvas() {
     return canvasEl;
-}
-
-/**
- * Gets the current canvas dimensions.
- * @returns {{ width: number, height: number }}
- */
-export function getCanvasSize() {
-    return {
-        width: canvasEl?.width || 0,
-        height: canvasEl?.height || 0,
-    };
 }
 
 // ============================================================================

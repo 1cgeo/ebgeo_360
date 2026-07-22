@@ -1,0 +1,5192 @@
+[
+ {
+  "slug": "blumenau",
+  "origem": "Blumenau_0001",
+  "alvo": "Blumenau_0004",
+  "distance_m": 24.28471206494422,
+  "bearing_deg": 56.14541038111929,
+  "override_bearing": 56.53653729462263,
+  "override_distance": 34.37059764413839,
+  "override_height": null
+ },
+ {
+  "slug": "blumenau",
+  "origem": "Blumenau_0001",
+  "alvo": "Blumenau_0006",
+  "distance_m": 36.35178365115289,
+  "bearing_deg": 57.635807052412076,
+  "override_bearing": 59.906351957619385,
+  "override_distance": 184.6363848831726,
+  "override_height": null
+ },
+ {
+  "slug": "blumenau",
+  "origem": "Blumenau_0002",
+  "alvo": "Blumenau_0001",
+  "distance_m": 11.921724610323073,
+  "bearing_deg": 232.11828642044009,
+  "override_bearing": 227.5,
+  "override_distance": 20.9,
+  "override_height": -1.8
+ },
+ {
+  "slug": "blumenau",
+  "origem": "Blumenau_0002",
+  "alvo": "Blumenau_0006",
+  "distance_m": 24.512109654178406,
+  "bearing_deg": 60.3160795228992,
+  "override_bearing": 62.230930070248085,
+  "override_distance": 164.75295006504572,
+  "override_height": null
+ },
+ {
+  "slug": "blumenau",
+  "origem": "Blumenau_0002",
+  "alvo": "Blumenau_0003",
+  "distance_m": 27.751950188352055,
+  "bearing_deg": 221.39647300141215,
+  "override_bearing": 220.07291696544223,
+  "override_distance": 35.14903358985053,
+  "override_height": null
+ },
+ {
+  "slug": "blumenau",
+  "origem": "Blumenau_0002",
+  "alvo": "Blumenau_0008",
+  "distance_m": 44.266086971411305,
+  "bearing_deg": 218.79358898854792,
+  "override_bearing": 219,
+  "override_distance": 71.3,
+  "override_height": -0.9
+ },
+ {
+  "slug": "blumenau",
+  "origem": "Blumenau_0003",
+  "alvo": "Blumenau_0005",
+  "distance_m": 29.35184109709553,
+  "bearing_deg": 219.8081160514529,
+  "override_bearing": 220,
+  "override_distance": 29.4,
+  "override_height": -2.3
+ },
+ {
+  "slug": "blumenau",
+  "origem": "Blumenau_0003",
+  "alvo": "Blumenau_0008",
+  "distance_m": 16.590707509249075,
+  "bearing_deg": 214.43702388031056,
+  "override_bearing": 214.5,
+  "override_distance": 16.6,
+  "override_height": -3
+ },
+ {
+  "slug": "blumenau",
+  "origem": "Blumenau_0003",
+  "alvo": "Blumenau_0002",
+  "distance_m": 27.751950188352055,
+  "bearing_deg": 41.39655720541816,
+  "override_bearing": 41.5,
+  "override_distance": 27.8,
+  "override_height": 1.1
+ },
+ {
+  "slug": "blumenau",
+  "origem": "Blumenau_0003",
+  "alvo": "Blumenau_0004",
+  "distance_m": 39.72125133995041,
+  "bearing_deg": 47.12475440482672,
+  "override_bearing": 47,
+  "override_distance": 39.7,
+  "override_height": 1.9
+ },
+ {
+  "slug": "blumenau",
+  "origem": "Blumenau_0003",
+  "alvo": "Blumenau_0007",
+  "distance_m": 42.34814610659793,
+  "bearing_deg": 223.83411122625995,
+  "override_bearing": 224,
+  "override_distance": 42.3,
+  "override_height": -2.2
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0001",
+  "alvo": "CI_Guarnicao_Ijui_0003",
+  "distance_m": 24.66259225111426,
+  "bearing_deg": 69.77778643233711,
+  "override_bearing": 70,
+  "override_distance": 24.7,
+  "override_height": -0.7
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0002",
+  "alvo": "CI_Guarnicao_Ijui_0003",
+  "distance_m": 16.73511421927022,
+  "bearing_deg": 108.28623494700742,
+  "override_bearing": 93,
+  "override_distance": 20.9,
+  "override_height": -2.9
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0002",
+  "alvo": "CI_Guarnicao_Ijui_0004",
+  "distance_m": 30.37421157839957,
+  "bearing_deg": 104.00596880474882,
+  "override_bearing": 105.5,
+  "override_distance": 37.4,
+  "override_height": -3.2
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0002",
+  "alvo": "CI_Guarnicao_Ijui_0005",
+  "distance_m": 45.376707826273254,
+  "bearing_deg": 96.44882766072789,
+  "override_bearing": 100.5,
+  "override_distance": 50.1,
+  "override_height": -2.6
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0003",
+  "alvo": "CI_Guarnicao_Ijui_0004",
+  "distance_m": 13.742651343135178,
+  "bearing_deg": 98.79124784337,
+  "override_bearing": 97,
+  "override_distance": 18.4,
+  "override_height": -1.7
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0003",
+  "alvo": "CI_Guarnicao_Ijui_0005",
+  "distance_m": 29.199991854811284,
+  "bearing_deg": 89.69703495688947,
+  "override_bearing": 89.5,
+  "override_distance": 38.7,
+  "override_height": -3.5
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0003",
+  "alvo": "CI_Guarnicao_Ijui_0006",
+  "distance_m": 46.557599214563595,
+  "bearing_deg": 89.58198358677714,
+  "override_bearing": 84.5,
+  "override_distance": 51.4,
+  "override_height": -3
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0004",
+  "alvo": "CI_Guarnicao_Ijui_0005",
+  "distance_m": 15.780299991420979,
+  "bearing_deg": 81.78514920065845,
+  "override_bearing": 82,
+  "override_distance": 15.8,
+  "override_height": -2.6
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0004",
+  "alvo": "CI_Guarnicao_Ijui_0006",
+  "distance_m": 33.06531378612216,
+  "bearing_deg": 85.76799384982257,
+  "override_bearing": 86,
+  "override_distance": 33.1,
+  "override_height": -4.3
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0004",
+  "alvo": "CI_Guarnicao_Ijui_0007",
+  "distance_m": 45.17904124418628,
+  "bearing_deg": 86.39396888457304,
+  "override_bearing": 86.5,
+  "override_distance": 45.2,
+  "override_height": -3.7
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0005",
+  "alvo": "CI_Guarnicao_Ijui_0006",
+  "distance_m": 17.35776526249071,
+  "bearing_deg": 89.38829673736097,
+  "override_bearing": 89.5,
+  "override_distance": 17.4,
+  "override_height": -1.7
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0005",
+  "alvo": "CI_Guarnicao_Ijui_0007",
+  "distance_m": 29.47705093918092,
+  "bearing_deg": 88.85928788505339,
+  "override_bearing": 89,
+  "override_distance": 29.5,
+  "override_height": -1.9
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0005",
+  "alvo": "CI_Guarnicao_Ijui_0008",
+  "distance_m": 41.56105888262791,
+  "bearing_deg": 90.63883328647734,
+  "override_bearing": 90.5,
+  "override_distance": 41.6,
+  "override_height": -1.7
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0005",
+  "alvo": "CI_Guarnicao_Ijui_0009",
+  "distance_m": 52.01835119362382,
+  "bearing_deg": 89.45578062319487,
+  "override_bearing": 89.5,
+  "override_distance": 52,
+  "override_height": -1.3
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0008",
+  "alvo": "CI_Guarnicao_Ijui_0025",
+  "distance_m": 17.316807981202253,
+  "bearing_deg": 134.0775909970099,
+  "override_bearing": 178,
+  "override_distance": 10.6,
+  "override_height": -0.7
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0008",
+  "alvo": "CI_Guarnicao_Ijui_0010",
+  "distance_m": 26.211482259409742,
+  "bearing_deg": 79.88760077879385,
+  "override_bearing": 89,
+  "override_distance": 26.2,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0008",
+  "alvo": "CI_Guarnicao_Ijui_0029",
+  "distance_m": 28.708937305148627,
+  "bearing_deg": 132.84045461672298,
+  "override_bearing": 155.57573620242246,
+  "override_distance": 19.690114498567375,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0008",
+  "alvo": "CI_Guarnicao_Ijui_0011",
+  "distance_m": 41.06667210189293,
+  "bearing_deg": 83.78238408302406,
+  "override_bearing": 89,
+  "override_distance": 41.1,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0008",
+  "alvo": "CI_Guarnicao_Ijui_0033",
+  "distance_m": 42.43793998651483,
+  "bearing_deg": 136.82636289058775,
+  "override_bearing": 148.96781906108478,
+  "override_distance": 34.975395644072655,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0009",
+  "alvo": "CI_Guarnicao_Ijui_0007",
+  "distance_m": 22.544986271018285,
+  "bearing_deg": 270.23543790311203,
+  "override_bearing": 260.45889627605953,
+  "override_distance": 18.741806993710334,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0009",
+  "alvo": "CI_Guarnicao_Ijui_0011",
+  "distance_m": 30.56749198329118,
+  "bearing_deg": 83.44357509973531,
+  "override_bearing": 78.4689139089552,
+  "override_distance": 27.950168414894165,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0009",
+  "alvo": "CI_Guarnicao_Ijui_0006",
+  "distance_m": 34.66060400034673,
+  "bearing_deg": 269.4893227806956,
+  "override_bearing": 260.54725037402443,
+  "override_distance": 28.568486855729176,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0010",
+  "alvo": "CI_Guarnicao_Ijui_0009",
+  "distance_m": 15.773619556593973,
+  "bearing_deg": 256.6402146713051,
+  "override_bearing": 274.44642487169097,
+  "override_distance": 12.052002303948889,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0010",
+  "alvo": "CI_Guarnicao_Ijui_0025",
+  "distance_m": 21.348568342599435,
+  "bearing_deg": 218.75453659844047,
+  "override_bearing": 234.28687599672912,
+  "override_distance": 17.894310921339212,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0014",
+  "alvo": "CI_Guarnicao_Ijui_0012",
+  "distance_m": 31.10317177592225,
+  "bearing_deg": 269.31712674443054,
+  "override_bearing": 262.1297515982065,
+  "override_distance": 23.08690793971212,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0014",
+  "alvo": "CI_Guarnicao_Ijui_0011",
+  "distance_m": 46.07010345065122,
+  "bearing_deg": 269.3852571826355,
+  "override_bearing": 263.0018718769265,
+  "override_distance": 43.1539303795003,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0017",
+  "alvo": "CI_Guarnicao_Ijui_0026",
+  "distance_m": 48.54631599052111,
+  "bearing_deg": 100.55861461839777,
+  "override_bearing": 94.25958124019435,
+  "override_distance": 21.897240178960114,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0017",
+  "alvo": "CI_Guarnicao_Ijui_0031",
+  "distance_m": 31.23872162036378,
+  "bearing_deg": 133.87749757173384,
+  "override_bearing": 169.86227535216247,
+  "override_distance": 28.72995659529449,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0018",
+  "alvo": "CI_Guarnicao_Ijui_0020",
+  "distance_m": 30.0331815138064,
+  "bearing_deg": 35.05092588511178,
+  "override_bearing": 44.50806321617264,
+  "override_distance": 20.295202384819635,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0019",
+  "alvo": "CI_Guarnicao_Ijui_0017",
+  "distance_m": 29.58720729273028,
+  "bearing_deg": 223.65944796872262,
+  "override_bearing": 213.3034820625578,
+  "override_distance": 31.679475412608706,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0019",
+  "alvo": "CI_Guarnicao_Ijui_0021",
+  "distance_m": 30.745289280563245,
+  "bearing_deg": 27.862766637851507,
+  "override_bearing": 28,
+  "override_distance": 45.1,
+  "override_height": -1.2
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0022",
+  "alvo": "CI_Guarnicao_Ijui_0020",
+  "distance_m": 28.875549293603857,
+  "bearing_deg": 190.8988420228928,
+  "override_bearing": 177.5107273873119,
+  "override_distance": 27.741804767901268,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0025",
+  "alvo": "CI_Guarnicao_Ijui_0029",
+  "distance_m": 11.402297178079333,
+  "bearing_deg": 130.96134909268284,
+  "override_bearing": 141.5,
+  "override_distance": 10.1,
+  "override_height": -1.7
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0025",
+  "alvo": "CI_Guarnicao_Ijui_0008",
+  "distance_m": 17.316807981202253,
+  "bearing_deg": 314.0775304293077,
+  "override_bearing": 300,
+  "override_distance": 13.3,
+  "override_height": -2.2
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0025",
+  "alvo": "CI_Guarnicao_Ijui_0009",
+  "distance_m": 13.153937693064226,
+  "bearing_deg": 351.3300505098371,
+  "override_bearing": 337,
+  "override_distance": 5.9,
+  "override_height": -1.5
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0025",
+  "alvo": "CI_Guarnicao_Ijui_0010",
+  "distance_m": 21.348568342599435,
+  "bearing_deg": 38.754601664083225,
+  "override_bearing": 67.5,
+  "override_distance": 6.9,
+  "override_height": -1.7
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0025",
+  "alvo": "CI_Guarnicao_Ijui_0033",
+  "distance_m": 25.154768529781105,
+  "bearing_deg": 138.7182038626055,
+  "override_bearing": 145,
+  "override_distance": 18.5,
+  "override_height": -1.1
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0025",
+  "alvo": "CI_Guarnicao_Ijui_0007",
+  "distance_m": 27.804997121683794,
+  "bearing_deg": 298.09949028503706,
+  "override_bearing": 288.5,
+  "override_distance": 22.2,
+  "override_height": -1.9
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0025",
+  "alvo": "CI_Guarnicao_Ijui_0011",
+  "distance_m": 32.82895776968152,
+  "bearing_deg": 59.83985550716716,
+  "override_bearing": 87,
+  "override_distance": 19.9,
+  "override_height": -0.4
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0025",
+  "alvo": "CI_Guarnicao_Ijui_0037",
+  "distance_m": 36.84182286548141,
+  "bearing_deg": 135.24381512392483,
+  "override_bearing": 144,
+  "override_distance": 35.4,
+  "override_height": -0.9
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0026",
+  "alvo": "CI_Guarnicao_Ijui_0017",
+  "distance_m": 48.54631599052111,
+  "bearing_deg": 280.5583822619768,
+  "override_bearing": 273.5,
+  "override_distance": 48.5,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0029",
+  "alvo": "CI_Guarnicao_Ijui_0025",
+  "distance_m": 11.402297178079333,
+  "bearing_deg": 310.9613071704061,
+  "override_bearing": 311,
+  "override_distance": 17.1,
+  "override_height": -2.8
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0029",
+  "alvo": "CI_Guarnicao_Ijui_0009",
+  "distance_m": 23.056093227176273,
+  "bearing_deg": 332.64777371436776,
+  "override_bearing": 332.5,
+  "override_distance": 23.1,
+  "override_height": -1.5
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0029",
+  "alvo": "CI_Guarnicao_Ijui_0037",
+  "distance_m": 25.48558758849585,
+  "bearing_deg": 137.15832893566272,
+  "override_bearing": 144.73132805495445,
+  "override_distance": 31.309371684150275,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0029",
+  "alvo": "CI_Guarnicao_Ijui_0008",
+  "distance_m": 28.708937305148627,
+  "bearing_deg": 312.84035212529943,
+  "override_bearing": 313,
+  "override_distance": 28.7,
+  "override_height": -1.7
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0032",
+  "alvo": "CI_Guarnicao_Ijui_0036",
+  "distance_m": 16.391020024782613,
+  "bearing_deg": 214.75421033882205,
+  "override_bearing": 215,
+  "override_distance": 16.4,
+  "override_height": -3.7
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0032",
+  "alvo": "CI_Guarnicao_Ijui_0040",
+  "distance_m": 33.175172527383594,
+  "bearing_deg": 214.79695686350357,
+  "override_bearing": 215,
+  "override_distance": 33.2,
+  "override_height": -3
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0032",
+  "alvo": "CI_Guarnicao_Ijui_0043",
+  "distance_m": 49.93226114945031,
+  "bearing_deg": 214.07657110392773,
+  "override_bearing": 214,
+  "override_distance": 49.9,
+  "override_height": -3.5
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0034",
+  "alvo": "CI_Guarnicao_Ijui_0041",
+  "distance_m": 21.60667107454509,
+  "bearing_deg": 85.49055230073463,
+  "override_bearing": 93.06868194532895,
+  "override_distance": 21.552215207547857,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0034",
+  "alvo": "CI_Guarnicao_Ijui_0044",
+  "distance_m": 32.347342620179354,
+  "bearing_deg": 84.30084751079642,
+  "override_bearing": 92.53153905089208,
+  "override_distance": 30.81329761484161,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0034",
+  "alvo": "CI_Guarnicao_Ijui_0046",
+  "distance_m": 42.10294937795246,
+  "bearing_deg": 87.05648271118628,
+  "override_bearing": 91.98647075302175,
+  "override_distance": 47.38151739665717,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0039",
+  "alvo": "CI_Guarnicao_Ijui_0035",
+  "distance_m": 16.713260934369846,
+  "bearing_deg": 11.626107592753101,
+  "override_bearing": 24.893006734040203,
+  "override_distance": 11.444894265777426,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0039",
+  "alvo": "CI_Guarnicao_Ijui_0031",
+  "distance_m": 36.905178980326006,
+  "bearing_deg": 5.151670368445195,
+  "override_bearing": 17.96186162466899,
+  "override_distance": 23.718712054905104,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0042",
+  "alvo": "CI_Guarnicao_Ijui_0035",
+  "distance_m": 28.217066391157655,
+  "bearing_deg": 24.694330442980913,
+  "override_bearing": 4.5,
+  "override_distance": 27.3,
+  "override_height": -2.2
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0048",
+  "alvo": "CI_Guarnicao_Ijui_0052",
+  "distance_m": 26.264902405815416,
+  "bearing_deg": 95.80464516044276,
+  "override_bearing": 96,
+  "override_distance": 37.4,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0048",
+  "alvo": "CI_Guarnicao_Ijui_0054",
+  "distance_m": 40.63639064975881,
+  "bearing_deg": 86.3393933479482,
+  "override_bearing": 86.5,
+  "override_distance": 60.3,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0050",
+  "alvo": "CI_Guarnicao_Ijui_0056",
+  "distance_m": 32.768019868147434,
+  "bearing_deg": 64.96125901742693,
+  "override_bearing": 65,
+  "override_distance": 45.1,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0050",
+  "alvo": "CI_Guarnicao_Ijui_0059",
+  "distance_m": 45.75,
+  "bearing_deg": 50.36,
+  "override_bearing": 50.5,
+  "override_distance": 66.7,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0062",
+  "alvo": "CI_Guarnicao_Ijui_0057",
+  "distance_m": 33.64376823236972,
+  "bearing_deg": 177.2697469693819,
+  "override_bearing": 179.44674644056298,
+  "override_distance": 50.085348144813764,
+  "override_height": null
+ },
+ {
+  "slug": "cigi",
+  "origem": "CI_Guarnicao_Ijui_0062",
+  "alvo": "CI_Guarnicao_Ijui_0060",
+  "distance_m": 36.74029005206972,
+  "bearing_deg": 154.6555026622832,
+  "override_bearing": 161.7444201977679,
+  "override_distance": 76.72678519970884,
+  "override_height": null
+ },
+ {
+  "slug": "easa",
+  "origem": "EASA_0001",
+  "alvo": "EASA_0002",
+  "distance_m": 14.872970086062407,
+  "bearing_deg": 94.4069793164461,
+  "override_bearing": 92.09738290846927,
+  "override_distance": 19.09323239594211,
+  "override_height": null
+ },
+ {
+  "slug": "easa",
+  "origem": "EASA_0001",
+  "alvo": "EASA_0004",
+  "distance_m": 13.832686762273978,
+  "bearing_deg": 275.3812579582459,
+  "override_bearing": 274.66053308752254,
+  "override_distance": 16.68112602034349,
+  "override_height": null
+ },
+ {
+  "slug": "easa",
+  "origem": "EASA_0001",
+  "alvo": "EASA_0006",
+  "distance_m": 25.230571455518998,
+  "bearing_deg": 274.3529273554259,
+  "override_bearing": 274.21151158907634,
+  "override_distance": 31.308047021660144,
+  "override_height": null
+ },
+ {
+  "slug": "easa",
+  "origem": "EASA_0001",
+  "alvo": "EASA_0003",
+  "distance_m": 25.86426974263991,
+  "bearing_deg": 93.766063512075,
+  "override_bearing": 91.96724719334138,
+  "override_distance": 37.12025351231768,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0001",
+  "alvo": "Museu_do_CMS_0004",
+  "distance_m": 10.208613622317618,
+  "bearing_deg": 351.4723872296789,
+  "override_bearing": 347.17392151891744,
+  "override_distance": 17.32440725970029,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0002",
+  "alvo": "Museu_do_CMS_0004",
+  "distance_m": 8.46192404927532,
+  "bearing_deg": 353.7992825029518,
+  "override_bearing": 347.5519822837051,
+  "override_distance": 11.251630784153804,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0002",
+  "alvo": "Museu_do_CMS_0005",
+  "distance_m": 12.645018291376251,
+  "bearing_deg": 339.68351686159536,
+  "override_bearing": 336.20537100470756,
+  "override_distance": 14.173742993353297,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0003",
+  "alvo": "Museu_do_CMS_0001",
+  "distance_m": 4.537722974165774,
+  "bearing_deg": 159.79198472745202,
+  "override_bearing": 157.15665335317772,
+  "override_distance": 6.613641019556035,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0003",
+  "alvo": "Museu_do_CMS_0002",
+  "distance_m": 2.7508789974546195,
+  "bearing_deg": 159.4048268942721,
+  "override_bearing": 157.5137417501398,
+  "override_distance": 3.2427227119830326,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0003",
+  "alvo": "Museu_do_CMS_0004",
+  "distance_m": 5.837597260541296,
+  "bearing_deg": 0.5267754460224978,
+  "override_bearing": 351.5949075543491,
+  "override_distance": 4.085623563837866,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0003",
+  "alvo": "Museu_do_CMS_0005",
+  "distance_m": 9.894180884431243,
+  "bearing_deg": 339.76100717607454,
+  "override_bearing": 337.98958790205967,
+  "override_distance": 6.650575259769377,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0003",
+  "alvo": "Museu_do_CMS_0015",
+  "distance_m": 15.92,
+  "bearing_deg": 340.85,
+  "override_bearing": 340.40527619340287,
+  "override_distance": 10.839518480648055,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0004",
+  "alvo": "Museu_do_CMS_0001",
+  "distance_m": 10.208613622317618,
+  "bearing_deg": 171.47239509973747,
+  "override_bearing": 172.36663306207694,
+  "override_distance": 11.200300185706356,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0004",
+  "alvo": "Museu_do_CMS_0002",
+  "distance_m": 8.46192404927532,
+  "bearing_deg": 173.79928725458012,
+  "override_bearing": 174.95517789197183,
+  "override_distance": 7.0949570693774096,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0004",
+  "alvo": "Museu_do_CMS_0003",
+  "distance_m": 5.837597260541296,
+  "bearing_deg": 180.5267751670227,
+  "override_bearing": 178.61379617750634,
+  "override_distance": 4.224648668583134,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0004",
+  "alvo": "Museu_do_CMS_0012",
+  "distance_m": 12.789212423427436,
+  "bearing_deg": 229.37471855599543,
+  "override_bearing": 235.95938899871118,
+  "override_distance": 9.951681920760471,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0004",
+  "alvo": "Museu_do_CMS_0010",
+  "distance_m": 5.636611959280974,
+  "bearing_deg": 226.9814259831542,
+  "override_bearing": 237.7493179015944,
+  "override_distance": 3.4348582871330855,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0004",
+  "alvo": "Museu_do_CMS_0005",
+  "distance_m": 4.8949045707136225,
+  "bearing_deg": 314.7476440618937,
+  "override_bearing": 337.66986434763015,
+  "override_distance": 3.9346123344894806,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0004",
+  "alvo": "Museu_do_CMS_0011",
+  "distance_m": 3.9107454437862725,
+  "bearing_deg": 151.78106850908472,
+  "override_bearing": 149.93578929996235,
+  "override_distance": 2.825654254694886,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0004",
+  "alvo": "Museu_do_CMS_0015",
+  "distance_m": 10.604469920210875,
+  "bearing_deg": 330.16174320497,
+  "override_bearing": 336.3842772648589,
+  "override_distance": 7.357492561934028,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0004",
+  "alvo": "Museu_do_CMS_0019",
+  "distance_m": 9.07,
+  "bearing_deg": 344.55,
+  "override_bearing": 354.9119668089459,
+  "override_distance": 7.747682798497847,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0005",
+  "alvo": "Museu_do_CMS_0010",
+  "distance_m": 7.319882711948861,
+  "bearing_deg": 185.05273857027476,
+  "override_bearing": 187.77344194724822,
+  "override_distance": 5.597456682462696,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0005",
+  "alvo": "Museu_do_CMS_0004",
+  "distance_m": 4.8949045707136225,
+  "bearing_deg": 134.74766213322658,
+  "override_bearing": 141.36973855305547,
+  "override_distance": 3.6115874612984515,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0005",
+  "alvo": "Museu_do_CMS_0011",
+  "distance_m": 8.709767151926691,
+  "bearing_deg": 142.30552465918515,
+  "override_bearing": 143.87371253163397,
+  "override_distance": 6.5981368405215255,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0005",
+  "alvo": "Museu_do_CMS_0015",
+  "distance_m": 6.027718110662372,
+  "bearing_deg": 342.6266755268047,
+  "override_bearing": 330.17433188723254,
+  "override_distance": 4.4249469104328645,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0005",
+  "alvo": "Museu_do_CMS_0021",
+  "distance_m": 8.411463416380826,
+  "bearing_deg": 23.493261486566325,
+  "override_bearing": 29.842484445876423,
+  "override_distance": 7.50298660970729,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0005",
+  "alvo": "Museu_do_CMS_0017",
+  "distance_m": 9.335315802177597,
+  "bearing_deg": 323.3525203586611,
+  "override_bearing": 321.5,
+  "override_distance": 9.5,
+  "override_height": -0.1
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0006",
+  "alvo": "Museu_do_CMS_0012",
+  "distance_m": 3.4098325239174025,
+  "bearing_deg": 211.48115186022184,
+  "override_bearing": 200.19490566093666,
+  "override_distance": 2.198650125794462,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0006",
+  "alvo": "Museu_do_CMS_0018",
+  "distance_m": 5.126036008566742,
+  "bearing_deg": 225.18481560085394,
+  "override_bearing": 235.72537139986287,
+  "override_distance": 5.887644573364865,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0006",
+  "alvo": "Museu_do_CMS_0007",
+  "distance_m": 2.6663583965983886,
+  "bearing_deg": 248.66171505691864,
+  "override_bearing": 240.73147220694858,
+  "override_distance": 2.6003244086987207,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0006",
+  "alvo": "Museu_do_CMS_0008",
+  "distance_m": 4.990903961858255,
+  "bearing_deg": 270.65244420200736,
+  "override_bearing": 266.0385589058992,
+  "override_distance": 5.4436338207949655,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0006",
+  "alvo": "Museu_do_CMS_0013",
+  "distance_m": 3.839907303933443,
+  "bearing_deg": 296.1107794903468,
+  "override_bearing": 297.07047126224865,
+  "override_distance": 4.245257407603859,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0006",
+  "alvo": "Museu_do_CMS_0009",
+  "distance_m": 2.9540283116006325,
+  "bearing_deg": 275.4937544981178,
+  "override_bearing": 280,
+  "override_distance": 4,
+  "override_height": -0.5
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0006",
+  "alvo": "Museu_do_CMS_0014",
+  "distance_m": 1.859547877340585,
+  "bearing_deg": 339.9576293896979,
+  "override_bearing": 322.71693134753076,
+  "override_distance": 1.8318642800473783,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0006",
+  "alvo": "Museu_do_CMS_0011",
+  "distance_m": 9.972478164114719,
+  "bearing_deg": 78.58743944304797,
+  "override_bearing": 74.417576512306,
+  "override_distance": 6.767462697780724,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0006",
+  "alvo": "Museu_do_CMS_0004",
+  "distance_m": 9.6,
+  "bearing_deg": 55.64,
+  "override_bearing": 59.75377708925631,
+  "override_distance": 8.085919806765691,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0006",
+  "alvo": "Museu_do_CMS_0010",
+  "distance_m": 4.12,
+  "bearing_deg": 67.53,
+  "override_bearing": 54.566099354668275,
+  "override_distance": 4.0720479747591165,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0007",
+  "alvo": "Museu_do_CMS_0006",
+  "distance_m": 2.6663583965983886,
+  "bearing_deg": 68.66172796492731,
+  "override_bearing": 87.03541121739869,
+  "override_distance": 1.9326983566577707,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0007",
+  "alvo": "Museu_do_CMS_0018",
+  "distance_m": 2.8831999707910083,
+  "bearing_deg": 203.56676105067132,
+  "override_bearing": 243.334429459512,
+  "override_distance": 3.3216639920672693,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0007",
+  "alvo": "Museu_do_CMS_0008",
+  "distance_m": 2.709226182934994,
+  "bearing_deg": 292.27754154147783,
+  "override_bearing": 297.4643739744418,
+  "override_distance": 3.3389119988695817,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0007",
+  "alvo": "Museu_do_CMS_0013",
+  "distance_m": 2.82962633977043,
+  "bearing_deg": 340.0719546424183,
+  "override_bearing": 353.01929653289653,
+  "override_distance": 2.928636139560986,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0007",
+  "alvo": "Museu_do_CMS_0009",
+  "distance_m": 1.333725295154871,
+  "bearing_deg": 339.9669339303362,
+  "override_bearing": 350.1993392493483,
+  "override_distance": 1.5250037236058709,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0007",
+  "alvo": "Museu_do_CMS_0014",
+  "distance_m": 3.2850656153221816,
+  "bearing_deg": 34.195781387042416,
+  "override_bearing": 41.84573641692218,
+  "override_distance": 2.6602160080108113,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0008",
+  "alvo": "Museu_do_CMS_0006",
+  "distance_m": 4.990903961858255,
+  "bearing_deg": 90.65247014740169,
+  "override_bearing": 87.18614688471443,
+  "override_distance": 6.130088598983286,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0008",
+  "alvo": "Museu_do_CMS_0012",
+  "distance_m": 4.369598706064403,
+  "bearing_deg": 132.72665499234017,
+  "override_bearing": 110.34910686710796,
+  "override_distance": 4.488355602846107,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0008",
+  "alvo": "Museu_do_CMS_0018",
+  "distance_m": 3.9116818414208674,
+  "bearing_deg": 159.74451794090214,
+  "override_bearing": 134.23820130416527,
+  "override_distance": 2.4007195758397266,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0008",
+  "alvo": "Museu_do_CMS_0007",
+  "distance_m": 2.709226182934994,
+  "bearing_deg": 112.27755457138056,
+  "override_bearing": 95.11030151325885,
+  "override_distance": 3.675863766837911,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0008",
+  "alvo": "Museu_do_CMS_0009",
+  "distance_m": 2.062537874684291,
+  "bearing_deg": 83.70987245314615,
+  "override_bearing": 68.70909022442109,
+  "override_distance": 3.3815138725891107,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0008",
+  "alvo": "Museu_do_CMS_0014",
+  "distance_m": 4.669853938882448,
+  "bearing_deg": 68.78203526569382,
+  "override_bearing": 67.07695387637723,
+  "override_distance": 5.899947541637501,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0009",
+  "alvo": "Museu_do_CMS_0006",
+  "distance_m": 2.9540283116006325,
+  "bearing_deg": 95.49376978283692,
+  "override_bearing": 119.28266317954774,
+  "override_distance": 2.692027636043483,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0009",
+  "alvo": "Museu_do_CMS_0012",
+  "distance_m": 3.395000037193656,
+  "bearing_deg": 160.02470951794203,
+  "override_bearing": 156.82491326189523,
+  "override_distance": 3.19534604113287,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0009",
+  "alvo": "Museu_do_CMS_0018",
+  "distance_m": 3.9574155021457704,
+  "bearing_deg": 190.1275075600529,
+  "override_bearing": 209.19666512481024,
+  "override_distance": 3.6121929181376666,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0009",
+  "alvo": "Museu_do_CMS_0007",
+  "distance_m": 1.333725295154871,
+  "bearing_deg": 159.96693630793288,
+  "override_bearing": 165.99394577884263,
+  "override_distance": 1.5679601911976293,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0009",
+  "alvo": "Museu_do_CMS_0008",
+  "distance_m": 2.062537874684291,
+  "bearing_deg": 263.70986179819636,
+  "override_bearing": 254.9836005104604,
+  "override_distance": 1.6132258094484326,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0009",
+  "alvo": "Museu_do_CMS_0013",
+  "distance_m": 1.4959052826695267,
+  "bearing_deg": 340.16559180136323,
+  "override_bearing": 346.98737238890885,
+  "override_distance": 1.1748710204192694,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0009",
+  "alvo": "Museu_do_CMS_0014",
+  "distance_m": 2.7291427675559383,
+  "bearing_deg": 57.55588819333116,
+  "override_bearing": 74.29864079260571,
+  "override_distance": 2.0784482367928834,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0010",
+  "alvo": "Museu_do_CMS_0012",
+  "distance_m": 7.161386328647106,
+  "bearing_deg": 231.25825354151283,
+  "override_bearing": 233.23728014126155,
+  "override_distance": 5.70177818124408,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0010",
+  "alvo": "Museu_do_CMS_0006",
+  "distance_m": 4.12,
+  "bearing_deg": 247.53,
+  "override_bearing": 237.6260792122696,
+  "override_distance": 3.667739659003756,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0011",
+  "alvo": "Museu_do_CMS_0010",
+  "distance_m": 5.983629954124948,
+  "bearing_deg": 266.17124700514717,
+  "override_bearing": 262.8497100531425,
+  "override_distance": 4.512527846487421,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0011",
+  "alvo": "Museu_do_CMS_0004",
+  "distance_m": 3.9107454437862725,
+  "bearing_deg": 331.78105889869835,
+  "override_bearing": 322.3354855011528,
+  "override_distance": 2.7621014980419427,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0011",
+  "alvo": "Museu_do_CMS_0005",
+  "distance_m": 8.709767151926691,
+  "bearing_deg": 322.3054969702491,
+  "override_bearing": 321.1598812905632,
+  "override_distance": 5.809810636491046,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0011",
+  "alvo": "Museu_do_CMS_0015",
+  "distance_m": 14.514074310165565,
+  "bearing_deg": 330.59799890743994,
+  "override_bearing": 327.4876383073534,
+  "override_distance": 10.373900428222704,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0012",
+  "alvo": "Museu_do_CMS_0018",
+  "distance_m": 1.9850605644325907,
+  "bearing_deg": 249.19725423392043,
+  "override_bearing": 282.995082649713,
+  "override_distance": 1.7534728664172332,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0014",
+  "alvo": "Museu_do_CMS_0012",
+  "distance_m": 4.793246957656596,
+  "bearing_deg": 193.80039039312288,
+  "override_bearing": 185.440397925111,
+  "override_distance": 3.5864173365068606,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0014",
+  "alvo": "Museu_do_CMS_0018",
+  "distance_m": 6.141862688804207,
+  "bearing_deg": 209.22849682242148,
+  "override_bearing": 208.79346885313421,
+  "override_distance": 5.445592871026243,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0014",
+  "alvo": "Museu_do_CMS_0007",
+  "distance_m": 3.2850656153221816,
+  "bearing_deg": 214.19577178348914,
+  "override_bearing": 206.10385084549193,
+  "override_distance": 2.90147366618877,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0014",
+  "alvo": "Museu_do_CMS_0008",
+  "distance_m": 4.669853938882448,
+  "bearing_deg": 248.78201263432987,
+  "override_bearing": 242.06927885639095,
+  "override_distance": 5.841995435201958,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0014",
+  "alvo": "Museu_do_CMS_0013",
+  "distance_m": 2.8113069448110974,
+  "bearing_deg": 268.83908755044376,
+  "override_bearing": 270.22568193945733,
+  "override_distance": 2.6159804447549218,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0014",
+  "alvo": "Museu_do_CMS_0009",
+  "distance_m": 2.7291427675559383,
+  "bearing_deg": 237.55587622554495,
+  "override_bearing": 243.8313252916459,
+  "override_distance": 2.177210210425911,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0014",
+  "alvo": "Museu_do_CMS_0005",
+  "distance_m": 8.749105516205505,
+  "bearing_deg": 35.551285354682705,
+  "override_bearing": 28.738369592984697,
+  "override_distance": 7.215264803444367,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0015",
+  "alvo": "Museu_do_CMS_0027",
+  "distance_m": 8.805407957118119,
+  "bearing_deg": 235.97704581942975,
+  "override_bearing": 235.37357206748186,
+  "override_distance": 7.336863854982816,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0015",
+  "alvo": "Museu_do_CMS_0021",
+  "distance_m": 5.513704380072906,
+  "bearing_deg": 69.16080296576138,
+  "override_bearing": 62.599919175963365,
+  "override_distance": 4.812260998430838,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0015",
+  "alvo": "Museu_do_CMS_0023",
+  "distance_m": 4.8430399812412634,
+  "bearing_deg": 343.43565618430904,
+  "override_bearing": 329.6458514461123,
+  "override_distance": 2.6566484902113117,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0015",
+  "alvo": "Museu_do_CMS_0017",
+  "distance_m": 4.153089090504791,
+  "bearing_deg": 294.72689374014425,
+  "override_bearing": 299.3568186483481,
+  "override_distance": 5.965795860965973,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0015",
+  "alvo": "Museu_do_CMS_0029",
+  "distance_m": 12.449667037866728,
+  "bearing_deg": 344.37516708363955,
+  "override_bearing": 340.5331455512588,
+  "override_distance": 6.901062893467304,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0017",
+  "alvo": "Museu_do_CMS_0021",
+  "distance_m": 8.928129377296838,
+  "bearing_deg": 88.5606245946135,
+  "override_bearing": 79.03948204570325,
+  "override_distance": 8.460130226047811,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0018",
+  "alvo": "Museu_do_CMS_0006",
+  "distance_m": 5.126036008566742,
+  "bearing_deg": 45.18483450417864,
+  "override_bearing": 49.17541743132646,
+  "override_distance": 4.529358794016609,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0018",
+  "alvo": "Museu_do_CMS_0012",
+  "distance_m": 1.9850605644325907,
+  "bearing_deg": 69.19726388628192,
+  "override_bearing": 74.14364031196273,
+  "override_distance": 2.995145721089121,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0018",
+  "alvo": "Museu_do_CMS_0007",
+  "distance_m": 2.8831999707910083,
+  "bearing_deg": 23.566767046699113,
+  "override_bearing": 44.233723310278094,
+  "override_distance": 2.1952571528123674,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0018",
+  "alvo": "Museu_do_CMS_0008",
+  "distance_m": 3.9116818414208674,
+  "bearing_deg": 339.74451090127326,
+  "override_bearing": 338.44870270282286,
+  "override_distance": 1.863740887333333,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0018",
+  "alvo": "Museu_do_CMS_0013",
+  "distance_m": 5.306260718168293,
+  "bearing_deg": 2.0336984684461754,
+  "override_bearing": 355.6273380048249,
+  "override_distance": 3.860531948833973,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0018",
+  "alvo": "Museu_do_CMS_0009",
+  "distance_m": 3.9574155021457704,
+  "bearing_deg": 10.127511177586427,
+  "override_bearing": 12.523472396334933,
+  "override_distance": 2.832076738533592,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0018",
+  "alvo": "Museu_do_CMS_0014",
+  "distance_m": 6.141862688804207,
+  "bearing_deg": 29.228512411464408,
+  "override_bearing": 21.74988308279635,
+  "override_distance": 5.0334474337809745,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0019",
+  "alvo": "Museu_do_CMS_0005",
+  "distance_m": 5.402123269636721,
+  "bearing_deg": 191.3179878738526,
+  "override_bearing": 212.63407354911192,
+  "override_distance": 3.584828022339963,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0019",
+  "alvo": "Museu_do_CMS_0024",
+  "distance_m": 7.934889353632447,
+  "bearing_deg": 244.71637390404652,
+  "override_bearing": 247.36590560760592,
+  "override_distance": 6.67231380189841,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0019",
+  "alvo": "Museu_do_CMS_0027",
+  "distance_m": 11.098566282278012,
+  "bearing_deg": 246.24280621040498,
+  "override_bearing": 247.81047703444466,
+  "override_distance": 9.969450705536268,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0019",
+  "alvo": "Museu_do_CMS_0020",
+  "distance_m": 3.0251081639481066,
+  "bearing_deg": 341.9581454172807,
+  "override_bearing": 346.20428892464304,
+  "override_distance": 2.3646542305105784,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0019",
+  "alvo": "Museu_do_CMS_0021",
+  "distance_m": 3.331708157239156,
+  "bearing_deg": 43.48981568136185,
+  "override_bearing": 55.27228230371226,
+  "override_distance": 2.8227556445368864,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0019",
+  "alvo": "Museu_do_CMS_0022",
+  "distance_m": 6.21291324117971,
+  "bearing_deg": 342.4461903517401,
+  "override_bearing": 340.5242526114129,
+  "override_distance": 5.629708736343564,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0019",
+  "alvo": "Museu_do_CMS_0023",
+  "distance_m": 6.631042681276917,
+  "bearing_deg": 320.2431464280327,
+  "override_bearing": 322.73240743547495,
+  "override_distance": 5.709221350728711,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0019",
+  "alvo": "Museu_do_CMS_0029",
+  "distance_m": 13.910013361820322,
+  "bearing_deg": 333.4696699111333,
+  "override_bearing": 337.15323445485114,
+  "override_distance": 10.050550530082642,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0020",
+  "alvo": "Museu_do_CMS_0005",
+  "distance_m": 8.17436348722858,
+  "bearing_deg": 180.86411132574207,
+  "override_bearing": 188.50005867139438,
+  "override_distance": 5.1530593428959985,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0020",
+  "alvo": "Museu_do_CMS_0019",
+  "distance_m": 3.0251081639481066,
+  "bearing_deg": 161.9581502897788,
+  "override_bearing": 133.22599601838402,
+  "override_distance": 1.9827087109739767,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0020",
+  "alvo": "Museu_do_CMS_0021",
+  "distance_m": 3.26236079993105,
+  "bearing_deg": 98.09204353947666,
+  "override_bearing": 95.60743831760821,
+  "override_distance": 2.9310512676247265,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0020",
+  "alvo": "Museu_do_CMS_0022",
+  "distance_m": 3.1880189579358618,
+  "bearing_deg": 342.90930004159827,
+  "override_bearing": 332.76515177169586,
+  "override_distance": 2.652470354727637,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0020",
+  "alvo": "Museu_do_CMS_0023",
+  "distance_m": 3.98118020728362,
+  "bearing_deg": 303.91503567843625,
+  "override_bearing": 303.69489841229733,
+  "override_distance": 4.2091949027369875,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0020",
+  "alvo": "Museu_do_CMS_0017",
+  "distance_m": 5.736299505575632,
+  "bearing_deg": 263.15680882116544,
+  "override_bearing": 243.20130436139672,
+  "override_distance": 3.29018785781288,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0020",
+  "alvo": "Museu_do_CMS_0029",
+  "distance_m": 10.927171190647721,
+  "bearing_deg": 331.1276368456669,
+  "override_bearing": 332.1174146821907,
+  "override_distance": 8.623618329401227,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0021",
+  "alvo": "Museu_do_CMS_0005",
+  "distance_m": 8.411463416380826,
+  "bearing_deg": 203.4932440546791,
+  "override_bearing": 211.5501485795452,
+  "override_distance": 7.631851690418057,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0021",
+  "alvo": "Museu_do_CMS_0024",
+  "distance_m": 11.106262909397989,
+  "bearing_deg": 238.48108452312113,
+  "override_bearing": 238.62706954526593,
+  "override_distance": 8.008772138007696,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0022",
+  "alvo": "Museu_do_CMS_0005",
+  "distance_m": 11.250132673707455,
+  "bearing_deg": 175.85262987702242,
+  "override_bearing": 177.52607091180934,
+  "override_distance": 6.388160079123883,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0022",
+  "alvo": "Museu_do_CMS_0021",
+  "distance_m": 5.44586096852317,
+  "bearing_deg": 130.08147717449157,
+  "override_bearing": 120.43749724720206,
+  "override_distance": 5.370735117021222,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0022",
+  "alvo": "Museu_do_CMS_0023",
+  "distance_m": 2.506883996021622,
+  "bearing_deg": 250.7647402410161,
+  "override_bearing": 294.477144127402,
+  "override_distance": 2.6188161647417987,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0022",
+  "alvo": "Museu_do_CMS_0017",
+  "distance_m": 6.046643777798219,
+  "bearing_deg": 231.90317849685798,
+  "override_bearing": 251.53944906283985,
+  "override_distance": 5.2141681430862326,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0022",
+  "alvo": "Museu_do_CMS_0029",
+  "distance_m": 7.833407527929764,
+  "bearing_deg": 326.36099484049123,
+  "override_bearing": 335.5294148146835,
+  "override_distance": 5.54684881470569,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0022",
+  "alvo": "Museu_do_CMS_0032",
+  "distance_m": 11.82603191131068,
+  "bearing_deg": 332.69877033669565,
+  "override_bearing": 335.96161213334545,
+  "override_distance": 9.38934997892489,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0023",
+  "alvo": "Museu_do_CMS_0005",
+  "distance_m": 10.870490421557937,
+  "bearing_deg": 162.987096778387,
+  "override_bearing": 159.760860635238,
+  "override_distance": 9.044948488368615,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0023",
+  "alvo": "Museu_do_CMS_0019",
+  "distance_m": 6.631042681276917,
+  "bearing_deg": 140.24316847497653,
+  "override_bearing": 133.4037061531057,
+  "override_distance": 7.326603552351321,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0023",
+  "alvo": "Museu_do_CMS_0020",
+  "distance_m": 3.98118020728362,
+  "bearing_deg": 123.915052852504,
+  "override_bearing": 129.5346690823206,
+  "override_distance": 4.293566913493017,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0023",
+  "alvo": "Museu_do_CMS_0021",
+  "distance_m": 7.062224778256765,
+  "bearing_deg": 112.30675453515789,
+  "override_bearing": 112.4015839366153,
+  "override_distance": 7.181053008149477,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0023",
+  "alvo": "Museu_do_CMS_0022",
+  "distance_m": 2.506883996021622,
+  "bearing_deg": 70.76475253588018,
+  "override_bearing": 105.76577327495862,
+  "override_distance": 2.055262739918028,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0024",
+  "alvo": "Museu_do_CMS_0019",
+  "distance_m": 7.934889353632447,
+  "bearing_deg": 64.71641120171864,
+  "override_bearing": 60.49564468392545,
+  "override_distance": 6.900502432169546,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0024",
+  "alvo": "Museu_do_CMS_0025",
+  "distance_m": 5.029089689338952,
+  "bearing_deg": 233.51609465094464,
+  "override_bearing": 232.41098458554785,
+  "override_distance": 5.450097226651924,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0024",
+  "alvo": "Museu_do_CMS_0026",
+  "distance_m": 7.89909191213883,
+  "bearing_deg": 249.9703100657504,
+  "override_bearing": 248.18800576586005,
+  "override_distance": 8.12594223287007,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0024",
+  "alvo": "Museu_do_CMS_0033",
+  "distance_m": 5.243119111236147,
+  "bearing_deg": 260.93710963821707,
+  "override_bearing": 258.26434108457954,
+  "override_distance": 4.908563328744202,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0024",
+  "alvo": "Museu_do_CMS_0021",
+  "distance_m": 11.106262909397989,
+  "bearing_deg": 58.48113374457489,
+  "override_bearing": 51.509556383962405,
+  "override_distance": 9.24167058657811,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0024",
+  "alvo": "Museu_do_CMS_0005",
+  "distance_m": 6.41,
+  "bearing_deg": 107.33,
+  "override_bearing": 90.32553647080199,
+  "override_distance": 5.119454529001389,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0025",
+  "alvo": "Museu_do_CMS_0026",
+  "distance_m": 3.3897931236586727,
+  "bearing_deg": 274.81929515609363,
+  "override_bearing": 265.4265954856687,
+  "override_distance": 2.79843562961597,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0025",
+  "alvo": "Museu_do_CMS_0033",
+  "distance_m": 2.443543973918603,
+  "bearing_deg": 332.3451960699508,
+  "override_bearing": 320.1868168752489,
+  "override_distance": 2.3054607607355235,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0025",
+  "alvo": "Museu_do_CMS_0037",
+  "distance_m": 6.9626866956758,
+  "bearing_deg": 355.31647452377484,
+  "override_bearing": 348.9795873123412,
+  "override_distance": 4.8538837587414525,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0026",
+  "alvo": "Museu_do_CMS_0024",
+  "distance_m": 7.89909191213883,
+  "bearing_deg": 69.97034864677113,
+  "override_bearing": 73.870345501264,
+  "override_distance": 10.656340511683592,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0026",
+  "alvo": "Museu_do_CMS_0027",
+  "distance_m": 4.725559102518595,
+  "bearing_deg": 69.9089066115713,
+  "override_bearing": 67.87777846111528,
+  "override_distance": 5.517297626444097,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0027",
+  "alvo": "Museu_do_CMS_0024",
+  "distance_m": 3.1735395726737123,
+  "bearing_deg": 70.0618158576313,
+  "override_bearing": 97.77518910156711,
+  "override_distance": 2.9837383796092882,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0027",
+  "alvo": "Museu_do_CMS_0025",
+  "distance_m": 2.1828383333415124,
+  "bearing_deg": 209.0578521822351,
+  "override_bearing": 217.43632060194858,
+  "override_distance": 2.2274429062101886,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0027",
+  "alvo": "Museu_do_CMS_0026",
+  "distance_m": 4.725559102518595,
+  "bearing_deg": 249.9088835360642,
+  "override_bearing": 252.60454327808975,
+  "override_distance": 4.201941170302477,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0027",
+  "alvo": "Museu_do_CMS_0033",
+  "distance_m": 2.2092617652977573,
+  "bearing_deg": 276.66222569326555,
+  "override_bearing": 273.5849630397504,
+  "override_distance": 2.167871201037972,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0027",
+  "alvo": "Museu_do_CMS_0037",
+  "distance_m": 5.288402587807769,
+  "bearing_deg": 342.0626501938072,
+  "override_bearing": 353.52736770013655,
+  "override_distance": 3.471544907111281,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0027",
+  "alvo": "Museu_do_CMS_0038",
+  "distance_m": 6.3455107622597575,
+  "bearing_deg": 304.82853501461557,
+  "override_bearing": 318.7832671785618,
+  "override_distance": 4.65124888455127,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0027",
+  "alvo": "Museu_do_CMS_0036",
+  "distance_m": 4.751890065382948,
+  "bearing_deg": 294.050085799037,
+  "override_bearing": 305.65107514306385,
+  "override_distance": 3.2282083131723094,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0028",
+  "alvo": "Museu_do_CMS_0022",
+  "distance_m": 7.264431323090289,
+  "bearing_deg": 218.7357249390576,
+  "override_bearing": 223.69982391956498,
+  "override_distance": 9.045235119712636,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0028",
+  "alvo": "Museu_do_CMS_0040",
+  "distance_m": 5.225373419100983,
+  "bearing_deg": 136.45760498257033,
+  "override_bearing": 137.440514776169,
+  "override_distance": 3.7169056378966947,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0028",
+  "alvo": "Museu_do_CMS_0042",
+  "distance_m": 7.960146216950925,
+  "bearing_deg": 106.84553306237171,
+  "override_bearing": 103.29757203671294,
+  "override_distance": 5.386994389741293,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0028",
+  "alvo": "Museu_do_CMS_0031",
+  "distance_m": 2.8894793754712054,
+  "bearing_deg": 110.17947560947238,
+  "override_bearing": 125.82931204510794,
+  "override_distance": 2.570663903238115,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0028",
+  "alvo": "Museu_do_CMS_0030",
+  "distance_m": 2.2740877934948203,
+  "bearing_deg": 67.15626108056097,
+  "override_bearing": 69.02008151841306,
+  "override_distance": 1.4529102046200488,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0028",
+  "alvo": "Museu_do_CMS_0034",
+  "distance_m": 4.549087236145864,
+  "bearing_deg": 10.618955728557921,
+  "override_bearing": 15.464282170908842,
+  "override_distance": 2.502752209825167,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0028",
+  "alvo": "Museu_do_CMS_0043",
+  "distance_m": 5.153866861048609,
+  "bearing_deg": 341.8832928721228,
+  "override_bearing": 345.2349380908143,
+  "override_distance": 3.51187856819746,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0028",
+  "alvo": "Museu_do_CMS_0044",
+  "distance_m": 12.052203441111438,
+  "bearing_deg": 347.0030508595426,
+  "override_bearing": 343.2465733012845,
+  "override_distance": 8.786085457078807,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0029",
+  "alvo": "Museu_do_CMS_0019",
+  "distance_m": 13.910013361820322,
+  "bearing_deg": 153.4697022123721,
+  "override_bearing": 151.28350512225254,
+  "override_distance": 11.334447498850945,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0029",
+  "alvo": "Museu_do_CMS_0023",
+  "distance_m": 7.607692601891056,
+  "bearing_deg": 164.97325909828203,
+  "override_bearing": 176.52004347105375,
+  "override_distance": 4.036810325457212,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0029",
+  "alvo": "Museu_do_CMS_0017",
+  "distance_m": 10.26095519315978,
+  "bearing_deg": 182.3410972371209,
+  "override_bearing": 203.29618191367038,
+  "override_distance": 7.664035750678879,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0029",
+  "alvo": "Museu_do_CMS_0032",
+  "distance_m": 4.1319953436220835,
+  "bearing_deg": 344.77871124394204,
+  "override_bearing": 345.8545660410302,
+  "override_distance": 4.501667331157019,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0029",
+  "alvo": "Museu_do_CMS_0035",
+  "distance_m": 6.892590597837526,
+  "bearing_deg": 359.180157412847,
+  "override_bearing": 0.03588330185563161,
+  "override_distance": 6.114671423431702,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0029",
+  "alvo": "Museu_do_CMS_0028",
+  "distance_m": 8.93,
+  "bearing_deg": 95.5,
+  "override_bearing": 93.2967668688995,
+  "override_distance": 9.743977815455356,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0030",
+  "alvo": "Museu_do_CMS_0022",
+  "distance_m": 9.327449403301243,
+  "bearing_deg": 225.39914835255243,
+  "override_bearing": 225.04900982014317,
+  "override_distance": 8.895443431701713,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0030",
+  "alvo": "Museu_do_CMS_0039",
+  "distance_m": 6.320990352365344,
+  "bearing_deg": 198.8897798682063,
+  "override_bearing": 195.14247561847552,
+  "override_distance": 3.7918149865742787,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0030",
+  "alvo": "Museu_do_CMS_0040",
+  "distance_m": 4.906716899503033,
+  "bearing_deg": 162.15057503609273,
+  "override_bearing": 154.206239559509,
+  "override_distance": 3.407619553442745,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0030",
+  "alvo": "Museu_do_CMS_0041",
+  "distance_m": 5.499031415340024,
+  "bearing_deg": 135.61751756754404,
+  "override_bearing": 130.23589973688811,
+  "override_distance": 3.463742689548664,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0030",
+  "alvo": "Museu_do_CMS_0042",
+  "distance_m": 6.377744286822127,
+  "bearing_deg": 120.00790455651963,
+  "override_bearing": 112.00609455202229,
+  "override_distance": 4.336961518047216,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0030",
+  "alvo": "Museu_do_CMS_0031",
+  "distance_m": 1.9780927525428555,
+  "bearing_deg": 161.84384032878916,
+  "override_bearing": 151.49999999999997,
+  "override_distance": 1.894853741312994,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0030",
+  "alvo": "Museu_do_CMS_0028",
+  "distance_m": 2.2740877934948203,
+  "bearing_deg": 247.15625019216787,
+  "override_bearing": 250.9480895606652,
+  "override_distance": 1.1179657950595987,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0030",
+  "alvo": "Museu_do_CMS_0034",
+  "distance_m": 3.8022760931379507,
+  "bearing_deg": 340.68837508332723,
+  "override_bearing": 343.9512674376497,
+  "override_distance": 1.9576085007096717,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0030",
+  "alvo": "Museu_do_CMS_0043",
+  "distance_m": 5.459130136973193,
+  "bearing_deg": 317.3545780412879,
+  "override_bearing": 322.63422735844676,
+  "override_distance": 3.141143963803744,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0030",
+  "alvo": "Museu_do_CMS_0044",
+  "distance_m": 11.876567261279341,
+  "bearing_deg": 336.1286720335767,
+  "override_bearing": 331.9627065216731,
+  "override_distance": 8.089614589300126,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0031",
+  "alvo": "Museu_do_CMS_0023",
+  "distance_m": 11.08312513860014,
+  "bearing_deg": 240.27351471142512,
+  "override_bearing": 251.37168075478678,
+  "override_distance": 7.758889993449932,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0031",
+  "alvo": "Museu_do_CMS_0039",
+  "distance_m": 4.889617222741469,
+  "bearing_deg": 212.99615660750115,
+  "override_bearing": 227.03590128839363,
+  "override_distance": 2.3839605812986573,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0031",
+  "alvo": "Museu_do_CMS_0040",
+  "distance_m": 2.9286716389119007,
+  "bearing_deg": 162.35774702770516,
+  "override_bearing": 156.8140881392955,
+  "override_distance": 1.101091162888276,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0031",
+  "alvo": "Museu_do_CMS_0041",
+  "distance_m": 3.8257793176455075,
+  "bearing_deg": 122.40928751671578,
+  "override_bearing": 112.71479355351771,
+  "override_distance": 1.7533036438702487,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0031",
+  "alvo": "Museu_do_CMS_0042",
+  "distance_m": 5.078338081993394,
+  "bearing_deg": 104.94929216607858,
+  "override_bearing": 89.16923064774655,
+  "override_distance": 3.724477708562318,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0031",
+  "alvo": "Museu_do_CMS_0043",
+  "distance_m": 7.305434015915733,
+  "bearing_deg": 323.7990519925813,
+  "override_bearing": 313.8876510628209,
+  "override_distance": 2.7363717998322996,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0031",
+  "alvo": "Museu_do_CMS_0044",
+  "distance_m": 13.846228675018567,
+  "bearing_deg": 336.94382045609325,
+  "override_bearing": 334.3885210720499,
+  "override_distance": 10.349009270930486,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0032",
+  "alvo": "Museu_do_CMS_0020",
+  "distance_m": 14.974230030199914,
+  "bearing_deg": 154.86165088389248,
+  "override_bearing": 150.23038054395508,
+  "override_distance": 9.551375019298469,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0032",
+  "alvo": "Museu_do_CMS_0022",
+  "distance_m": 11.82603191131068,
+  "bearing_deg": 152.69879853583075,
+  "override_bearing": 143.0308502098208,
+  "override_distance": 7.8002554311466,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0032",
+  "alvo": "Museu_do_CMS_0029",
+  "distance_m": 4.1319953436220835,
+  "bearing_deg": 164.7787168839401,
+  "override_bearing": 149.66601918143513,
+  "override_distance": 3.779547980242667,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0032",
+  "alvo": "Museu_do_CMS_0046",
+  "distance_m": 7.992634826180648,
+  "bearing_deg": 340.1641237660824,
+  "override_bearing": 332.0761579777344,
+  "override_distance": 5.939712002099587,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0032",
+  "alvo": "Museu_do_CMS_0048",
+  "distance_m": 14.547082806256611,
+  "bearing_deg": 341.0091128624,
+  "override_bearing": 327.6568534885999,
+  "override_distance": 12.962394357538201,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0032",
+  "alvo": "Museu_do_CMS_0049",
+  "distance_m": 14.162285372525243,
+  "bearing_deg": 350.17661640606303,
+  "override_bearing": 340.3816163476456,
+  "override_distance": 14.199663476126046,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0033",
+  "alvo": "Museu_do_CMS_0024",
+  "distance_m": 5.243119111236147,
+  "bearing_deg": 80.9371365559723,
+  "override_bearing": 94.0851244036971,
+  "override_distance": 6.036504813341831,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0033",
+  "alvo": "Museu_do_CMS_0025",
+  "distance_m": 2.443543973918603,
+  "bearing_deg": 152.3452019661878,
+  "override_bearing": 164.71561588254372,
+  "override_distance": 2.2587542402049183,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0033",
+  "alvo": "Museu_do_CMS_0026",
+  "distance_m": 2.9269266395105533,
+  "bearing_deg": 230.04564828520037,
+  "override_bearing": 241.0834313676965,
+  "override_distance": 1.9941001357603372,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0033",
+  "alvo": "Museu_do_CMS_0037",
+  "distance_m": 4.8084292889679405,
+  "bearing_deg": 6.7556201079513585,
+  "override_bearing": 27.826960304424944,
+  "override_distance": 3.706602495772194,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0033",
+  "alvo": "Museu_do_CMS_0038",
+  "distance_m": 4.519818359762593,
+  "bearing_deg": 318.16841234015504,
+  "override_bearing": 333.43985769495544,
+  "override_distance": 5.770704005800261,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0033",
+  "alvo": "Museu_do_CMS_0036",
+  "distance_m": 2.7247778448970585,
+  "bearing_deg": 308.072404075605,
+  "override_bearing": 333.74897530451886,
+  "override_distance": 2.4402700357280858,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0033",
+  "alvo": "Museu_do_CMS_0027",
+  "distance_m": 2.2092617652977573,
+  "bearing_deg": 96.66223710683573,
+  "override_bearing": 96.24378378568726,
+  "override_distance": 2.7287032141850793,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0034",
+  "alvo": "Museu_do_CMS_0039",
+  "distance_m": 9.601369661497529,
+  "bearing_deg": 184.7135096873456,
+  "override_bearing": 188.89951528765994,
+  "override_distance": 5.811836135151896,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0034",
+  "alvo": "Museu_do_CMS_0040",
+  "distance_m": 8.708295404963696,
+  "bearing_deg": 161.51220181967585,
+  "override_bearing": 162.1150327174224,
+  "override_distance": 5.416139753576132,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0034",
+  "alvo": "Museu_do_CMS_0041",
+  "distance_m": 9.08704826565977,
+  "bearing_deg": 145.83030012261003,
+  "override_bearing": 146.90147314630747,
+  "override_distance": 5.504724703316265,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0034",
+  "alvo": "Museu_do_CMS_0042",
+  "distance_m": 9.58713382415877,
+  "bearing_deg": 134.9902329849125,
+  "override_bearing": 134.99074735484288,
+  "override_distance": 6.3916766120604125,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0034",
+  "alvo": "Museu_do_CMS_0031",
+  "distance_m": 5.780104258691316,
+  "bearing_deg": 161.0837863666435,
+  "override_bearing": 162.30943929175893,
+  "override_distance": 4.089161236364242,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0034",
+  "alvo": "Museu_do_CMS_0028",
+  "distance_m": 4.549087236145864,
+  "bearing_deg": 190.61895137067143,
+  "override_bearing": 190.16071385458113,
+  "override_distance": 2.5492861423746036,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0034",
+  "alvo": "Museu_do_CMS_0043",
+  "distance_m": 2.47800213253135,
+  "bearing_deg": 279.9268054356724,
+  "override_bearing": 311.6576378061883,
+  "override_distance": 1.3960840903110296,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0034",
+  "alvo": "Museu_do_CMS_0044",
+  "distance_m": 8.09197284907635,
+  "bearing_deg": 333.98791685205606,
+  "override_bearing": 336.54505027424204,
+  "override_distance": 6.861430336788851,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0034",
+  "alvo": "Museu_do_CMS_0050",
+  "distance_m": 13.411782107766417,
+  "bearing_deg": 336.95516257744544,
+  "override_bearing": 340.1424154341047,
+  "override_distance": 11.2950918282107,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0035",
+  "alvo": "Museu_do_CMS_0029",
+  "distance_m": 6.892590597837526,
+  "bearing_deg": 179.18015792554684,
+  "override_bearing": 166.02893217835654,
+  "override_distance": 5.925333089957028,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0035",
+  "alvo": "Museu_do_CMS_0032",
+  "distance_m": 3.0676956214394977,
+  "bearing_deg": 198.75286314862146,
+  "override_bearing": 207.79625032206337,
+  "override_distance": 2.0722042486592573,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0035",
+  "alvo": "Museu_do_CMS_0045",
+  "distance_m": 3.6500432295153447,
+  "bearing_deg": 339.4359800147217,
+  "override_bearing": 331.79999503341327,
+  "override_distance": 2.8233101859604877,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0035",
+  "alvo": "Museu_do_CMS_0046",
+  "distance_m": 5.9129352480064306,
+  "bearing_deg": 321.28358795659994,
+  "override_bearing": 328.0659044588276,
+  "override_distance": 4.9431851862841505,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0035",
+  "alvo": "Museu_do_CMS_0048",
+  "distance_m": 12.265877820768761,
+  "bearing_deg": 332.2028384399976,
+  "override_bearing": 313.0055057201366,
+  "override_distance": 8.554671793801017,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0035",
+  "alvo": "Museu_do_CMS_0049",
+  "distance_m": 11.561785729733533,
+  "bearing_deg": 342.88525122446634,
+  "override_bearing": 330.570727438937,
+  "override_distance": 10.729038879887087,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0036",
+  "alvo": "Museu_do_CMS_0024",
+  "distance_m": 7.372369872311702,
+  "bearing_deg": 96.6548394479666,
+  "override_bearing": 102.9192839893431,
+  "override_distance": 7.388602325948288,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0036",
+  "alvo": "Museu_do_CMS_0025",
+  "distance_m": 5.053155097128828,
+  "bearing_deg": 139.53838602208606,
+  "override_bearing": 153.65638274755872,
+  "override_distance": 4.41967843744266,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0036",
+  "alvo": "Museu_do_CMS_0026",
+  "distance_m": 3.561223802041889,
+  "bearing_deg": 181.5869140346842,
+  "override_bearing": 195.0985554691431,
+  "override_distance": 3.725030994596966,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0036",
+  "alvo": "Museu_do_CMS_0033",
+  "distance_m": 2.7247778448970585,
+  "bearing_deg": 128.07241522441495,
+  "override_bearing": 145.23009797433872,
+  "override_distance": 2.105528606402734,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0036",
+  "alvo": "Museu_do_CMS_0037",
+  "distance_m": 4.114057815113926,
+  "bearing_deg": 41.21453838929966,
+  "override_bearing": 53.76637302345398,
+  "override_distance": 2.4616784944400876,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0036",
+  "alvo": "Museu_do_CMS_0027",
+  "distance_m": 4.751890065382948,
+  "bearing_deg": 114.05010836208572,
+  "override_bearing": 118.17992169366396,
+  "override_distance": 3.733478931422623,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0037",
+  "alvo": "Museu_do_CMS_0025",
+  "distance_m": 6.9626866956758,
+  "bearing_deg": 175.31647747967133,
+  "override_bearing": 190.5792248954901,
+  "override_distance": 6.380832710425045,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0037",
+  "alvo": "Museu_do_CMS_0026",
+  "distance_m": 7.223329013124063,
+  "bearing_deg": 202.8872747936769,
+  "override_bearing": 220.29698227049727,
+  "override_distance": 6.242432623499688,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0037",
+  "alvo": "Museu_do_CMS_0033",
+  "distance_m": 4.8084292889679405,
+  "bearing_deg": 186.75561716731792,
+  "override_bearing": 201.9348906856279,
+  "override_distance": 3.7594780091848916,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0037",
+  "alvo": "Museu_do_CMS_0038",
+  "distance_m": 3.846763531693511,
+  "bearing_deg": 248.5408814051958,
+  "override_bearing": 278.1011712255589,
+  "override_distance": 3.0828064782851596,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0037",
+  "alvo": "Museu_do_CMS_0036",
+  "distance_m": 4.114057815113926,
+  "bearing_deg": 221.21452429421652,
+  "override_bearing": 238.0482993975125,
+  "override_distance": 3.3006022464811964,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0037",
+  "alvo": "Museu_do_CMS_0027",
+  "distance_m": 5.288402587807769,
+  "bearing_deg": 162.06265866289084,
+  "override_bearing": 164.58668718292412,
+  "override_distance": 3.069609974578645,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0038",
+  "alvo": "Museu_do_CMS_0025",
+  "distance_m": 6.914889315437742,
+  "bearing_deg": 143.13339055708934,
+  "override_bearing": 142.71859302497896,
+  "override_distance": 8.04047025201418,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0038",
+  "alvo": "Museu_do_CMS_0033",
+  "distance_m": 4.519818359762593,
+  "bearing_deg": 138.16842801371314,
+  "override_bearing": 141.70355903087165,
+  "override_distance": 4.610585754849424,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0038",
+  "alvo": "Museu_do_CMS_0037",
+  "distance_m": 3.846763531693511,
+  "bearing_deg": 68.54090001554329,
+  "override_bearing": 65.07704491881437,
+  "override_distance": 3.1620871455364163,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0038",
+  "alvo": "Museu_do_CMS_0027",
+  "distance_m": 6.3455107622597575,
+  "bearing_deg": 124.82856209175355,
+  "override_bearing": 112.68652136555691,
+  "override_distance": 6.97062596296969,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0038",
+  "alvo": "Museu_do_CMS_0026",
+  "distance_m": 5.3,
+  "bearing_deg": 171.64,
+  "override_bearing": 164.29480016892668,
+  "override_distance": 5.316243315897222,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0039",
+  "alvo": "Museu_do_CMS_0041",
+  "distance_m": 6.239242986791069,
+  "bearing_deg": 70.81363554856068,
+  "override_bearing": 68.28570815234126,
+  "override_distance": 4.1406714676844425,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0039",
+  "alvo": "Museu_do_CMS_0042",
+  "distance_m": 8.067402532221537,
+  "bearing_deg": 69.76014037985726,
+  "override_bearing": 69.12908987327009,
+  "override_distance": 6.580105188806975,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0039",
+  "alvo": "Museu_do_CMS_0031",
+  "distance_m": 4.889617222741469,
+  "bearing_deg": 32.99617045285618,
+  "override_bearing": 41.19884949428655,
+  "override_distance": 2.5145394249567685,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0039",
+  "alvo": "Museu_do_CMS_0030",
+  "distance_m": 6.320990352365344,
+  "bearing_deg": 18.88979050672259,
+  "override_bearing": 11.512425736888774,
+  "override_distance": 4.284531091001326,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0039",
+  "alvo": "Museu_do_CMS_0028",
+  "distance_m": 5.09795507978886,
+  "bearing_deg": 359.44578458453174,
+  "override_bearing": 353.34400173631724,
+  "override_distance": 3.7126707722270424,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0039",
+  "alvo": "Museu_do_CMS_0034",
+  "distance_m": 9.601369661497529,
+  "bearing_deg": 4.71351378916728,
+  "override_bearing": 3.3958499486781,
+  "override_distance": 6.286693130376319,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0039",
+  "alvo": "Museu_do_CMS_0043",
+  "distance_m": 10.131657818491252,
+  "bearing_deg": 350.61626858040114,
+  "override_bearing": 349.95705538411977,
+  "override_distance": 7.454811198465868,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0039",
+  "alvo": "Museu_do_CMS_0044",
+  "distance_m": 17.07,
+  "bearing_deg": 350.69,
+  "override_bearing": 345.87551173701144,
+  "override_distance": 12.153617383896869,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0039",
+  "alvo": "Museu_do_CMS_0023",
+  "distance_m": 7.1,
+  "bearing_deg": 258.67,
+  "override_bearing": 270.59546392884994,
+  "override_distance": 7.191513262301091,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0039",
+  "alvo": "Museu_do_CMS_0022",
+  "distance_m": 4.63,
+  "bearing_deg": 262.94,
+  "override_bearing": 259.8238117410565,
+  "override_distance": 5.665861975202362,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0040",
+  "alvo": "Museu_do_CMS_0039",
+  "distance_m": 3.784379315133683,
+  "bearing_deg": 249.74693276476734,
+  "override_bearing": 263.4290207162919,
+  "override_distance": 2.2677559207579283,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0040",
+  "alvo": "Museu_do_CMS_0041",
+  "distance_m": 2.4565299051085905,
+  "bearing_deg": 72.45701596075992,
+  "override_bearing": 70.23539823311407,
+  "override_distance": 2.1442592809376735,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0040",
+  "alvo": "Museu_do_CMS_0042",
+  "distance_m": 4.283023405946671,
+  "bearing_deg": 69.77177555656664,
+  "override_bearing": 69.37375532827703,
+  "override_distance": 4.528467803992708,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0040",
+  "alvo": "Museu_do_CMS_0031",
+  "distance_m": 2.9286716389119007,
+  "bearing_deg": 342.35774241348327,
+  "override_bearing": 16.40582193425468,
+  "override_distance": 1.3881168681073324,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0040",
+  "alvo": "Museu_do_CMS_0030",
+  "distance_m": 4.906716899503033,
+  "bearing_deg": 342.15056721752546,
+  "override_bearing": 349.77371945132404,
+  "override_distance": 3.608115921588734,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0040",
+  "alvo": "Museu_do_CMS_0028",
+  "distance_m": 5.225373419100983,
+  "bearing_deg": 316.4575862696835,
+  "override_bearing": 326.6868902587586,
+  "override_distance": 3.032698756490255,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0040",
+  "alvo": "Museu_do_CMS_0034",
+  "distance_m": 8.708295404963696,
+  "bearing_deg": 341.51218746379,
+  "override_bearing": 345.3169473335935,
+  "override_distance": 6.061365754860284,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0040",
+  "alvo": "Museu_do_CMS_0043",
+  "distance_m": 10.124807890044934,
+  "bearing_deg": 329.0813804775701,
+  "override_bearing": 335.35105565863375,
+  "override_distance": 6.901975299425361,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0040",
+  "alvo": "Museu_do_CMS_0044",
+  "distance_m": 16.76,
+  "bearing_deg": 337.89,
+  "override_bearing": 336.28550630964196,
+  "override_distance": 13.447790646879108,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0040",
+  "alvo": "Museu_do_CMS_0022",
+  "distance_m": 8.36,
+  "bearing_deg": 257.01,
+  "override_bearing": 257.00276418695756,
+  "override_distance": 6.917005032766317,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0040",
+  "alvo": "Museu_do_CMS_0023",
+  "distance_m": 10.85,
+  "bearing_deg": 255.57,
+  "override_bearing": 261.72315159082143,
+  "override_distance": 9.35664007999419,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0041",
+  "alvo": "Museu_do_CMS_0040",
+  "distance_m": 2.4565299051085905,
+  "bearing_deg": 252.457003780327,
+  "override_bearing": 242.51872874506196,
+  "override_distance": 2.151435630638525,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0041",
+  "alvo": "Museu_do_CMS_0031",
+  "distance_m": 3.8257793176455075,
+  "bearing_deg": 302.4092707273638,
+  "override_bearing": 277.1836085287373,
+  "override_distance": 2.362079888992814,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0041",
+  "alvo": "Museu_do_CMS_0030",
+  "distance_m": 5.499031415340024,
+  "bearing_deg": 315.61749757026206,
+  "override_bearing": 301.873430477307,
+  "override_distance": 3.8769287353840327,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0041",
+  "alvo": "Museu_do_CMS_0028",
+  "distance_m": 6.677795426782246,
+  "bearing_deg": 297.1501405044204,
+  "override_bearing": 284.63854351860175,
+  "override_distance": 4.726293388150086,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0041",
+  "alvo": "Museu_do_CMS_0034",
+  "distance_m": 9.08704826565977,
+  "bearing_deg": 325.8302735879433,
+  "override_bearing": 319.46852048935784,
+  "override_distance": 6.593332600768153,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0041",
+  "alvo": "Museu_do_CMS_0022",
+  "distance_m": 10.81,
+  "bearing_deg": 255.98,
+  "override_bearing": 250.05239690837539,
+  "override_distance": 9.83770222388823,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0041",
+  "alvo": "Museu_do_CMS_0023",
+  "distance_m": 13.31,
+  "bearing_deg": 255,
+  "override_bearing": 256.22722527114354,
+  "override_distance": 12.008268328190747,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0042",
+  "alvo": "Museu_do_CMS_0039",
+  "distance_m": 8.067402532221537,
+  "bearing_deg": 249.76010103203924,
+  "override_bearing": 252.0440995394562,
+  "override_distance": 7.151205868301647,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0042",
+  "alvo": "Museu_do_CMS_0031",
+  "distance_m": 5.078338081993394,
+  "bearing_deg": 284.9492666595585,
+  "override_bearing": 267.62762377015054,
+  "override_distance": 5.007083934503398,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0042",
+  "alvo": "Museu_do_CMS_0030",
+  "distance_m": 6.377744286822127,
+  "bearing_deg": 300.007875843246,
+  "override_bearing": 286.2082149484736,
+  "override_distance": 5.350880327063889,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0042",
+  "alvo": "Museu_do_CMS_0028",
+  "distance_m": 7.960146216950925,
+  "bearing_deg": 286.8454934538139,
+  "override_bearing": 278.71671616086815,
+  "override_distance": 7.29131534200406,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0042",
+  "alvo": "Museu_do_CMS_0022",
+  "distance_m": 12.62,
+  "bearing_deg": 254.56,
+  "override_bearing": 254.27634788698776,
+  "override_distance": 13.088603792323372,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0042",
+  "alvo": "Museu_do_CMS_0023",
+  "distance_m": 15.12,
+  "bearing_deg": 253.93,
+  "override_bearing": 257.6067781954421,
+  "override_distance": 18.504610527133867,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0043",
+  "alvo": "Museu_do_CMS_0039",
+  "distance_m": 10.131657818491252,
+  "bearing_deg": 170.61627716844282,
+  "override_bearing": 171.67547508721722,
+  "override_distance": 9.958467714965476,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0043",
+  "alvo": "Museu_do_CMS_0040",
+  "distance_m": 10.124807890044934,
+  "bearing_deg": 149.0814075228957,
+  "override_bearing": 150.05299567406217,
+  "override_distance": 10.121392924684194,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0043",
+  "alvo": "Museu_do_CMS_0031",
+  "distance_m": 7.305434015915733,
+  "bearing_deg": 143.79907442344745,
+  "override_bearing": 148.12224959442625,
+  "override_distance": 7.687476481066221,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0043",
+  "alvo": "Museu_do_CMS_0030",
+  "distance_m": 5.459130136973193,
+  "bearing_deg": 137.35459727032833,
+  "override_bearing": 142.97512992257302,
+  "override_distance": 4.387480334841644,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0043",
+  "alvo": "Museu_do_CMS_0034",
+  "distance_m": 2.47800213253135,
+  "bearing_deg": 99.92681812061113,
+  "override_bearing": 133.5380084259516,
+  "override_distance": 1.937237935835216,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0043",
+  "alvo": "Museu_do_CMS_0044",
+  "distance_m": 6.934167951905847,
+  "bearing_deg": 350.80608359807286,
+  "override_bearing": 330.7450246847549,
+  "override_distance": 4.141270836156853,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0043",
+  "alvo": "Museu_do_CMS_0050",
+  "distance_m": 12.241015407148819,
+  "bearing_deg": 346.7331270075372,
+  "override_bearing": 333.2562118025563,
+  "override_distance": 8.0925515600493,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0044",
+  "alvo": "Museu_do_CMS_0031",
+  "distance_m": 13.846228675018567,
+  "bearing_deg": 156.94384864732683,
+  "override_bearing": 159.49722633216987,
+  "override_distance": 9.789339484722941,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0044",
+  "alvo": "Museu_do_CMS_0030",
+  "distance_m": 11.876567261279341,
+  "bearing_deg": 156.12869702139494,
+  "override_bearing": 156.64993718437447,
+  "override_distance": 8.159059791987007,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0044",
+  "alvo": "Museu_do_CMS_0028",
+  "distance_m": 12.052203441111438,
+  "bearing_deg": 167.00306495150323,
+  "override_bearing": 166.24231152282917,
+  "override_distance": 8.28837566776545,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0044",
+  "alvo": "Museu_do_CMS_0034",
+  "distance_m": 8.09197284907635,
+  "bearing_deg": 153.987935300432,
+  "override_bearing": 151.27557319409874,
+  "override_distance": 5.756428101522404,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0044",
+  "alvo": "Museu_do_CMS_0043",
+  "distance_m": 6.934167951905847,
+  "bearing_deg": 170.806089358431,
+  "override_bearing": 164.8010576787195,
+  "override_distance": 5.522253337871808,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0044",
+  "alvo": "Museu_do_CMS_0050",
+  "distance_m": 5.347090704174886,
+  "bearing_deg": 341.4482329253503,
+  "override_bearing": 349.20633863205535,
+  "override_distance": 4.112905327569472,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0044",
+  "alvo": "Museu_do_CMS_0053",
+  "distance_m": 10.340745572964746,
+  "bearing_deg": 330.60728134046144,
+  "override_bearing": 340.1954868469193,
+  "override_distance": 9.640857383001858,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0044",
+  "alvo": "Museu_do_CMS_0051",
+  "distance_m": 12.282593922597032,
+  "bearing_deg": 315.67200956228896,
+  "override_bearing": 334.55242604702926,
+  "override_distance": 13.631775946298932,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0044",
+  "alvo": "Museu_do_CMS_0040",
+  "distance_m": 16.76,
+  "bearing_deg": 157.89,
+  "override_bearing": 159.75952927250808,
+  "override_distance": 12.038739476206137,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0045",
+  "alvo": "Museu_do_CMS_0051",
+  "distance_m": 9.421562070604667,
+  "bearing_deg": 353.73899295855654,
+  "override_bearing": 347.2964903162063,
+  "override_distance": 10.598595279674441,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0045",
+  "alvo": "Museu_do_CMS_0029",
+  "distance_m": 10.401395966304532,
+  "bearing_deg": 172.37187110515572,
+  "override_bearing": 166.79103085106763,
+  "override_distance": 7.994499619622241,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0045",
+  "alvo": "Museu_do_CMS_0048",
+  "distance_m": 8.657088263774591,
+  "bearing_deg": 329.159836776695,
+  "override_bearing": 320.172109262726,
+  "override_distance": 7.103949736371528,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0045",
+  "alvo": "Museu_do_CMS_0049",
+  "distance_m": 7.921399318911177,
+  "bearing_deg": 344.47386584196937,
+  "override_bearing": 334.32049515798644,
+  "override_distance": 6.39973385253319,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0046",
+  "alvo": "Museu_do_CMS_0051",
+  "distance_m": 8.2864560380236,
+  "bearing_deg": 9.647928596218435,
+  "override_bearing": 5.595994964757034,
+  "override_distance": 10.03667472578049,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0046",
+  "alvo": "Museu_do_CMS_0029",
+  "distance_m": 12.115797412274617,
+  "bearing_deg": 161.73640421501375,
+  "override_bearing": 167.33171228467373,
+  "override_distance": 7.971364584819225,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0046",
+  "alvo": "Museu_do_CMS_0032",
+  "distance_m": 7.992634826180648,
+  "bearing_deg": 160.16413786660087,
+  "override_bearing": 160.99529326855054,
+  "override_distance": 4.529160085497476,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0046",
+  "alvo": "Museu_do_CMS_0035",
+  "distance_m": 5.9129352480064306,
+  "bearing_deg": 141.28360718531667,
+  "override_bearing": 145.47991651761097,
+  "override_distance": 3.062609246144861,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0046",
+  "alvo": "Museu_do_CMS_0045",
+  "distance_m": 2.696098186845685,
+  "bearing_deg": 116.33672757182535,
+  "override_bearing": 113.74374299849713,
+  "override_distance": 1.4898530128278324,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0046",
+  "alvo": "Museu_do_CMS_0048",
+  "distance_m": 6.5563767700644595,
+  "bearing_deg": 342.0392398640595,
+  "override_bearing": 339.91786700814146,
+  "override_distance": 4.8809437133280245,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0046",
+  "alvo": "Museu_do_CMS_0049",
+  "distance_m": 6.4430199665984365,
+  "bearing_deg": 2.631983137465113,
+  "override_bearing": 359.3508472255279,
+  "override_distance": 4.230994984007041,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0047",
+  "alvo": "Museu_do_CMS_0032",
+  "distance_m": 10.954682795720075,
+  "bearing_deg": 89.45076454354148,
+  "override_bearing": 91.08171872763637,
+  "override_distance": 7.6941752065996125,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0047",
+  "alvo": "Museu_do_CMS_0054",
+  "distance_m": 14.42448099289421,
+  "bearing_deg": 341.0391085546017,
+  "override_bearing": 337.3668549873138,
+  "override_distance": 10.75588500828863,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0047",
+  "alvo": "Museu_do_CMS_0058",
+  "distance_m": 9.560563847975985,
+  "bearing_deg": 340.61714778163963,
+  "override_bearing": 340.64148050549375,
+  "override_distance": 7.608839846025741,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0047",
+  "alvo": "Museu_do_CMS_0052",
+  "distance_m": 6.529944273760965,
+  "bearing_deg": 340.5207275811681,
+  "override_bearing": 343.7000742301592,
+  "override_distance": 4.905817090699731,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0047",
+  "alvo": "Museu_do_CMS_0060",
+  "distance_m": 6.781478345969702,
+  "bearing_deg": 225.36158973022535,
+  "override_bearing": 207.5036314242548,
+  "override_distance": 7.865172278358559,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0047",
+  "alvo": "Museu_do_CMS_0061",
+  "distance_m": 5.488618876928067,
+  "bearing_deg": 190.7997038302921,
+  "override_bearing": 180.49537218613096,
+  "override_distance": 5.197711417099445,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0047",
+  "alvo": "Museu_do_CMS_0062",
+  "distance_m": 10.385893955946218,
+  "bearing_deg": 168.4574873277545,
+  "override_bearing": 163.38821435512415,
+  "override_distance": 8.985688954969701,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0047",
+  "alvo": "Museu_do_CMS_0063",
+  "distance_m": 11.278766173834848,
+  "bearing_deg": 183.4730572672486,
+  "override_bearing": 187.56666570834625,
+  "override_distance": 18.135208299463994,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0048",
+  "alvo": "Museu_do_CMS_0051",
+  "distance_m": 3.9199145427315845,
+  "bearing_deg": 60.464321696777915,
+  "override_bearing": 20.811816491747162,
+  "override_distance": 6.3499060002928305,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0048",
+  "alvo": "Museu_do_CMS_0045",
+  "distance_m": 8.657088263774591,
+  "bearing_deg": 149.15985984997303,
+  "override_bearing": 144.18873216595566,
+  "override_distance": 6.700194831007584,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0048",
+  "alvo": "Museu_do_CMS_0046",
+  "distance_m": 6.5563767700644595,
+  "bearing_deg": 162.0392503741324,
+  "override_bearing": 153.14268788426685,
+  "override_distance": 4.74930802937429,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0048",
+  "alvo": "Museu_do_CMS_0049",
+  "distance_m": 2.326186261446097,
+  "bearing_deg": 85.08377953497137,
+  "override_bearing": 52.40150348608418,
+  "override_distance": 1.7744368193935696,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0048",
+  "alvo": "Museu_do_CMS_0064",
+  "distance_m": 10.005513122818904,
+  "bearing_deg": 352.56782172657705,
+  "override_bearing": 355.27639509170706,
+  "override_distance": 8.943743114458687,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0049",
+  "alvo": "Museu_do_CMS_0053",
+  "distance_m": 4.999049746340619,
+  "bearing_deg": 66.96242517820451,
+  "override_bearing": 37.2861705442531,
+  "override_distance": 6.595912774063761,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0049",
+  "alvo": "Museu_do_CMS_0051",
+  "distance_m": 2.048853630100065,
+  "bearing_deg": 32.236460862983165,
+  "override_bearing": 5.415446830305453,
+  "override_distance": 5.133779327562557,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0049",
+  "alvo": "Museu_do_CMS_0045",
+  "distance_m": 7.921399318911177,
+  "bearing_deg": 164.4738768657678,
+  "override_bearing": 158.27181620804336,
+  "override_distance": 5.783707559979266,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0049",
+  "alvo": "Museu_do_CMS_0048",
+  "distance_m": 2.326186261446097,
+  "bearing_deg": 265.0837674869392,
+  "override_bearing": 296.83147743991606,
+  "override_distance": 1.7585986218056984,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0049",
+  "alvo": "Museu_do_CMS_0064",
+  "distance_m": 10.371347208353876,
+  "bearing_deg": 339.6194080276231,
+  "override_bearing": 344.55649519375834,
+  "override_distance": 7.941889210404165,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0049",
+  "alvo": "Museu_do_CMS_0067",
+  "distance_m": 13.622397540815271,
+  "bearing_deg": 320.14979207419964,
+  "override_bearing": 324.96766860428005,
+  "override_distance": 10.868282918216307,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0050",
+  "alvo": "Museu_do_CMS_0034",
+  "distance_m": 13.411782107766417,
+  "bearing_deg": 156.95518987172568,
+  "override_bearing": 137.86042472704668,
+  "override_distance": 12.04117006072231,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0050",
+  "alvo": "Museu_do_CMS_0043",
+  "distance_m": 12.241015407148819,
+  "bearing_deg": 166.73314161156895,
+  "override_bearing": 135.68883744826658,
+  "override_distance": 8.098501299657357,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0050",
+  "alvo": "Museu_do_CMS_0044",
+  "distance_m": 5.347090704174886,
+  "bearing_deg": 161.44824176910106,
+  "override_bearing": 142.25657908022737,
+  "override_distance": 2.828412330706118,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0050",
+  "alvo": "Museu_do_CMS_0053",
+  "distance_m": 5.187504799049951,
+  "bearing_deg": 319.4286024707205,
+  "override_bearing": 327.05802119509667,
+  "override_distance": 4.1887271155907415,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0050",
+  "alvo": "Museu_do_CMS_0051",
+  "distance_m": 7.821179490403476,
+  "bearing_deg": 298.3766224561527,
+  "override_bearing": 295.10245592628434,
+  "override_distance": 7.495248251941234,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0051",
+  "alvo": "Museu_do_CMS_0044",
+  "distance_m": 12.282593922597032,
+  "bearing_deg": 135.67205418081392,
+  "override_bearing": 127.16775958456023,
+  "override_distance": 8.39876296926397,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0051",
+  "alvo": "Museu_do_CMS_0050",
+  "distance_m": 7.821179490403476,
+  "bearing_deg": 118.37665823307736,
+  "override_bearing": 112.18355160871768,
+  "override_distance": 5.138915295488844,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0051",
+  "alvo": "Museu_do_CMS_0053",
+  "distance_m": 3.514578087059669,
+  "bearing_deg": 86.35770794234622,
+  "override_bearing": 82.05740414090002,
+  "override_distance": 3.356071640300348,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0051",
+  "alvo": "Museu_do_CMS_0035",
+  "distance_m": 12.989801033920036,
+  "bearing_deg": 169.7583649409297,
+  "override_bearing": 160.98289342909393,
+  "override_distance": 8.173076976130167,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0051",
+  "alvo": "Museu_do_CMS_0045",
+  "distance_m": 9.421562070604667,
+  "bearing_deg": 173.73899830010077,
+  "override_bearing": 162.509239763844,
+  "override_distance": 5.475448576818866,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0051",
+  "alvo": "Museu_do_CMS_0046",
+  "distance_m": 8.2864560380236,
+  "bearing_deg": 189.64792137586323,
+  "override_bearing": 164.92022996615322,
+  "override_distance": 7.169243211013723,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0051",
+  "alvo": "Museu_do_CMS_0048",
+  "distance_m": 3.9199145427315845,
+  "bearing_deg": 240.46430396724082,
+  "override_bearing": 180.79265172788934,
+  "override_distance": 5.2243683939214485,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0051",
+  "alvo": "Museu_do_CMS_0064",
+  "distance_m": 9.271460666231363,
+  "bearing_deg": 329.50619586253464,
+  "override_bearing": 318.7695017979984,
+  "override_distance": 7.3455953728008145,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0051",
+  "alvo": "Museu_do_CMS_0066",
+  "distance_m": 12.96238528156327,
+  "bearing_deg": 292.6952991514018,
+  "override_bearing": 283.97049404068093,
+  "override_distance": 9.122444916194935,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0051",
+  "alvo": "Museu_do_CMS_0067",
+  "distance_m": 13.137668253832983,
+  "bearing_deg": 311.6160069238794,
+  "override_bearing": 300.80096836135465,
+  "override_distance": 9.610320557515852,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0052",
+  "alvo": "Museu_do_CMS_0048",
+  "distance_m": 11.39635752659785,
+  "bearing_deg": 47.4669141400247,
+  "override_bearing": 67.33525338546342,
+  "override_distance": 12.824523845623892,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0052",
+  "alvo": "Museu_do_CMS_0049",
+  "distance_m": 13.314872702866735,
+  "bearing_deg": 53.588390771431364,
+  "override_bearing": 72.15537231451283,
+  "override_distance": 18.124215586985866,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0052",
+  "alvo": "Museu_do_CMS_0054",
+  "distance_m": 7.895025022222846,
+  "bearing_deg": 341.4678688992188,
+  "override_bearing": 341.6765923881654,
+  "override_distance": 6.3448965495242255,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0052",
+  "alvo": "Museu_do_CMS_0068",
+  "distance_m": 10.074392532332507,
+  "bearing_deg": 341.18579343811666,
+  "override_bearing": 341.76483092100716,
+  "override_distance": 9.020785619170692,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0052",
+  "alvo": "Museu_do_CMS_0055",
+  "distance_m": 8.024702398527818,
+  "bearing_deg": 319.2123506117914,
+  "override_bearing": 323.24626199461454,
+  "override_distance": 7.080413714963019,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0052",
+  "alvo": "Museu_do_CMS_0056",
+  "distance_m": 6.369628462057895,
+  "bearing_deg": 314.0848201872057,
+  "override_bearing": 317.7209027259902,
+  "override_distance": 5.768304089912953,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0052",
+  "alvo": "Museu_do_CMS_0058",
+  "distance_m": 3.0306487431221116,
+  "bearing_deg": 340.8249098746177,
+  "override_bearing": 337.19295754578644,
+  "override_distance": 2.4198575941625484,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0052",
+  "alvo": "Museu_do_CMS_0051",
+  "distance_m": 15.24,
+  "bearing_deg": 50.78,
+  "override_bearing": 53.08811743777797,
+  "override_distance": 28.470997614110225,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0053",
+  "alvo": "Museu_do_CMS_0044",
+  "distance_m": 10.340745572964746,
+  "bearing_deg": 150.60730772491445,
+  "override_bearing": 180.61856341311065,
+  "override_distance": 6.312597786237066,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0053",
+  "alvo": "Museu_do_CMS_0050",
+  "distance_m": 5.187504799049951,
+  "bearing_deg": 139.42862000970877,
+  "override_bearing": 175.07434665745848,
+  "override_distance": 2.333064048588646,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0053",
+  "alvo": "Museu_do_CMS_0043",
+  "distance_m": 17.02,
+  "bearing_deg": 158.7,
+  "override_bearing": 176.20322050062995,
+  "override_distance": 13.746794756600838,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0054",
+  "alvo": "Museu_do_CMS_0064",
+  "distance_m": 13.972354704960685,
+  "bearing_deg": 43.47169848048844,
+  "override_bearing": 49.54024859585473,
+  "override_distance": 6.941792999323177,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0054",
+  "alvo": "Museu_do_CMS_0066",
+  "distance_m": 7.531145220181383,
+  "bearing_deg": 18.25396025982485,
+  "override_bearing": 23.873512266376768,
+  "override_distance": 4.284112898099458,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0054",
+  "alvo": "Museu_do_CMS_0067",
+  "distance_m": 11.768641514196167,
+  "bearing_deg": 22.458563997964347,
+  "override_bearing": 23.334232076585902,
+  "override_distance": 6.938380402455115,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0054",
+  "alvo": "Museu_do_CMS_0068",
+  "distance_m": 2.1798097443037903,
+  "bearing_deg": 340.16411096105617,
+  "override_bearing": 354.88728546830424,
+  "override_distance": 1.2451757825996426,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0054",
+  "alvo": "Museu_do_CMS_0055",
+  "distance_m": 3.0750990446073105,
+  "bearing_deg": 242.71154542944623,
+  "override_bearing": 273.6332423887802,
+  "override_distance": 3.749275781678898,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0054",
+  "alvo": "Museu_do_CMS_0056",
+  "distance_m": 3.687317314721921,
+  "bearing_deg": 214.07733987203343,
+  "override_bearing": 226.54892590036093,
+  "override_distance": 4.363583165199404,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0055",
+  "alvo": "Museu_do_CMS_0054",
+  "distance_m": 3.0750990446073105,
+  "bearing_deg": 62.711559636185484,
+  "override_bearing": 81.7614673973174,
+  "override_distance": 2.4677726868490253,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0055",
+  "alvo": "Museu_do_CMS_0068",
+  "distance_m": 3.993327988830513,
+  "bearing_deg": 29.942664286870638,
+  "override_bearing": 38.10034828169868,
+  "override_distance": 2.3566728966901227,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0055",
+  "alvo": "Museu_do_CMS_0056",
+  "distance_m": 1.774363250358349,
+  "bearing_deg": 157.92561020461426,
+  "override_bearing": 167.39341727330782,
+  "override_distance": 1.955973040245793,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0055",
+  "alvo": "Museu_do_CMS_0069",
+  "distance_m": 2.879783252317536,
+  "bearing_deg": 250.35239183923593,
+  "override_bearing": 237.5362741474847,
+  "override_distance": 1.9411996968916212,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0055",
+  "alvo": "Museu_do_CMS_0070",
+  "distance_m": 4.456478971942454,
+  "bearing_deg": 299.05659606052774,
+  "override_bearing": 292.9637763421068,
+  "override_distance": 3.695690191138461,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0055",
+  "alvo": "Museu_do_CMS_0071",
+  "distance_m": 4.488768043093866,
+  "bearing_deg": 271.45419035508667,
+  "override_bearing": 264.73208272936324,
+  "override_distance": 3.8747647567494505,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0055",
+  "alvo": "Museu_do_CMS_0057",
+  "distance_m": 3.3217076963719108,
+  "bearing_deg": 214.8339599757434,
+  "override_bearing": 209.188892897734,
+  "override_distance": 3.0000968878633554,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0055",
+  "alvo": "Museu_do_CMS_0073",
+  "distance_m": 1.9064204235573188,
+  "bearing_deg": 306.693614879538,
+  "override_bearing": 276.88537881226654,
+  "override_distance": 1.9362927718145733,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0055",
+  "alvo": "Museu_do_CMS_0058",
+  "distance_m": 5.325427425411126,
+  "bearing_deg": 127.11275846044038,
+  "override_bearing": 137.5072791971944,
+  "override_distance": 5.719469864761237,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0055",
+  "alvo": "Museu_do_CMS_0052",
+  "distance_m": 8.024702398527818,
+  "bearing_deg": 139.2123778641468,
+  "override_bearing": 145.38464214996358,
+  "override_distance": 8.979439359936103,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0056",
+  "alvo": "Museu_do_CMS_0054",
+  "distance_m": 3.687317314721921,
+  "bearing_deg": 34.07735061562647,
+  "override_bearing": 37.08317814129452,
+  "override_distance": 3.7247546543457304,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0056",
+  "alvo": "Museu_do_CMS_0068",
+  "distance_m": 5.274124455423516,
+  "bearing_deg": 14.565574432274957,
+  "override_bearing": 18.18401055514606,
+  "override_distance": 4.795555012965472,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0056",
+  "alvo": "Museu_do_CMS_0055",
+  "distance_m": 1.774363250358349,
+  "bearing_deg": 337.9256067382768,
+  "override_bearing": 354.76743082244343,
+  "override_distance": 2.149283149003068,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0056",
+  "alvo": "Museu_do_CMS_0069",
+  "distance_m": 3.4459019257709307,
+  "bearing_deg": 281.3136240324009,
+  "override_bearing": 285.7341078547871,
+  "override_distance": 2.7092636114119113,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0056",
+  "alvo": "Museu_do_CMS_0071",
+  "distance_m": 5.4457806594865135,
+  "bearing_deg": 288.83581908837857,
+  "override_bearing": 292.439086988133,
+  "override_distance": 5.486055598685961,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0056",
+  "alvo": "Museu_do_CMS_0072",
+  "distance_m": 4.73305817667153,
+  "bearing_deg": 264.3844935519165,
+  "override_bearing": 261.7564887815807,
+  "override_distance": 4.591749451977535,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0056",
+  "alvo": "Museu_do_CMS_0057",
+  "distance_m": 2.783197418139267,
+  "bearing_deg": 247.11813741772136,
+  "override_bearing": 252.9444283411817,
+  "override_distance": 2.2111737734311663,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0056",
+  "alvo": "Museu_do_CMS_0073",
+  "distance_m": 3.545094773390294,
+  "bearing_deg": 321.7350681874083,
+  "override_bearing": 312.201762001894,
+  "override_distance": 3.432438277857786,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0056",
+  "alvo": "Museu_do_CMS_0064",
+  "distance_m": 17.62,
+  "bearing_deg": 41.51,
+  "override_bearing": 45.212510110198174,
+  "override_distance": 10.78713574933266,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0056",
+  "alvo": "Museu_do_CMS_0067",
+  "distance_m": 15.4,
+  "bearing_deg": 25.22,
+  "override_bearing": 29.51233916440187,
+  "override_distance": 10.903988561362137,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0056",
+  "alvo": "Museu_do_CMS_0066",
+  "distance_m": 11.12,
+  "bearing_deg": 23.44,
+  "override_bearing": 28.83428263936586,
+  "override_distance": 8.530166162166875,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0056",
+  "alvo": "Museu_do_CMS_0074",
+  "distance_m": 20.22,
+  "bearing_deg": 50.47,
+  "override_bearing": 51.47748036774067,
+  "override_distance": 16.044134269660287,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0057",
+  "alvo": "Museu_do_CMS_0054",
+  "distance_m": 6.208727878454646,
+  "bearing_deg": 48.22456173691222,
+  "override_bearing": 38.701551604834,
+  "override_distance": 5.2749372473467036,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0057",
+  "alvo": "Museu_do_CMS_0068",
+  "distance_m": 7.308428980252193,
+  "bearing_deg": 32.163642765825216,
+  "override_bearing": 23.985795635608067,
+  "override_distance": 5.671567907470122,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0057",
+  "alvo": "Museu_do_CMS_0055",
+  "distance_m": 3.3217076963719108,
+  "bearing_deg": 34.833969841081625,
+  "override_bearing": 35.22926583971073,
+  "override_distance": 2.1608547928007233,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0057",
+  "alvo": "Museu_do_CMS_0056",
+  "distance_m": 2.783197418139267,
+  "bearing_deg": 67.11815074232533,
+  "override_bearing": 79.0408983709626,
+  "override_distance": 2.3708427062360844,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0057",
+  "alvo": "Museu_do_CMS_0069",
+  "distance_m": 1.9378180706165238,
+  "bearing_deg": 335.1369426801762,
+  "override_bearing": 345.7169383394297,
+  "override_distance": 1.0266135554647124,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0057",
+  "alvo": "Museu_do_CMS_0070",
+  "distance_m": 5.28334049345626,
+  "bearing_deg": 337.77697187738704,
+  "override_bearing": 338.62957700089515,
+  "override_distance": 2.2516790395123767,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0057",
+  "alvo": "Museu_do_CMS_0071",
+  "distance_m": 3.84393327714664,
+  "bearing_deg": 317.6405888630549,
+  "override_bearing": 308.7315884977753,
+  "override_distance": 3.697864282454591,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0057",
+  "alvo": "Museu_do_CMS_0072",
+  "distance_m": 2.233659777691658,
+  "bearing_deg": 286.0901397682503,
+  "override_bearing": 278.0416481613771,
+  "override_distance": 1.9026191610547543,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0057",
+  "alvo": "Museu_do_CMS_0073",
+  "distance_m": 3.883192308163364,
+  "bearing_deg": 5.448488663111618,
+  "override_bearing": 8.656600807916664,
+  "override_distance": 3.6090914692109544,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0058",
+  "alvo": "Museu_do_CMS_0055",
+  "distance_m": 5.325427425411126,
+  "bearing_deg": 307.1127363796159,
+  "override_bearing": 318.2553783483574,
+  "override_distance": 5.811520732115609,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0058",
+  "alvo": "Museu_do_CMS_0056",
+  "distance_m": 3.9086662792216993,
+  "bearing_deg": 293.6665206395731,
+  "override_bearing": 302.20714859009775,
+  "override_distance": 4.415684052939762,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0058",
+  "alvo": "Museu_do_CMS_0073",
+  "distance_m": 7.231810284833046,
+  "bearing_deg": 307.00224437202064,
+  "override_bearing": 302.22083250860743,
+  "override_distance": 6.6181632997101,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0059",
+  "alvo": "Museu_do_CMS_0054",
+  "distance_m": 11.921506864609956,
+  "bearing_deg": 341.33223999707735,
+  "override_bearing": 343.02126846291367,
+  "override_distance": 7.68042258193319,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0059",
+  "alvo": "Museu_do_CMS_0068",
+  "distance_m": 14.100933606016078,
+  "bearing_deg": 341.15167251230054,
+  "override_bearing": 343.556757910842,
+  "override_distance": 9.95419154618929,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0059",
+  "alvo": "Museu_do_CMS_0058",
+  "distance_m": 7.057180720906108,
+  "bearing_deg": 340.9626452476012,
+  "override_bearing": 342.2110129184187,
+  "override_distance": 5.224834185200359,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0059",
+  "alvo": "Museu_do_CMS_0052",
+  "distance_m": 4.026547327248432,
+  "bearing_deg": 341.06631916823875,
+  "override_bearing": 349.9590437333963,
+  "override_distance": 2.7073899459621424,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0061",
+  "alvo": "Museu_do_CMS_0058",
+  "distance_m": 14.568795484581397,
+  "bearing_deg": 351.5353668699404,
+  "override_bearing": 348.547009347714,
+  "override_distance": 9.310257687272497,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0061",
+  "alvo": "Museu_do_CMS_0052",
+  "distance_m": 11.604620488010527,
+  "bearing_deg": 354.31732947175647,
+  "override_bearing": 351.63515599343174,
+  "override_distance": 6.515683679993224,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0061",
+  "alvo": "Museu_do_CMS_0059",
+  "distance_m": 7.7405013560435565,
+  "bearing_deg": 1.165407528029732,
+  "override_bearing": 351.17444345911986,
+  "override_distance": 4.090753591606295,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0061",
+  "alvo": "Museu_do_CMS_0047",
+  "distance_m": 5.488618876928067,
+  "bearing_deg": 10.799709177404907,
+  "override_bearing": 1.979759422407032,
+  "override_distance": 2.4399227758549524,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0062",
+  "alvo": "Museu_do_CMS_0059",
+  "distance_m": 12.865919549680532,
+  "bearing_deg": 346.74863338902946,
+  "override_bearing": 345.1373434872128,
+  "override_distance": 8.115270066558848,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0062",
+  "alvo": "Museu_do_CMS_0047",
+  "distance_m": 10.385893955946218,
+  "bearing_deg": 348.45747652372313,
+  "override_bearing": 345.707721732514,
+  "override_distance": 5.378397483386005,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0062",
+  "alvo": "Museu_do_CMS_0052",
+  "distance_m": 16.88,
+  "bearing_deg": 345.4,
+  "override_bearing": 344.99685684068305,
+  "override_distance": 11.242397759398353,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0064",
+  "alvo": "Museu_do_CMS_0074",
+  "distance_m": 3.9309457700157786,
+  "bearing_deg": 94.738958991814,
+  "override_bearing": 74.91698412078972,
+  "override_distance": 4.771353321055027,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0064",
+  "alvo": "Museu_do_CMS_0067",
+  "distance_m": 5.1698033541261115,
+  "bearing_deg": 278.1860664476161,
+  "override_bearing": 286.4918459982787,
+  "override_distance": 4.3321057723521355,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0064",
+  "alvo": "Museu_do_CMS_0075",
+  "distance_m": 10.08,
+  "bearing_deg": 76.97,
+  "override_bearing": 71.55517697592141,
+  "override_distance": 11.068564571814568,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0064",
+  "alvo": "Museu_do_CMS_0076",
+  "distance_m": 10.18,
+  "bearing_deg": 53.91,
+  "override_bearing": 49.69879045828032,
+  "override_distance": 12.272732145989965,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0064",
+  "alvo": "Museu_do_CMS_0077",
+  "distance_m": 7.29,
+  "bearing_deg": 48.04,
+  "override_bearing": 45.178256997033316,
+  "override_distance": 9.664895729059522,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0064",
+  "alvo": "Museu_do_CMS_0065",
+  "distance_m": 4.41,
+  "bearing_deg": 33.87,
+  "override_bearing": 37.41703655683009,
+  "override_distance": 6.932994868950501,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0065",
+  "alvo": "Museu_do_CMS_0074",
+  "distance_m": 4.243524090758345,
+  "bearing_deg": 159.84667676633967,
+  "override_bearing": 163.8725908695157,
+  "override_distance": 3.409072089968624,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0066",
+  "alvo": "Museu_do_CMS_0051",
+  "distance_m": 12.96238528156327,
+  "bearing_deg": 112.69536132070516,
+  "override_bearing": 111.67437703102927,
+  "override_distance": 12.676046123800894,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0066",
+  "alvo": "Museu_do_CMS_0048",
+  "distance_m": 11.006690090599474,
+  "bearing_deg": 129.04650050883117,
+  "override_bearing": 133.12237647009883,
+  "override_distance": 11.702503520880061,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0066",
+  "alvo": "Museu_do_CMS_0049",
+  "distance_m": 12.783463013512792,
+  "bearing_deg": 121.78947685115605,
+  "override_bearing": 122.58738744855168,
+  "override_distance": 12.121646859356426,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0066",
+  "alvo": "Museu_do_CMS_0064",
+  "distance_m": 7.845165157948087,
+  "bearing_deg": 67.61405931733327,
+  "override_bearing": 64.84243637455658,
+  "override_distance": 6.462389595110323,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0066",
+  "alvo": "Museu_do_CMS_0074",
+  "distance_m": 11.484472893839712,
+  "bearing_deg": 76.5922280825701,
+  "override_bearing": 65.765197475263,
+  "override_distance": 9.906904431509673,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0066",
+  "alvo": "Museu_do_CMS_0067",
+  "distance_m": 4.29342072970281,
+  "bearing_deg": 29.84775009094278,
+  "override_bearing": 29.993684006733368,
+  "override_distance": 2.8548580404557433,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0066",
+  "alvo": "Museu_do_CMS_0054",
+  "distance_m": 7.531145220181383,
+  "bearing_deg": 198.25394799574596,
+  "override_bearing": 193.8161982695911,
+  "override_distance": 8.596804088636366,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0067",
+  "alvo": "Museu_do_CMS_0064",
+  "distance_m": 5.1698033541261115,
+  "bearing_deg": 98.18609305022989,
+  "override_bearing": 98.09928993650031,
+  "override_distance": 4.239583719596146,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0067",
+  "alvo": "Museu_do_CMS_0074",
+  "distance_m": 9.096708078565761,
+  "bearing_deg": 96.69723098877284,
+  "override_bearing": 91.36245714075223,
+  "override_distance": 7.6486644543070845,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0067",
+  "alvo": "Museu_do_CMS_0066",
+  "distance_m": 4.29342072970281,
+  "bearing_deg": 209.84773898079922,
+  "override_bearing": 202.61367979249314,
+  "override_distance": 4.037660104130263,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0067",
+  "alvo": "Museu_do_CMS_0054",
+  "distance_m": 11.768641514196167,
+  "bearing_deg": 202.45854062503545,
+  "override_bearing": 197.26066929236873,
+  "override_distance": 13.912515398756842,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0067",
+  "alvo": "Museu_do_CMS_0056",
+  "distance_m": 15.4,
+  "bearing_deg": 205.22,
+  "override_bearing": 207.4598918267135,
+  "override_distance": 13.946654483197383,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0068",
+  "alvo": "Museu_do_CMS_0055",
+  "distance_m": 3.993327988830513,
+  "bearing_deg": 209.94265392279667,
+  "override_bearing": 209.21596911104012,
+  "override_distance": 2.6254194855410997,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0068",
+  "alvo": "Museu_do_CMS_0056",
+  "distance_m": 5.274124455423516,
+  "bearing_deg": 194.56556753801513,
+  "override_bearing": 195.75270172064717,
+  "override_distance": 4.000796640362044,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0068",
+  "alvo": "Museu_do_CMS_0069",
+  "distance_m": 6.461621060935869,
+  "bearing_deg": 226.73527374944604,
+  "override_bearing": 229.78146193296107,
+  "override_distance": 4.290946786531358,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0068",
+  "alvo": "Museu_do_CMS_0070",
+  "distance_m": 6.0296998596746585,
+  "bearing_deg": 257.58892447155915,
+  "override_bearing": 267.90437071032153,
+  "override_distance": 5.190308178731082,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0068",
+  "alvo": "Museu_do_CMS_0071",
+  "distance_m": 7.293533276953176,
+  "bearing_deg": 242.68912007503775,
+  "override_bearing": 254.51215486992572,
+  "override_distance": 6.356856944652718,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0068",
+  "alvo": "Museu_do_CMS_0072",
+  "distance_m": 8.212303752449984,
+  "bearing_deg": 227.31419716958456,
+  "override_bearing": 236.75609116854338,
+  "override_distance": 7.000513233257572,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0068",
+  "alvo": "Museu_do_CMS_0057",
+  "distance_m": 7.308428980252193,
+  "bearing_deg": 212.16362253874217,
+  "override_bearing": 214.0783744594759,
+  "override_distance": 5.152925515156914,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0068",
+  "alvo": "Museu_do_CMS_0073",
+  "distance_m": 4.217966441511275,
+  "bearing_deg": 236.61209304194688,
+  "override_bearing": 251.68507466981816,
+  "override_distance": 3.467154848762701,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0068",
+  "alvo": "Museu_do_CMS_0066",
+  "distance_m": 5.97,
+  "bearing_deg": 31.27,
+  "override_bearing": 41.17160970109939,
+  "override_distance": 4.283450608054,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0068",
+  "alvo": "Museu_do_CMS_0067",
+  "distance_m": 10.26,
+  "bearing_deg": 30.68,
+  "override_bearing": 36.37937692986779,
+  "override_distance": 6.206899007430948,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0069",
+  "alvo": "Museu_do_CMS_0055",
+  "distance_m": 2.879783252317536,
+  "bearing_deg": 70.35240594453313,
+  "override_bearing": 82.12302907392069,
+  "override_distance": 1.4655820889913622,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0069",
+  "alvo": "Museu_do_CMS_0056",
+  "distance_m": 3.4459019257709307,
+  "bearing_deg": 101.31364160326456,
+  "override_bearing": 110.85004103973012,
+  "override_distance": 1.993259651737767,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0069",
+  "alvo": "Museu_do_CMS_0070",
+  "distance_m": 3.3487688999896785,
+  "bearing_deg": 339.3043111111694,
+  "override_bearing": 322.91707023170727,
+  "override_distance": 2.9248085506230277,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0069",
+  "alvo": "Museu_do_CMS_0071",
+  "distance_m": 2.079062406826526,
+  "bearing_deg": 301.367238936769,
+  "override_bearing": 289.83921929485217,
+  "override_distance": 2.0977132029636727,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0069",
+  "alvo": "Museu_do_CMS_0072",
+  "distance_m": 1.7522292649761264,
+  "bearing_deg": 229.4495507775062,
+  "override_bearing": 247.10988799224813,
+  "override_distance": 1.8252311361540212,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0069",
+  "alvo": "Museu_do_CMS_0073",
+  "distance_m": 2.4169994778534143,
+  "bearing_deg": 29.31719772592953,
+  "override_bearing": 41.058433687071506,
+  "override_distance": 2.10161338198656,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0070",
+  "alvo": "Museu_do_CMS_0054",
+  "distance_m": 6.671267768905362,
+  "bearing_deg": 96.49433708066016,
+  "override_bearing": 93.96753084281214,
+  "override_distance": 6.429694293242198,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0070",
+  "alvo": "Museu_do_CMS_0068",
+  "distance_m": 6.0296998596746585,
+  "bearing_deg": 77.58895508283592,
+  "override_bearing": 83.30198022752442,
+  "override_distance": 4.629413090125046,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0070",
+  "alvo": "Museu_do_CMS_0055",
+  "distance_m": 4.456478971942454,
+  "bearing_deg": 119.05661630700513,
+  "override_bearing": 113.07453935769547,
+  "override_distance": 3.6414900488001694,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0070",
+  "alvo": "Museu_do_CMS_0056",
+  "distance_m": 5.943207719544331,
+  "bearing_deg": 129.85506115957037,
+  "override_bearing": 134.1445414420696,
+  "override_distance": 6.799258240737851,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0070",
+  "alvo": "Museu_do_CMS_0069",
+  "distance_m": 3.3487688999896785,
+  "bearing_deg": 159.30431726092752,
+  "override_bearing": 152.3061072030785,
+  "override_distance": 3.2044771051914225,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0070",
+  "alvo": "Museu_do_CMS_0071",
+  "distance_m": 2.13415344523077,
+  "bearing_deg": 196.09728380676907,
+  "override_bearing": 189.84728207149794,
+  "override_distance": 3.150752089583999,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0070",
+  "alvo": "Museu_do_CMS_0072",
+  "distance_m": 4.274390251564747,
+  "bearing_deg": 181.98336317324151,
+  "override_bearing": 180.93639778763654,
+  "override_distance": 5.482155119189601,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0070",
+  "alvo": "Museu_do_CMS_0057",
+  "distance_m": 5.28334049345626,
+  "bearing_deg": 157.77698226515508,
+  "override_bearing": 151.041502853136,
+  "override_distance": 5.686893433543651,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0070",
+  "alvo": "Museu_do_CMS_0073",
+  "distance_m": 2.579441463530148,
+  "bearing_deg": 113.41983853656905,
+  "override_bearing": 130.0346539878063,
+  "override_distance": 1.9917627034094627,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0071",
+  "alvo": "Museu_do_CMS_0054",
+  "distance_m": 7.335571663219428,
+  "bearing_deg": 79.82455188467134,
+  "override_bearing": 82.8044835890319,
+  "override_distance": 6.718125598958724,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0071",
+  "alvo": "Museu_do_CMS_0068",
+  "distance_m": 7.293533276953176,
+  "bearing_deg": 62.68915376378544,
+  "override_bearing": 74.31963343407642,
+  "override_distance": 4.352770909642445,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0071",
+  "alvo": "Museu_do_CMS_0055",
+  "distance_m": 4.488768043093866,
+  "bearing_deg": 91.45421368309246,
+  "override_bearing": 90.03200910690352,
+  "override_distance": 3.9669408384934632,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0071",
+  "alvo": "Museu_do_CMS_0056",
+  "distance_m": 5.4457806594865135,
+  "bearing_deg": 108.83584588505698,
+  "override_bearing": 118.68777147139349,
+  "override_distance": 3.390926257133536,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0071",
+  "alvo": "Museu_do_CMS_0069",
+  "distance_m": 2.079062406826526,
+  "bearing_deg": 121.36724817804259,
+  "override_bearing": 133.32485522801716,
+  "override_distance": 1.016269854073704,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0071",
+  "alvo": "Museu_do_CMS_0070",
+  "distance_m": 2.13415344523077,
+  "bearing_deg": 16.097286883515494,
+  "override_bearing": 28.604508387533915,
+  "override_distance": 0.8203394386512739,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0071",
+  "alvo": "Museu_do_CMS_0072",
+  "distance_m": 2.265250816780279,
+  "bearing_deg": 168.70170596391142,
+  "override_bearing": 165.04401442625664,
+  "override_distance": 2.2777480912582497,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0071",
+  "alvo": "Museu_do_CMS_0057",
+  "distance_m": 3.84393327714664,
+  "bearing_deg": 137.6406023313317,
+  "override_bearing": 136.3852560883162,
+  "override_distance": 4.303081856342444,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0071",
+  "alvo": "Museu_do_CMS_0073",
+  "distance_m": 3.131272642536812,
+  "bearing_deg": 70.88779568068492,
+  "override_bearing": 98.55395057581936,
+  "override_distance": 1.9929144379993047,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0071",
+  "alvo": "Museu_do_CMS_0058",
+  "distance_m": 9.346360643533862,
+  "bearing_deg": 110.85408723481362,
+  "override_bearing": 121.24521738154026,
+  "override_distance": 7.239934174218745,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0072",
+  "alvo": "Museu_do_CMS_0055",
+  "distance_m": 4.559752928507072,
+  "bearing_deg": 62.47201011116283,
+  "override_bearing": 78.02642755033305,
+  "override_distance": 3.1732395971563476,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0072",
+  "alvo": "Museu_do_CMS_0056",
+  "distance_m": 4.73305817667153,
+  "bearing_deg": 84.38451803820999,
+  "override_bearing": 88.86627754989793,
+  "override_distance": 5.115284595241898,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0072",
+  "alvo": "Museu_do_CMS_0069",
+  "distance_m": 1.7522292649761264,
+  "bearing_deg": 49.44955769225936,
+  "override_bearing": 73.99712823427885,
+  "override_distance": 1.6182041999105345,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0072",
+  "alvo": "Museu_do_CMS_0070",
+  "distance_m": 4.274390251564747,
+  "bearing_deg": 1.9833639423831642,
+  "override_bearing": 356.7256158413563,
+  "override_distance": 2.6127582769835023,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0072",
+  "alvo": "Museu_do_CMS_0071",
+  "distance_m": 2.265250816780279,
+  "bearing_deg": 348.70170365760845,
+  "override_bearing": 2.3951466971214437,
+  "override_distance": 1.1863242680439725,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0072",
+  "alvo": "Museu_do_CMS_0057",
+  "distance_m": 2.233659777691658,
+  "bearing_deg": 106.09015092809472,
+  "override_bearing": 112.75318449738404,
+  "override_distance": 2.313001645316081,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0072",
+  "alvo": "Museu_do_CMS_0073",
+  "distance_m": 4.106693920491238,
+  "bearing_deg": 37.762074234010015,
+  "override_bearing": 34.13612483111892,
+  "override_distance": 2.7034427905605596,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0073",
+  "alvo": "Museu_do_CMS_0055",
+  "distance_m": 1.9064204235573188,
+  "bearing_deg": 126.69362283071928,
+  "override_bearing": 154.68600976407234,
+  "override_distance": 1.2547624507362198,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0073",
+  "alvo": "Museu_do_CMS_0056",
+  "distance_m": 3.545094773390294,
+  "bearing_deg": 141.7350796059975,
+  "override_bearing": 134.67480110439044,
+  "override_distance": 3.307482018236239,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0073",
+  "alvo": "Museu_do_CMS_0069",
+  "distance_m": 2.4169994778534143,
+  "bearing_deg": 209.31719157880852,
+  "override_bearing": 190.02441783866027,
+  "override_distance": 1.3901642815465678,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0073",
+  "alvo": "Museu_do_CMS_0070",
+  "distance_m": 2.579441463530148,
+  "bearing_deg": 293.41982624116065,
+  "override_bearing": 293.41734429828495,
+  "override_distance": 1.6740016004364782,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0073",
+  "alvo": "Museu_do_CMS_0071",
+  "distance_m": 3.131272642536812,
+  "bearing_deg": 250.88778029840665,
+  "override_bearing": 234.97717583610427,
+  "override_distance": 2.137930762605219,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0073",
+  "alvo": "Museu_do_CMS_0072",
+  "distance_m": 4.106693920491238,
+  "bearing_deg": 217.76206116164227,
+  "override_bearing": 201.75513760531322,
+  "override_distance": 3.2502160850668704,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0073",
+  "alvo": "Museu_do_CMS_0057",
+  "distance_m": 3.883192308163364,
+  "bearing_deg": 185.448486746684,
+  "override_bearing": 168.5138455675818,
+  "override_distance": 2.7644021937697176,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0074",
+  "alvo": "Museu_do_CMS_0064",
+  "distance_m": 3.9309457700157786,
+  "bearing_deg": 274.7389386225242,
+  "override_bearing": 244.0576184527318,
+  "override_distance": 3.484416351322923,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0074",
+  "alvo": "Museu_do_CMS_0066",
+  "distance_m": 11.484472893839712,
+  "bearing_deg": 256.5921700032563,
+  "override_bearing": 247.17921684989636,
+  "override_distance": 7.122060509635981,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0074",
+  "alvo": "Museu_do_CMS_0067",
+  "distance_m": 9.096708078565761,
+  "bearing_deg": 276.69718401905743,
+  "override_bearing": 270.56754197072166,
+  "override_distance": 6.634630772534428,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0074",
+  "alvo": "Museu_do_CMS_0056",
+  "distance_m": 20.22,
+  "bearing_deg": 230.47,
+  "override_bearing": 229.00796003964703,
+  "override_distance": 10.040208014167153,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0074",
+  "alvo": "Museu_do_CMS_0054",
+  "distance_m": 16.72,
+  "bearing_deg": 234.04,
+  "override_bearing": 230.50197383355712,
+  "override_distance": 9.460502387111044,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0075",
+  "alvo": "Museu_do_CMS_0074",
+  "distance_m": 6.450709931549858,
+  "bearing_deg": 246.24930834062087,
+  "override_bearing": 243.9442264502427,
+  "override_distance": 3.6957220061390985,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0075",
+  "alvo": "Museu_do_CMS_0076",
+  "distance_m": 4.050417676270565,
+  "bearing_deg": 336.8366796128338,
+  "override_bearing": 348.0693885686585,
+  "override_distance": 3.890058617293387,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0075",
+  "alvo": "Museu_do_CMS_0077",
+  "distance_m": 5.113973111236108,
+  "bearing_deg": 300.53294671252183,
+  "override_bearing": 312.6058143471172,
+  "override_distance": 3.7917718646632173,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0075",
+  "alvo": "Museu_do_CMS_0065",
+  "distance_m": 7.4956039341550165,
+  "bearing_deg": 280.6529583163614,
+  "override_bearing": 292.3219210723779,
+  "override_distance": 5.7951576039383745,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0075",
+  "alvo": "Museu_do_CMS_0064",
+  "distance_m": 10.08,
+  "bearing_deg": 256.97,
+  "override_bearing": 242.54886728331485,
+  "override_distance": 7.054916604138308,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0076",
+  "alvo": "Museu_do_CMS_0074",
+  "distance_m": 7.6520088651369065,
+  "bearing_deg": 214.29117625021945,
+  "override_bearing": 193.0679084064419,
+  "override_distance": 4.371026424666798,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0076",
+  "alvo": "Museu_do_CMS_0075",
+  "distance_m": 4.050417676270565,
+  "bearing_deg": 156.83668789721037,
+  "override_bearing": 140.6913668845872,
+  "override_distance": 3.360211876690857,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0076",
+  "alvo": "Museu_do_CMS_0077",
+  "distance_m": 3.028637532839952,
+  "bearing_deg": 248.17773046748016,
+  "override_bearing": 250.29485769027906,
+  "override_distance": 2.034916428151171,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0076",
+  "alvo": "Museu_do_CMS_0065",
+  "distance_m": 6.228723294660033,
+  "bearing_deg": 247.95092903955154,
+  "override_bearing": 240.34473770233404,
+  "override_distance": 3.797256547014263,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0076",
+  "alvo": "Museu_do_CMS_0064",
+  "distance_m": 10.18,
+  "bearing_deg": 233.91,
+  "override_bearing": 206.92737967425498,
+  "override_distance": 7.980601950054765,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0077",
+  "alvo": "Museu_do_CMS_0074",
+  "distance_m": 5.408186595059841,
+  "bearing_deg": 196.09729901909878,
+  "override_bearing": 185.2523386453503,
+  "override_distance": 4.2440574895223095,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0077",
+  "alvo": "Museu_do_CMS_0065",
+  "distance_m": 3.2001319464323297,
+  "bearing_deg": 247.73629653881716,
+  "override_bearing": 251.5488398953546,
+  "override_distance": 2.314083162496612,
+  "override_height": null
+ },
+ {
+  "slug": "museu_cms",
+  "origem": "Museu_do_CMS_0077",
+  "alvo": "Museu_do_CMS_0064",
+  "distance_m": 7.29,
+  "bearing_deg": 228.04,
+  "override_bearing": 209.81389354394372,
+  "override_distance": 7.0357717278922545,
+  "override_height": null
+ }
+]

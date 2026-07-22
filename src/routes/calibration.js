@@ -8,13 +8,8 @@ import {
   getPhotoById,
   getTargetByPair,
   updatePhotoMeshRotationY,
-  updatePhotoCameraHeight,
   updatePhotoMeshRotationX,
   updatePhotoMeshRotationZ,
-  updatePhotoDistanceScale,
-  updatePhotoMarkerScale,
-  updateTargetOverride,
-  clearTargetOverride,
   updateTargetVisibility,
   insertTarget,
   deleteTarget,
@@ -23,11 +18,8 @@ import {
   getPhotosByProjectSlug,
   getReviewStatsByProjectSlug,
   batchUpdateMeshRotationY,
-  batchUpdateCameraHeight,
   batchUpdateMeshRotationX,
   batchUpdateMeshRotationZ,
-  batchUpdateDistanceScale,
-  batchUpdateMarkerScale,
   batchResetReviewed,
   isPhotoDeleted,
   softDeletePhoto,
@@ -66,36 +58,6 @@ export default async function calibrationRoutes(fastify) {
     }
 
     return { ok: true, mesh_rotation_y };
-  });
-
-  // PUT /api/v1/photos/:uuid/height — update camera_height
-  fastify.put('/api/v1/photos/:uuid/height', async (request, reply) => {
-    const { uuid } = request.params;
-    const { camera_height } = request.body || {};
-
-    if (typeof camera_height !== 'number' || Number.isNaN(camera_height)) {
-      reply.code(400);
-      return { error: 'camera_height must be a number' };
-    }
-
-    if (camera_height < 0.1 || camera_height > 20) {
-      reply.code(400);
-      return { error: 'camera_height must be between 0.1 and 20' };
-    }
-
-    const photo = getPhotoById(uuid);
-    if (!photo) {
-      reply.code(404);
-      return { error: 'Photo not found' };
-    }
-
-    const result = updatePhotoCameraHeight(uuid, camera_height);
-    if (result.changes === 0) {
-      reply.code(500);
-      return { error: 'Failed to update' };
-    }
-
-    return { ok: true, camera_height };
   });
 
   // PUT /api/v1/photos/:uuid/rotation-x — update mesh_rotation_x
@@ -156,148 +118,6 @@ export default async function calibrationRoutes(fastify) {
     }
 
     return { ok: true, mesh_rotation_z };
-  });
-
-  // PUT /api/v1/photos/:uuid/distance-scale — update distance_scale
-  fastify.put('/api/v1/photos/:uuid/distance-scale', async (request, reply) => {
-    const { uuid } = request.params;
-    const { distance_scale } = request.body || {};
-
-    if (typeof distance_scale !== 'number' || Number.isNaN(distance_scale)) {
-      reply.code(400);
-      return { error: 'distance_scale must be a number' };
-    }
-
-    if (distance_scale < 0.1 || distance_scale > 5.0) {
-      reply.code(400);
-      return { error: 'distance_scale must be between 0.1 and 5.0' };
-    }
-
-    const photo = getPhotoById(uuid);
-    if (!photo) {
-      reply.code(404);
-      return { error: 'Photo not found' };
-    }
-
-    const result = updatePhotoDistanceScale(uuid, distance_scale);
-    if (result.changes === 0) {
-      reply.code(500);
-      return { error: 'Failed to update' };
-    }
-
-    return { ok: true, distance_scale };
-  });
-
-  // PUT /api/v1/photos/:uuid/marker-scale — update marker_scale
-  fastify.put('/api/v1/photos/:uuid/marker-scale', async (request, reply) => {
-    const { uuid } = request.params;
-    const { marker_scale } = request.body || {};
-
-    if (typeof marker_scale !== 'number' || Number.isNaN(marker_scale)) {
-      reply.code(400);
-      return { error: 'marker_scale must be a number' };
-    }
-
-    if (marker_scale < 0.1 || marker_scale > 5.0) {
-      reply.code(400);
-      return { error: 'marker_scale must be between 0.1 and 5.0' };
-    }
-
-    const photo = getPhotoById(uuid);
-    if (!photo) {
-      reply.code(404);
-      return { error: 'Photo not found' };
-    }
-
-    const result = updatePhotoMarkerScale(uuid, marker_scale);
-    if (result.changes === 0) {
-      reply.code(500);
-      return { error: 'Failed to update' };
-    }
-
-    return { ok: true, marker_scale };
-  });
-
-  // PUT /api/v1/targets/:sourceId/:targetId/override — set override bearing/distance/height
-  fastify.put('/api/v1/targets/:sourceId/:targetId/override', async (request, reply) => {
-    const { sourceId, targetId } = request.params;
-    const { override_bearing, override_distance, override_height } = request.body || {};
-
-    // Validate bearing (degrees 0-360)
-    if (override_bearing !== null && override_bearing !== undefined) {
-      if (typeof override_bearing !== 'number' || Number.isNaN(override_bearing)) {
-        reply.code(400);
-        return { error: 'override_bearing must be a number or null' };
-      }
-      if (override_bearing < 0 || override_bearing > 360) {
-        reply.code(400);
-        return { error: 'override_bearing must be between 0 and 360' };
-      }
-    }
-
-    // Validate distance (ground distance in meters)
-    if (override_distance !== null && override_distance !== undefined) {
-      if (typeof override_distance !== 'number' || Number.isNaN(override_distance)) {
-        reply.code(400);
-        return { error: 'override_distance must be a number or null' };
-      }
-      if (override_distance < 0.5 || override_distance > 500) {
-        reply.code(400);
-        return { error: 'override_distance must be between 0.5 and 500' };
-      }
-    }
-
-    // Validate height (vertical offset in meters, -10 to +10)
-    if (override_height !== null && override_height !== undefined) {
-      if (typeof override_height !== 'number' || Number.isNaN(override_height)) {
-        reply.code(400);
-        return { error: 'override_height must be a number or null' };
-      }
-      if (override_height < -10 || override_height > 10) {
-        reply.code(400);
-        return { error: 'override_height must be between -10 and 10' };
-      }
-    }
-
-    // Check source photo and target exist
-    const photo = getPhotoById(sourceId);
-    if (!photo) {
-      reply.code(404);
-      return { error: 'Source photo not found' };
-    }
-
-    // Verifica existencia do target via lookup por PK (source_id, target_id),
-    // evitando o JOIN + fetch de todas as linhas de getTargetsBySourceId.
-    const targetExists = getTargetByPair(sourceId, targetId);
-    if (!targetExists) {
-      reply.code(404);
-      return { error: 'Target not found for this source' };
-    }
-
-    const bearing = override_bearing ?? null;
-    const distance = override_distance ?? null;
-    const height = override_height ?? null;
-
-    const result = updateTargetOverride(sourceId, targetId, bearing, distance, height);
-    if (result.changes === 0) {
-      reply.code(500);
-      return { error: 'Failed to update' };
-    }
-
-    return { ok: true, override_bearing: bearing, override_distance: distance, override_height: height };
-  });
-
-  // DELETE /api/v1/targets/:sourceId/:targetId/override — clear overrides
-  fastify.delete('/api/v1/targets/:sourceId/:targetId/override', async (request, reply) => {
-    const { sourceId, targetId } = request.params;
-
-    const result = clearTargetOverride(sourceId, targetId);
-    if (result.changes === 0) {
-      reply.code(404);
-      return { error: 'Target not found' };
-    }
-
-    return { ok: true };
   });
 
   // PUT /api/v1/photos/:uuid/reviewed — mark photo as reviewed/unreviewed
@@ -369,18 +189,14 @@ export default async function calibrationRoutes(fastify) {
   fastify.put('/api/v1/projects/:slug/batch-calibration', async (request, reply) => {
     const { slug } = request.params;
     const {
-      mesh_rotation_y, camera_height,
-      mesh_rotation_x, mesh_rotation_z, distance_scale, marker_scale,
+      mesh_rotation_y, mesh_rotation_x, mesh_rotation_z,
     } = request.body || {};
 
     // Must provide at least one field
     if (
       mesh_rotation_y === undefined &&
-      camera_height === undefined &&
       mesh_rotation_x === undefined &&
-      mesh_rotation_z === undefined &&
-      distance_scale === undefined &&
-      marker_scale === undefined
+      mesh_rotation_z === undefined
     ) {
       reply.code(400);
       return { error: 'Must provide at least one calibration field' };
@@ -395,18 +211,6 @@ export default async function calibrationRoutes(fastify) {
       if (mesh_rotation_y < 0 || mesh_rotation_y > 360) {
         reply.code(400);
         return { error: 'mesh_rotation_y must be between 0 and 360' };
-      }
-    }
-
-    // Validate camera_height if provided
-    if (camera_height !== undefined) {
-      if (typeof camera_height !== 'number' || Number.isNaN(camera_height)) {
-        reply.code(400);
-        return { error: 'camera_height must be a number' };
-      }
-      if (camera_height < 0.1 || camera_height > 20) {
-        reply.code(400);
-        return { error: 'camera_height must be between 0.1 and 20' };
       }
     }
 
@@ -434,30 +238,6 @@ export default async function calibrationRoutes(fastify) {
       }
     }
 
-    // Validate distance_scale if provided
-    if (distance_scale !== undefined) {
-      if (typeof distance_scale !== 'number' || Number.isNaN(distance_scale)) {
-        reply.code(400);
-        return { error: 'distance_scale must be a number' };
-      }
-      if (distance_scale < 0.1 || distance_scale > 5.0) {
-        reply.code(400);
-        return { error: 'distance_scale must be between 0.1 and 5.0' };
-      }
-    }
-
-    // Validate marker_scale if provided
-    if (marker_scale !== undefined) {
-      if (typeof marker_scale !== 'number' || Number.isNaN(marker_scale)) {
-        reply.code(400);
-        return { error: 'marker_scale must be a number' };
-      }
-      if (marker_scale < 0.1 || marker_scale > 5.0) {
-        reply.code(400);
-        return { error: 'marker_scale must be between 0.1 and 5.0' };
-      }
-    }
-
     // Check project has photos
     const photos = getPhotosByProjectSlug(slug);
     if (!photos.length) {
@@ -476,11 +256,6 @@ export default async function calibrationRoutes(fastify) {
         updated.mesh_rotation_y = { value: mesh_rotation_y, photosUpdated: result.changes };
       }
 
-      if (camera_height !== undefined) {
-        const result = batchUpdateCameraHeight(slug, camera_height);
-        updated.camera_height = { value: camera_height, photosUpdated: result.changes };
-      }
-
       if (mesh_rotation_x !== undefined) {
         const result = batchUpdateMeshRotationX(slug, mesh_rotation_x);
         updated.mesh_rotation_x = { value: mesh_rotation_x, photosUpdated: result.changes };
@@ -491,15 +266,6 @@ export default async function calibrationRoutes(fastify) {
         updated.mesh_rotation_z = { value: mesh_rotation_z, photosUpdated: result.changes };
       }
 
-      if (distance_scale !== undefined) {
-        const result = batchUpdateDistanceScale(slug, distance_scale);
-        updated.distance_scale = { value: distance_scale, photosUpdated: result.changes };
-      }
-
-      if (marker_scale !== undefined) {
-        const result = batchUpdateMarkerScale(slug, marker_scale);
-        updated.marker_scale = { value: marker_scale, photosUpdated: result.changes };
-      }
     })();
 
     return { ok: true, updated };

@@ -6,16 +6,14 @@
 
 import {
     fetchProjects, fetchPhotoMetadata, getPhotoImageUrl,
-    saveCalibration, saveCameraHeight, saveMeshRotationX, saveMeshRotationZ, saveDistanceScale, saveMarkerScale,
-    saveTargetOverride, clearTargetOverride,
+    saveCalibration, saveMeshRotationX, saveMeshRotationZ,
     setPhotoReviewed, fetchProjectPhotos,
     saveTargetVisibility, fetchNearbyPhotos, createTarget, deleteTargetConnection,
     deletePhoto,
 } from './api.js';
 import {
     state, isDirty, loadPhoto, discardChanges, markSaved, onChange,
-    setTargetOverride as stateSetTargetOverride,
-    selectTarget, deselectTarget, setSetFromClickMode,
+    selectTarget, deselectTarget,
     setProjectContext, setCalibrationReviewed, getNextPhotoId, getPrevPhotoId,
     setNearbyPhotos, isTargetHidden, refreshTargets,
     setMeshRotationX, setMeshRotationY, setMeshRotationZ,
@@ -24,18 +22,17 @@ import {
 import {
     initViewer, loadProgressive, setMeshRotationY as viewerSetMeshRotationY,
     setMeshRotationX as viewerSetMeshRotationX, setMeshRotationZ as viewerSetMeshRotationZ,
-    setHeading, forceResize, setGridVisible, isGridVisible,
+    setHeading, getHeading, forceResize, setGridVisible, isGridVisible,
     dispose as disposeViewer,
 } from './viewer.js';
 import {
     initNavigator, setCameraConfig, setTargets,
-    update as updateNavigator, handleClick, updateCameraState,
-    refreshCursor, setGroundGridVisible,
+    update as updateNavigator, handleClick, updateCameraState, setHoveredFromMinimap,
     setNearbyPhotos as navSetNearbyPhotos, setNearbyPreviewMode,
     disposeNavigator,
 } from './navigator.js';
 import {
-    initMinimap, updateCamera, updateTargets, setSelectedTarget,
+    initMinimap, updateCamera, setViewDirection, updateTargets, setSelectedTarget,
     updateNearbyPhotos, disposeMinimap,
 } from './minimap.js';
 import { initPanel, showToast, setSphericalGridToggleState, clearNearbyPreview, getNearbyPreviewState } from './calibration-panel.js';
@@ -228,6 +225,12 @@ async function startCalibration(photoId) {
             if (myGen !== loadGeneration) return;
         }
 
+        // Onde a camera estava olhando NO MUNDO, antes de trocar de foto.
+        // Lido aqui porque loadPhoto logo abaixo sobrescreve o metadata anterior.
+        const prevWorldHeading = state.currentPhotoId
+            ? (state.currentMetadata?.camera?.heading ?? 0) + getHeading()
+            : null;
+
         // Load state (after project context so review info is available)
         loadPhoto(photoId, metadata);
 
@@ -247,10 +250,14 @@ async function startCalibration(photoId) {
         setTargets(metadata.targets);
         setRearViewTargets(metadata.targets, metadata.camera);
 
-        // Reset camera to look straight at the image center (lon=0).
-        // The navigator adds imageHeading when computing world yaw,
-        // so lon=0 means looking in the imageHeading direction.
-        setHeading(0);
+        // Trocar de foto mantem a direcao do MUNDO, nao o lon. Zerar o lon
+        // girava a vista a cada salto, e o operador perdia a referencia de onde
+        // estava olhando, que e justamente o que a calibracao pede.
+        // A navegacao adiciona imageHeading para achar o yaw do mundo, entao
+        // lon = worldHeading - imageHeading. Na primeira foto, lon = 0, que e
+        // olhar na direcao do proprio imageHeading.
+        const imageHeading = metadata.camera?.heading ?? 0;
+        setHeading(prevWorldHeading === null ? 0 : prevWorldHeading - imageHeading);
 
         // Set mesh rotations
         viewerSetMeshRotationY(metadata.camera?.mesh_rotation_y ?? 180);
@@ -316,14 +323,15 @@ function initializeSubsystems() {
 
     // Initialize navigation overlay
     initNavigator(viewerContainer, {
-        onNavigate: (targetId) => navigateToPhoto(targetId),
         onTargetSelect: (targetId) => selectTarget(targetId),
-        onSetFromClick: onSetFromClick,
     });
 
     // Initialize minimap
     initMinimap(minimapContainer, {
         onTargetClick: (targetId) => selectTarget(targetId),
+        // Vinculo minimapa -> 360: apontar o alvo na planta acende o marcador
+        // correspondente na foto.
+        onTargetHover: (targetId) => setHoveredFromMinimap(targetId),
     });
 
     // Initialize calibration panel
@@ -334,12 +342,6 @@ function initializeSubsystems() {
             viewerSetMeshRotationY(degrees);
             updateRearViewRotation(degrees, state.editedMeshRotationX ?? 0, state.editedMeshRotationZ ?? 0);
         },
-        onCameraHeightPreview: (height) => {
-            // Update navigator camera config live for ground-plane projection preview
-            if (state.currentMetadata?.camera) {
-                setCameraConfig({ ...state.currentMetadata.camera, height, distance_scale: state.editedDistanceScale, marker_scale: state.editedMarkerScale });
-            }
-        },
         onMeshRotationXPreview: (degrees) => {
             viewerSetMeshRotationX(degrees);
             updateRearViewRotation(state.editedMeshRotationY ?? 180, degrees, state.editedMeshRotationZ ?? 0);
@@ -348,25 +350,12 @@ function initializeSubsystems() {
             viewerSetMeshRotationZ(degrees);
             updateRearViewRotation(state.editedMeshRotationY ?? 180, state.editedMeshRotationX ?? 0, degrees);
         },
-        onDistanceScalePreview: (scale) => {
-            // Update navigator camera config with new distance_scale
-            if (state.currentMetadata?.camera) {
-                setCameraConfig({ ...state.currentMetadata.camera, height: state.editedCameraHeight, distance_scale: scale, marker_scale: state.editedMarkerScale });
-            }
-        },
-        onMarkerScalePreview: (scale) => {
-            // Update navigator camera config with new marker_scale
-            if (state.currentMetadata?.camera) {
-                setCameraConfig({ ...state.currentMetadata.camera, height: state.editedCameraHeight, distance_scale: state.editedDistanceScale, marker_scale: scale });
-            }
-        },
         onNavigateToPhoto: (photoId) => navigateToPhoto(photoId),
         onMarkReviewed: handleMarkReviewed,
         onNextPhoto: handleNextPhoto,
         onPrevPhoto: handlePrevPhoto,
         onBackToProjects: () => showProjectSelector(),
         onSphericalGridToggle: (visible) => setGridVisible(visible),
-        onGroundGridToggle: (visible) => setGroundGridVisible(visible),
         onAddTarget: handleAddTarget,
         onDeleteTarget: handleDeleteTarget,
         onNearbyPreviewToggle: handleNearbyPreviewToggle,
@@ -419,10 +408,6 @@ function initializeSubsystems() {
                                 stateSetTargetHidden(state.selectedTargetId, !hidden);
                                 updateHideButtonState(!hidden);
                             },
-                            onSetFromClick: () => {
-                                setSetFromClickMode(!state.setFromClickMode);
-                                refreshCursor();
-                            },
                             isHidden: isTargetHidden(target.id),
                         });
                     }
@@ -435,10 +420,6 @@ function initializeSubsystems() {
                                 const hidden = isTargetHidden(state.selectedTargetId);
                                 stateSetTargetHidden(state.selectedTargetId, !hidden);
                                 updateHideButtonState(!hidden);
-                            },
-                            onSetFromClick: () => {
-                                setSetFromClickMode(!state.setFromClickMode);
-                                refreshCursor();
                             },
                             isHidden: isTargetHidden(target.id),
                         });
@@ -506,6 +487,9 @@ function onViewerRender(cameraState) {
     const lonDeg = (cameraState.yaw * 180) / Math.PI;
     const latDeg = (cameraState.pitch * 180) / Math.PI;
     syncRearViewCamera(lonDeg, latDeg, cameraState.fov);
+
+    // Aponta o cone do minimapa para a direcao do olhar
+    setViewDirection(lonDeg, cameraState.fov);
 }
 
 // ============================================================================
@@ -515,20 +499,6 @@ function onViewerRender(cameraState) {
 function onViewerClick(event) {
     handleClick(event);
 }
-
-function onSetFromClick(groundOverride) {
-    if (!state.selectedTargetId) return;
-
-    // groundOverride = { bearing: bearingDeg, distance: groundDistanceMeters }
-    const bearingDeg = groundOverride.bearing;
-    const distance = groundOverride.distance;
-
-    stateSetTargetOverride(state.selectedTargetId, bearingDeg, distance);
-    setSetFromClickMode(false);
-    refreshCursor();
-    showToast(`Override definido: bearing=${bearingDeg.toFixed(1)}°, dist=${distance.toFixed(1)}m`, 'success');
-}
-
 
 // ============================================================================
 // NAVIGATION
@@ -622,16 +592,6 @@ async function handleSave() {
             );
         }
 
-        // Save camera_height if changed
-        if (
-            state.editedCameraHeight !== null &&
-            state.editedCameraHeight !== state.originalCameraHeight
-        ) {
-            promises.push(
-                saveCameraHeight(photoId, state.editedCameraHeight)
-            );
-        }
-
         // Save mesh_rotation_x if changed
         if (
             state.editedMeshRotationX !== null &&
@@ -652,51 +612,9 @@ async function handleSave() {
             );
         }
 
-        // Save distance_scale if changed
-        if (
-            state.editedDistanceScale !== null &&
-            state.editedDistanceScale !== state.originalDistanceScale
-        ) {
-            promises.push(
-                saveDistanceScale(photoId, state.editedDistanceScale)
-            );
-        }
-
-        // Save marker_scale if changed
-        if (
-            state.editedMarkerScale !== null &&
-            state.editedMarkerScale !== state.originalMarkerScale
-        ) {
-            promises.push(
-                saveMarkerScale(photoId, state.editedMarkerScale)
-            );
-        }
-
-        // Save changed target overrides
-        for (const [targetId, edited] of state.editedTargetOverrides) {
-            const original = state.originalTargetOverrides.get(targetId);
-            const origB = original?.bearing ?? null;
-            const origD = original?.distance ?? null;
-            const origH = original?.height ?? 0;
-
-            if (edited.bearing !== origB || edited.distance !== origD || (edited.height ?? 0) !== origH) {
-                if (edited.bearing === null && edited.distance === null) {
-                    // Override cleared
-                    promises.push(
-                        clearTargetOverride(photoId, targetId)
-                    );
-                } else {
-                    // Override set/updated
-                    promises.push(
-                        saveTargetOverride(
-                            photoId, targetId,
-                            edited.bearing, edited.distance,
-                            edited.height ?? 0
-                        )
-                    );
-                }
-            }
-        }
+        // camera_height, distance_scale, marker_scale e os overrides de alvo
+        // saíram do salvar: nenhum deles afeta o marcador, e nada na interface
+        // os edita mais.
 
         // Save changed target visibility
         for (const [targetId, editedHidden] of state.editedTargetHidden) {
@@ -1019,12 +937,9 @@ function onKeyDown(e) {
         return;
     }
 
-    // Escape = Cancel modes / Deselect target
+    // Escape = Deselect target
     if (e.key === 'Escape') {
-        if (state.setFromClickMode) {
-            setSetFromClickMode(false);
-            refreshCursor();
-        } else if (state.selectedTargetId) {
+        if (state.selectedTargetId) {
             deselectTarget();
         }
         return;
@@ -1053,11 +968,6 @@ function onKeyDown(e) {
         stateSetTargetHidden(state.selectedTargetId, !isTargetHidden(state.selectedTargetId));
     }
 
-    // F = Toggle set-from-click mode (requires selected target)
-    if (e.key === 'f' && state.selectedTargetId) {
-        setSetFromClickMode(!state.setFromClickMode);
-        refreshCursor();
-    }
 
     // G = Toggle spherical grid
     if (e.key === 'g') {

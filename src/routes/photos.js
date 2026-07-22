@@ -80,15 +80,17 @@ export default async function photoRoutes(fastify) {
     // Valida cache via ETag barato: assinatura compacta da calibracao da foto +
     // targets. Com no-cache + validador, o cliente revalida mas o servidor evita
     // re-serializar/transferir o corpo quando nada mudou (304).
+    // A assinatura cobre so o que muda o que o cliente desenha. Os campos
+    // inertes (camera_height, distance_scale, marker_scale, override_*) saíram:
+    // escrever num deles trocava o ETag e derrubava o cache de todo mundo sem
+    // nenhum efeito visual.
     const signature = [
       uuid,
       includeHidden ? 'h' : 'v',
       photo.mesh_rotation_y, photo.mesh_rotation_x, photo.mesh_rotation_z,
-      photo.camera_height, photo.distance_scale, photo.marker_scale,
       photo.calibration_reviewed,
       ...targets.map(t => [
-        t.target_id, t.distance_m, t.bearing_deg, t.is_next,
-        t.override_bearing, t.override_distance, t.override_height, t.hidden,
+        t.target_id, t.distance_m, t.bearing_deg, t.is_next, t.hidden,
       ].join(',')),
     ].join('|');
     const etag = computeMetadataETag(signature);

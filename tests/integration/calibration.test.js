@@ -270,161 +270,9 @@ describe('PUT /api/v1/photos/:uuid/rotation-z', () => {
 // PUT /api/v1/photos/:uuid/distance-scale
 // ============================================================================
 
-describe('PUT /api/v1/photos/:uuid/distance-scale', () => {
-  it('returns 200 with ok:true for valid distance_scale', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/distance-scale`,
-      payload: { distance_scale: 2.5 },
-    });
-    assert.equal(res.statusCode, 200);
-    const body = JSON.parse(res.body);
-    assert.equal(body.ok, true);
-    assert.equal(body.distance_scale, 2.5);
-  });
-
-  it('distance_scale persists (verified via GET)', async () => {
-    await app.inject({
-      method: 'PUT',
-      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/distance-scale`,
-      payload: { distance_scale: 1.75 },
-    });
-
-    const res = await app.inject({ method: 'GET', url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}` });
-    const body = JSON.parse(res.body);
-    assert.equal(body.camera.distance_scale, 1.75);
-  });
-
-  it('returns 400 when distance_scale is not a number', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/distance-scale`,
-      payload: { distance_scale: 'bad' },
-    });
-    assert.equal(res.statusCode, 400);
-  });
-
-  it('returns 400 when distance_scale is out of range', async () => {
-    const res1 = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/distance-scale`,
-      payload: { distance_scale: 0.05 },
-    });
-    assert.equal(res1.statusCode, 400);
-
-    const res2 = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/distance-scale`,
-      payload: { distance_scale: 5.1 },
-    });
-    assert.equal(res2.statusCode, 400);
-  });
-
-  it('returns 404 for non-existent photo UUID', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: '/api/v1/photos/00000000-0000-0000-0000-000000000000/distance-scale',
-      payload: { distance_scale: 1.0 },
-    });
-    assert.equal(res.statusCode, 404);
-  });
-
-  it('accepts boundary values 0.1 and 5.0', async () => {
-    const res1 = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/distance-scale`,
-      payload: { distance_scale: 0.1 },
-    });
-    assert.equal(res1.statusCode, 200);
-
-    const res2 = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/distance-scale`,
-      payload: { distance_scale: 5.0 },
-    });
-    assert.equal(res2.statusCode, 200);
-  });
-});
-
 // ============================================================================
 // PUT /api/v1/photos/:uuid/marker-scale
 // ============================================================================
-
-describe('PUT /api/v1/photos/:uuid/marker-scale', () => {
-  it('returns 200 with ok:true for valid marker_scale', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/marker-scale`,
-      payload: { marker_scale: 2.5 },
-    });
-    assert.equal(res.statusCode, 200);
-    const body = JSON.parse(res.body);
-    assert.equal(body.ok, true);
-    assert.equal(body.marker_scale, 2.5);
-  });
-
-  it('marker_scale persists (verified via GET)', async () => {
-    await app.inject({
-      method: 'PUT',
-      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/marker-scale`,
-      payload: { marker_scale: 0.5 },
-    });
-
-    const res = await app.inject({ method: 'GET', url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}` });
-    const body = JSON.parse(res.body);
-    assert.equal(body.camera.marker_scale, 0.5);
-  });
-
-  it('returns 400 when marker_scale is not a number', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/marker-scale`,
-      payload: { marker_scale: 'bad' },
-    });
-    assert.equal(res.statusCode, 400);
-  });
-
-  it('returns 400 when marker_scale is out of range', async () => {
-    const res1 = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/marker-scale`,
-      payload: { marker_scale: 0.05 },
-    });
-    assert.equal(res1.statusCode, 400);
-
-    const res2 = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/marker-scale`,
-      payload: { marker_scale: 5.1 },
-    });
-    assert.equal(res2.statusCode, 400);
-  });
-
-  it('returns 404 for non-existent photo UUID', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: '/api/v1/photos/00000000-0000-0000-0000-000000000000/marker-scale',
-      payload: { marker_scale: 1.0 },
-    });
-    assert.equal(res.statusCode, 404);
-  });
-
-  it('accepts boundary values 0.1 and 5.0', async () => {
-    const res1 = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/marker-scale`,
-      payload: { marker_scale: 0.1 },
-    });
-    assert.equal(res1.statusCode, 200);
-
-    const res2 = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/marker-scale`,
-      payload: { marker_scale: 5.0 },
-    });
-    assert.equal(res2.statusCode, 200);
-  });
-});
 
 // ============================================================================
 // POST /api/v1/projects/:slug/reset-reviewed
@@ -496,51 +344,22 @@ describe('PUT /api/v1/projects/:slug/batch-calibration (extended)', () => {
     assert.equal(body.updated.mesh_rotation_z.value, -5.0);
   });
 
-  it('updates distance_scale for all project photos', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/projects/${SEEDS.PROJECT_SLUG}/batch-calibration`,
-      payload: { distance_scale: 2.0 },
-    });
-    assert.equal(res.statusCode, 200);
-    const body = JSON.parse(res.body);
-    assert.equal(body.updated.distance_scale.value, 2.0);
-  });
-
-  it('updates marker_scale for all project photos', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/projects/${SEEDS.PROJECT_SLUG}/batch-calibration`,
-      payload: { marker_scale: 0.3 },
-    });
-    assert.equal(res.statusCode, 200);
-    const body = JSON.parse(res.body);
-    assert.equal(body.updated.marker_scale.value, 0.3);
-    assert.equal(body.updated.marker_scale.photosUpdated, 3);
-  });
-
   it('updates all fields at once', async () => {
     const res = await app.inject({
       method: 'PUT',
       url: `/api/v1/projects/${SEEDS.PROJECT_SLUG}/batch-calibration`,
       payload: {
         mesh_rotation_y: 90,
-        camera_height: 3.0,
         mesh_rotation_x: 2.0,
         mesh_rotation_z: -1.5,
-        distance_scale: 1.5,
-        marker_scale: 0.8,
       },
     });
     assert.equal(res.statusCode, 200);
     const body = JSON.parse(res.body);
     assert.equal(body.ok, true);
     assert.ok(body.updated.mesh_rotation_y);
-    assert.ok(body.updated.camera_height);
     assert.ok(body.updated.mesh_rotation_x);
     assert.ok(body.updated.mesh_rotation_z);
-    assert.ok(body.updated.distance_scale);
-    assert.ok(body.updated.marker_scale);
   });
 
   it('returns 400 when no fields provided', async () => {
@@ -573,153 +392,9 @@ describe('PUT /api/v1/projects/:slug/batch-calibration (extended)', () => {
 // PUT /api/v1/targets/:sourceId/:targetId/override
 // ============================================================================
 
-describe('PUT /api/v1/targets/:sourceId/:targetId/override', () => {
-  it('returns 200 with ok:true for valid bearing and distance', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/targets/${SEEDS.PHOTO_2_ID}/${SEEDS.PHOTO_1_ID}/override`,
-      payload: { override_bearing: 90.0, override_distance: 10.0 },
-    });
-    assert.equal(res.statusCode, 200);
-    const body = JSON.parse(res.body);
-    assert.equal(body.ok, true);
-    assert.equal(body.override_bearing, 90.0);
-    assert.equal(body.override_distance, 10.0);
-  });
-
-  it('override persists (verified via GET /photos/:sourceId)', async () => {
-    // Write override
-    await app.inject({
-      method: 'PUT',
-      url: `/api/v1/targets/${SEEDS.PHOTO_2_ID}/${SEEDS.PHOTO_1_ID}/override`,
-      payload: { override_bearing: 77.5, override_distance: 3.0 },
-    });
-
-    // Read back via photo metadata
-    const res = await app.inject({ method: 'GET', url: `/api/v1/photos/${SEEDS.PHOTO_2_ID}` });
-    const body = JSON.parse(res.body);
-    const target = body.targets.find(t => t.id === SEEDS.PHOTO_1_ID);
-    assert.ok(target);
-    assert.equal(target.override_bearing, 77.5);
-    assert.equal(target.override_distance, 3.0);
-  });
-
-  it('returns 400 for non-numeric override_bearing', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/targets/${SEEDS.PHOTO_1_ID}/${SEEDS.PHOTO_2_ID}/override`,
-      payload: { override_bearing: 'bad', override_distance: 5 },
-    });
-    assert.equal(res.statusCode, 400);
-  });
-
-  it('returns 400 for override_bearing out of range', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/targets/${SEEDS.PHOTO_1_ID}/${SEEDS.PHOTO_2_ID}/override`,
-      payload: { override_bearing: 400, override_distance: 5 },
-    });
-    assert.equal(res.statusCode, 400);
-  });
-
-  it('returns 400 for override_distance out of range', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/targets/${SEEDS.PHOTO_1_ID}/${SEEDS.PHOTO_2_ID}/override`,
-      payload: { override_bearing: 0, override_distance: 600 },
-    });
-    assert.equal(res.statusCode, 400);
-  });
-
-  it('returns 404 for non-existent source photo', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/targets/00000000-0000-0000-0000-000000000000/${SEEDS.PHOTO_2_ID}/override`,
-      payload: { override_bearing: 0, override_distance: 5 },
-    });
-    assert.equal(res.statusCode, 404);
-  });
-
-  it('returns 404 when targetId is not a target of sourceId', async () => {
-    // PHOTO_2 has PHOTO_1 as target, but use a non-existent target UUID
-    const res = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/targets/${SEEDS.PHOTO_1_ID}/00000000-0000-0000-0000-000000000099/override`,
-      payload: { override_bearing: 0, override_distance: 5 },
-    });
-    assert.equal(res.statusCode, 404);
-    assert.ok(JSON.parse(res.body).error.includes('Target'));
-  });
-
-  it('returns 400 for non-numeric override_distance', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/targets/${SEEDS.PHOTO_1_ID}/${SEEDS.PHOTO_2_ID}/override`,
-      payload: { override_bearing: 0, override_distance: 'bad' },
-    });
-    assert.equal(res.statusCode, 400);
-  });
-
-  it('accepts boundary values (bearing=0, bearing=360, distance=0.5, distance=500)', async () => {
-    const res1 = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/targets/${SEEDS.PHOTO_1_ID}/${SEEDS.PHOTO_2_ID}/override`,
-      payload: { override_bearing: 0, override_distance: 0.5 },
-    });
-    assert.equal(res1.statusCode, 200);
-
-    const res2 = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/targets/${SEEDS.PHOTO_1_ID}/${SEEDS.PHOTO_2_ID}/override`,
-      payload: { override_bearing: 360, override_distance: 500 },
-    });
-    assert.equal(res2.statusCode, 200);
-  });
-
-  it('accepts null overrides (clears via PUT)', async () => {
-    const res = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/targets/${SEEDS.PHOTO_1_ID}/${SEEDS.PHOTO_2_ID}/override`,
-      payload: { override_bearing: null, override_distance: null },
-    });
-    assert.equal(res.statusCode, 200);
-    const body = JSON.parse(res.body);
-    assert.equal(body.override_bearing, null);
-    assert.equal(body.override_distance, null);
-  });
-});
-
 // ============================================================================
 // DELETE /api/v1/targets/:sourceId/:targetId/override
 // ============================================================================
-
-describe('DELETE /api/v1/targets/:sourceId/:targetId/override', () => {
-  it('returns 200 and clears overrides', async () => {
-    // First ensure the target has an override (seed data has PHOTO_1→PHOTO_2 with override)
-    const res = await app.inject({
-      method: 'DELETE',
-      url: `/api/v1/targets/${SEEDS.PHOTO_1_ID}/${SEEDS.PHOTO_2_ID}/override`,
-    });
-    assert.equal(res.statusCode, 200);
-    const body = JSON.parse(res.body);
-    assert.equal(body.ok, true);
-
-    // Verify cleared
-    const getRes = await app.inject({ method: 'GET', url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}` });
-    const target = JSON.parse(getRes.body).targets[0];
-    assert.equal(target.override_bearing, null);
-    assert.equal(target.override_distance, null);
-  });
-
-  it('returns 404 for non-existent target', async () => {
-    const res = await app.inject({
-      method: 'DELETE',
-      url: '/api/v1/targets/00000000-0000-0000-0000-000000000000/00000000-0000-0000-0000-000000000099/override',
-    });
-    assert.equal(res.statusCode, 404);
-    assert.ok(JSON.parse(res.body).error);
-  });
-});
 
 // ============================================================================
 // PUT /api/v1/targets/:sourceId/:targetId/visibility

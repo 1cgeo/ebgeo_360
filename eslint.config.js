@@ -118,7 +118,12 @@ export default [
         ignores: [
             'node_modules/**',
             'data/**',
+            // A UI de calibracao tem lint proprio: npm run lint:calibration
+            // (eslint-calibration.config.mjs, com globais de navegador).
             'public/**',
+            // Prototipos WIP de estimativa de tilt, nao sao codigo de producao.
+            // Deixavam o npm run lint vermelho desde o commit 74b5f95.
+            'docs/**',
             '*.min.js',
         ]
     }

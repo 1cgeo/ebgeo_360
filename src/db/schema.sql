@@ -56,6 +56,11 @@ CREATE TABLE IF NOT EXISTS targets (
     distance_m       REAL,
     bearing_deg      REAL,
     is_next          INTEGER DEFAULT 0,
+    -- is_original = 1: veio da captura (importada), protegida contra remocao.
+    -- is_original = 0: qualquer outra (grafo importado ou conexao criada pelo
+    -- operador). Nao ha um terceiro estado: o grafo entra pronto pela migracao
+    -- e nada o regenera dentro do sistema, entao nao ha recalculo de que
+    -- proteger uma conexao manual. Ambas as de is_original=0 sao removiveis.
     is_original      INTEGER DEFAULT 1,
     override_bearing  REAL,   -- NULL = use calculated projection; bearing degrees 0-360 (0=North)
     override_distance REAL,   -- NULL = use calculated projection; ground distance in meters

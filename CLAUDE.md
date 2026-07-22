@@ -8,24 +8,34 @@ EBGeo360 — 360 image microservice for the EBGeo system (Sistema de Informacao 
 
 ## Tech Stack
 
-- **Runtime**: Node.js 22 (Alpine in Docker)
+- **Runtime**: Node.js >= 22, run directly on the host (no container)
 - **Framework**: Fastify 5.x
-- **Database**: SQLite via better-sqlite3 (synchronous API)
+- **Database**: SQLite via better-sqlite3 12.x (synchronous API)
 - **Image Processing**: Sharp 0.33.x (WebP conversion during migration)
 - **Calibration UI**: Three.js (360 viewer), MapLibre GL JS (minimap), vanilla JS
-- **Container**: Docker with 512 MB memory limit
+
+### Native dependencies
+
+`better-sqlite3` and `sharp` are native addons. Both ship prebuilt binaries, so a
+plain `npm install` needs no C++ toolchain — but only if the version matches the
+Node release in use. **`better-sqlite3` must stay at 12.x or newer**: 11.x has no
+prebuilt binary for Node 24 (`No prebuilt binaries found (target=24.13.0 ...)`),
+falls back to compiling from source, and fails on any Windows machine without the
+Visual C++ Build Tools installed. If `npm install` ever starts invoking
+`node-gyp rebuild`, that is the symptom — bump the dependency rather than
+installing a compiler.
 
 ## Commands
 
 ```bash
-npm start              # Start server (node src/server.js)
+npm start              # Start server (node --env-file=.env src/server.js)
 npm run dev            # Dev server with auto-restart (--watch)
 npm run migrate        # Import JSON metadata + JPG images into SQLite
 npm run generate-pmtiles  # Generate PMTiles for map markers
-npm run recalculate-targets  # Recompute navigation graph (targets)
 npm run cleanup-wal    # Checkpoint/clean SQLite WAL files
 npm test               # Run tests (node:test built-in)
-npm run lint           # ESLint (--max-warnings 0)
+npm run lint           # ESLint (--max-warnings 0); ignores public/ and docs/
+npm run lint:calibration  # ESLint for public/calibration/ (browser globals, no-undef)
 npm run lint:fix       # ESLint auto-fix
 npm run knip           # Dead code / unused dependency detection
 ```
@@ -45,22 +55,23 @@ src/
 │   ├── health.js          # GET /health
 │   ├── projects.js        # GET /api/v1/projects, GET /api/v1/projects/:slug
 │   ├── photos.js          # GET /api/v1/photos/:uuid, GET .../image, GET .../by-name/:name
-│   └── calibration.js     # Calibration write endpoints (rotation, height, scale, overrides, review, batch)
+│   └── calibration.js     # Write endpoints (rotations, review, visibility, targets, batch)
 └── middleware/
     └── cache.js           # Cache-Control headers + ETag computation
 
 scripts/
 ├── migrate.js             # JSON+JPG → SQLite migration (7-phase)
 ├── generate-pmtiles.js    # PMTiles generation for mapping
-├── recalculate-targets.js # Recompute navigation graph (targets)
-└── cleanup-wal.js         # Checkpoint/clean SQLite WAL files
+├── cleanup-wal.js         # Checkpoint/clean SQLite WAL files
+└── lib/
+    └── orientation.js     # Quaternion pose -> viewer Euler angles (ZXY)
 
 public/calibration/        # Calibration web interface
 ├── index.html
 └── js/                    # Modules: app, viewer, navigator, renderer, projector, calibration-panel, preview-viewer, api, state, minimap, hit-tester, constants
 
 tests/
-├── unit/                  # cache.test.js
+├── unit/                  # cache, orientation (quaternion), calibration-horizon-marker
 ├── integration/           # health, projects, photos, calibration, queries
 └── helpers/               # build-app.js (Fastify builder), test-db.js (seed data)
 ```
@@ -71,9 +82,11 @@ tests/
 
 ### index.db (Central metadata)
 - **projects** — slug, name, location, center coordinates, entry photo ID, photo count
-- **photos** — coordinates, heading, camera_height, mesh_rotation_y/x/z, distance_scale, calibration_reviewed, sequence number
+- **photos** — coordinates, heading, mesh_rotation_y/x/z, floor_level, calibration_reviewed, sequence number (plus the inert camera_height/distance_scale/marker_scale)
 - **photos_rtree** — R-tree spatial index for geographic queries
-- **targets** — Navigation graph (source→target with distance, bearing, override bearing/distance/height, hidden flag)
+- **targets** — Navigation graph (source→target with distance, bearing, hidden, is_original, is_manual; plus the inert override_*)
+- **deleted_photos** — soft-delete tombstones
+- **photos_rowid** — stable rowid mapping for the R-tree
 
 ### {slug}.db (Per-project images)
 - **images** — photo_id → full_webp BLOB + preview_webp BLOB
@@ -96,6 +109,8 @@ tests/
 - Clamps old `override_pitch < 0.5` values to `5m` default
 - Adds `hidden` column to `targets` (default 0)
 - Adds `override_height` column to `targets` (default NULL)
+- Adds `is_manual` column to `targets` (default 0) — marks operator-created connections
+- Creates `deleted_photos` and the `targets`/`deleted_photos` indexes
 
 ## API Endpoints
 
@@ -114,18 +129,19 @@ tests/
 | Endpoint | Description |
 |----------|-------------|
 | `PUT /api/v1/photos/:uuid/calibration` | Update mesh_rotation_y (0–360) |
-| `PUT /api/v1/photos/:uuid/height` | Update camera_height (0.1–20 m) |
+| `PUT /api/v1/photos/:uuid/height` | Update camera_height (0.1–20 m). **Inert**: nothing reads it |
 | `PUT /api/v1/photos/:uuid/rotation-x` | Update mesh_rotation_x (−30–30) |
 | `PUT /api/v1/photos/:uuid/rotation-z` | Update mesh_rotation_z (−30–30) |
-| `PUT /api/v1/photos/:uuid/distance-scale` | Update distance_scale (0.1–5.0) |
-| `PUT /api/v1/photos/:uuid/marker-scale` | Update marker_scale (0.1–5.0) |
+| `PUT /api/v1/photos/:uuid/distance-scale` | Update distance_scale. **Inert** |
+| `PUT /api/v1/photos/:uuid/marker-scale` | Update marker_scale. **Inert** |
 | `PUT /api/v1/photos/:uuid/reviewed` | Mark photo reviewed/unreviewed |
-| `PUT /api/v1/targets/:sourceId/:targetId/override` | Set bearing (0–360°) / distance (0.5–500 m) / height (−10–10 m) overrides |
-| `DELETE /api/v1/targets/:sourceId/:targetId/override` | Clear overrides |
+| `PUT /api/v1/targets/:sourceId/:targetId/override` | Set bearing/distance/height overrides. **Inert**, and no UI writes them |
+| `DELETE /api/v1/targets/:sourceId/:targetId/override` | Clear overrides. **Inert** |
 | `PUT /api/v1/targets/:sourceId/:targetId/visibility` | Set target hidden state (hidden: bool) |
 | `GET /api/v1/photos/:uuid/nearby?radius=100` | Find nearby unconnected photos within radius |
 | `POST /api/v1/targets` | Create new target connection (source_id, target_id) |
-| `DELETE /api/v1/targets/:sourceId/:targetId` | Delete manually-created target (is_original=0 only) |
+| `DELETE /api/v1/targets/:sourceId/:targetId` | Delete a target (is_original=0 only) |
+| `DELETE /api/v1/photos/:uuid` | Soft-delete a photo (tombstone in `deleted_photos`) |
 | `GET /api/v1/projects/:slug/photos` | List photos with review status |
 | `POST /api/v1/projects/:slug/reset-reviewed` | Reset all photos to unreviewed |
 | `PUT /api/v1/projects/:slug/batch-calibration` | Batch update calibration fields for all photos |
@@ -237,35 +253,81 @@ const imgDb = getProjectDb('alegrete.db');  // Cached per filename
 
 ## Calibration Parameters
 
+Only three values are still calibrated per photo, and all three calibrate the
+IMAGE, not the marker:
+
 | Parameter | Column | Range | Default | Description |
 |-----------|--------|-------|---------|-------------|
 | Heading (Y) | `mesh_rotation_y` | 0–360 | 180 | Yaw correction applied to panorama sphere |
 | Pitch (X) | `mesh_rotation_x` | −30–30 | 0 | Pitch tilt correction |
 | Roll (Z) | `mesh_rotation_z` | −30–30 | 0 | Roll tilt correction |
-| Camera height | `camera_height` | 0.1–20 | 2.5 | Height above ground in meters |
-| Distance scale | `distance_scale` | 0.1–5.0 | 1.0 | Multiplier for target distances |
-| Marker scale | `marker_scale` | 0.1–5.0 | 1.0 | Multiplier for navigation marker visual size |
-| Override bearing | `override_bearing` | 0–360 | NULL | Manual target bearing (degrees, 0=North) |
-| Override distance | `override_distance` | 0.5–500 | NULL | Manual target ground distance (meters) |
-| Override height | `override_height` | −10–10 | NULL | Manual target vertical offset (meters, positive = above ground) |
-| Hidden | `hidden` | 0/1 | 0 | Whether target is hidden from navigation (per source→target pair) |
-| Reviewed | `calibration_reviewed` | 0/1 | 0 | Whether calibration has been reviewed |
+
+Two more per-target values are edited, and they are graph decisions rather than
+calibration: `hidden` (0/1, this way is blocked by a wall) and the existence of
+the connection itself. `calibration_reviewed` (0/1) tracks the review workflow.
+
+### Columns that no longer affect anything
+
+`camera_height`, `distance_scale`, `marker_scale`, `override_bearing`,
+`override_distance` and `override_height` are **inert**. Nothing reads them to
+draw, no slider edits them, and the save flow no longer writes them.
+
+They are deliberately NOT dropped: the archive holds 519 overrides, 444 of them
+in a single 77-photo project, and they are the record of which photos are badly
+positioned. An inventory is in `docs/overrides-inventario.json`. The write
+endpoints still exist as API surface but have no visual effect.
 
 ### Three.js Rotation Order
 The panorama sphere uses Euler order `ZXY` — matrix `Rz·Rx·Ry` — meaning Y (heading) is applied first to pixels, then X (pitch), then Z (roll) in the corrected frame. Both `viewer.js` (calibration) and `street_view_viewer.js` (ebgeo_web) must use the same order.
 
-### Height Model (Flat Ground)
-All markers are projected using a **flat ground model** — GPS elevation (`ele`) is stored but **not used** for projection. The `ele` column is retained in the database and API responses for informational purposes only.
+### Marker Model (Relative)
 
-- **GPS targets**: projected onto ground plane at `y = -cameraHeight` (all targets at same level)
-- **Override targets**: projected onto `y = -cameraHeight + overrideHeight` (manual height control)
-- **`override_height`**: relative to camera ground level (0 = ground, positive = above ground)
-- **`camera_height`**: distance from ground to camera lens (default 2.5m)
+The navigation marker takes exactly two things from lat/lon: which DIRECTION a
+target lies in, and in what ORDER the targets sit along that direction. Nothing
+else about the position reaches the screen.
 
-Both `projector.calculateFlattenRatio()` and `projector.calculateMarkerSize()` accept a `heightOffset` parameter (default 0) used only by override targets via `overrideHeight`.
+- Targets whose bearings fall within `HORIZON_DIRECTION_BUCKET_DEG` of each other
+  count as one direction, and form a queue ordered by distance.
+- The first icon of a queue gets a fixed angular size, just below the corrected
+  horizon. Each one behind it is `HORIZON_RANK_DECAY` of the size of the one in
+  front, and RISES by a gap computed from the two radii.
+- That gap is what guarantees no icon can bury another, which is what keeps every
+  target clickable. There is no decluttering pass.
+- Opacity also decays with rank, because the size floor stops the shrinking after
+  three or four ranks.
 
-### Target Override Projection
-Override markers use a **ground-plane model**: bearing + ground distance + height are projected onto `y = -cameraHeight + overrideHeight` plane, NOT spherical coordinates. Both `navigator.js` (calibration) and `navigation/navigator.js` (ebgeo_web) use `projectFromOverride()` for this. When `override_height` is NULL/0, the marker sits on the ground plane exactly where the user clicked.
+The horizon here is the CORRECTED one: the sphere is levelled by
+`mesh_rotation_x/z` before anything is drawn, so the camera's horizontal plane is
+the image's true horizon. If a marker looks off the horizon in a photo, the mesh
+calibration of that photo is what is wrong.
+
+Entry points: `projector.projectOnHorizon()`, `projector.angularMarkerRadius()`,
+`navigator.layoutDirections()`. This replaced a ground-plane model that simulated
+the floor at the capture point; that model needed six hand-tuned values per photo
+and is gone, along with `calculateFlattenRatio`, `calculateMarkerSize`,
+`projectFromOverride`, the ground cursor and the ground grid.
+
+**A wrong marker position is corrected by moving the PHOTO, never by nudging the
+marker.** The photo-position editor does not exist yet.
+
+### The navigation graph is imported, never recomputed in-system
+
+The graph is prepared outside and imported once by `migrate.js`. Nothing inside
+the running service regenerates targets, so there is no destructive recompute to
+guard against, and the standalone `recalculate-targets.js` was deleted.
+
+This is why there are only two target states, both on `is_original`:
+
+- `is_original = 1`: came from the capture (imported). Protected from deletion:
+  `deleteTarget` refuses these, and they are the bearing reference.
+- `is_original = 0`: everything else — the imported spatial graph AND a
+  connection the operator creates in the UI (`insertTarget`). Both are removable.
+
+An earlier `is_manual` column existed only to save operator connections from
+`recalculate-targets.js` wiping them. With that script gone, `is_manual` marked a
+distinction nothing at runtime ever branched on, so it was removed. A wrong
+marker position is corrected by moving the PHOTO, and a wall is handled by hiding
+a target (`hidden = 1`); neither needs the flag.
 
 ### Slope Roll Estimation (Removed)
 Estimating `mesh_rotation_z` from elevation data is deprecated and the standalone script has been removed — elevation is no longer used for projection (flat ground model). `mesh_rotation_z` is now set only via the calibration UI.
@@ -327,19 +389,28 @@ Migration (`scripts/migrate.js`) processes source data in 7 phases:
 1. Read JSON metadata files from `METADATA/*.json`
 2. Assign photos to nearest project center by distance
 3. Compute sequence numbers per project
-4. Generate deterministic UUIDs
+4. Generate UUIDs with randomUUID (NOT deterministic: re-running a project duplicates it, which is why the PROJECTS array in migrate.js ships commented out)
 5. Adaptive spatial analysis — navigation graph (sector-based, per-project adaptive radius)
 6. Populate metadata + targets in index.db
 7. Process images into per-project databases (JPG → WebP conversion)
 
 ## Deployment
 
+The service runs directly on Node, with no container.
+
 ```bash
-# Docker
-docker-compose up -d
+npm install            # prebuilt native binaries, no compiler needed
+cp .env.example .env   # then adjust if the defaults do not fit
+npm start              # or `npm run dev` for auto-restart on change
+
 # Available at http://localhost:8081
 # Calibration UI at http://localhost:8081/calibration/
-
-# Local development
-npm run dev
 ```
+
+`npm start` reads `.env` via `node --env-file`, so **the file must exist** even
+when every value is left at its default. `.env.example` is the catalogue of what
+can be set; `.env` itself is gitignored.
+
+Configuration is environment-driven and every variable has a default in
+`src/config.js` (`PORT`, `HOST`, `STREETVIEW_DATA_DIR`, `LOG_LEVEL`,
+`CORS_ORIGIN`). See `.env.example` for what each one does.

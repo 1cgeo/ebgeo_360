@@ -11,7 +11,9 @@ import * as THREE from 'three';
 import { getPhotoImageUrl } from './api.js';
 import { StreetViewProjector } from './projector.js';
 import { NAV_CONSTANTS } from './constants.js';
-import { getEffectiveOverride, state, isTargetHidden, onChange } from './state.js';
+import { state, isTargetHidden, onChange } from './state.js';
+import { drawArmillarySphere, rankOpacity } from './renderer.js';
+import { layoutDirections } from './navigator.js';
 
 // ============================================================================
 // CONSTANTS
@@ -26,15 +28,6 @@ const BORDER_REAR = 'rgba(166, 227, 161, 0.6)';
 const LABEL_COLOR_TARGET = '#fab387';
 const LABEL_COLOR_REAR = '#a6e3a1';
 
-// Marker colors (rear view — higher contrast for small canvas)
-const MARKER_FILL = 'rgba(255, 255, 255, 0.85)';
-const MARKER_FILL_SELECTED = 'rgba(250, 179, 135, 0.9)';
-const MARKER_FILL_HIDDEN = 'rgba(255, 255, 255, 0.25)';
-const MARKER_STROKE = 'rgba(0, 0, 0, 0.5)';
-const MARKER_STROKE_SELECTED = 'rgba(250, 179, 135, 1)';
-const MARKER_DOT = 'rgba(0, 0, 0, 0.45)';
-const MARKER_DOT_SELECTED = 'rgba(180, 100, 50, 0.9)';
-const MARKER_DOT_HIDDEN = 'rgba(0, 0, 0, 0.15)';
 
 // ============================================================================
 // MODULE STATE
@@ -47,13 +40,11 @@ let navigateBtn = null;
 let addTargetBtn = null;
 let closeBtn = null;
 let hideTargetBtn = null;
-let setClickBtn = null;
 let animationFrameId = null;
 let onNavigateCallback = null;
 let onCloseCallback = null;
 let onAddTargetCallback = null;
 let onHideCallback = null;
-let onSetClickCallback = null;
 let unsubscribeStateChange = null;
 
 // Camera orbit
@@ -85,7 +76,6 @@ let markerCtx = null;
 let markerProjector = null;
 let rearTargets = [];
 let rearCameraConfig = null;
-let mainViewerFov = 75;
 
 // Reusable Vector3
 const _lookAtTarget = new THREE.Vector3();
@@ -305,37 +295,6 @@ export function initPreviewViewer(parentContainer, options = {}) {
     containerEl.appendChild(hideTargetBtn);
 
     // Set-from-click button
-    setClickBtn = document.createElement('button');
-    setClickBtn.id = 'preview-viewer-setclick';
-    setClickBtn.textContent = 'Definir com Clique';
-    setClickBtn.style.cssText = `
-        position: absolute;
-        bottom: 64px;
-        right: 8px;
-        padding: 5px 12px;
-        border: none;
-        border-radius: 6px;
-        background: rgba(250, 179, 135, 0.9);
-        color: #1e1e2e;
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-        z-index: 3;
-        pointer-events: auto;
-        transition: background 0.15s;
-        display: none;
-    `;
-    setClickBtn.addEventListener('mouseenter', () => {
-        setClickBtn.style.background = 'rgba(250, 179, 135, 1)';
-    });
-    setClickBtn.addEventListener('mouseleave', () => {
-        setClickBtn.style.background = 'rgba(250, 179, 135, 0.9)';
-    });
-    setClickBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (onSetClickCallback) onSetClickCallback();
-    });
-    containerEl.appendChild(setClickBtn);
 
     // ── Three.js setup ──
     camera = new THREE.PerspectiveCamera(75, PREVIEW_WIDTH / PREVIEW_HEIGHT, 0.1, 1000);
@@ -500,7 +459,6 @@ export function syncRearViewCamera(mainLonDeg, mainLatDeg, mainFov) {
     if (currentMode !== 'rear') return;
     lon = mainLonDeg;
     lat = Math.max(-85, Math.min(85, mainLatDeg));
-    mainViewerFov = mainFov;
 }
 
 /**
@@ -650,14 +608,6 @@ export function hidePreview() {
 }
 
 /**
- * Returns the current target ID being previewed.
- * @returns {string|null}
- */
-export function getCurrentPreviewTarget() {
-    return currentTargetId;
-}
-
-/**
  * Shows or hides the "Adicionar Conexao" button on the preview viewer.
  * @param {boolean} visible - Whether to show the add button
  * @param {Function|null} [onAdd=null] - Callback when add button is clicked
@@ -670,25 +620,25 @@ export function showAddButton(visible, onAdd = null) {
 }
 
 /**
- * Shows or hides the target action buttons (hide + set-from-click).
- * @param {boolean} visible - Whether to show the buttons
- * @param {Object} [options] - Options
- * @param {Function} [options.onHide] - Callback when hide button is clicked
- * @param {Function} [options.onSetFromClick] - Callback when set-from-click button is clicked
- * @param {boolean} [options.isHidden] - Current hidden state of the target
+ * Mostra ou esconde a acao de ocultar o alvo na visao traseira.
+ *
+ * O botao "Definir com Clique" saiu daqui: ele gravava override de rumo e
+ * distancia, e o icone nao e mais calibravel. Ele tinha ficado orfao, visivel na
+ * tela e sem efeito ao clique.
+ *
+ * @param {boolean} visible - Se deve mostrar o botao
+ * @param {Object} [options] - Opcoes
+ * @param {Function} [options.onHide] - Callback do botao de ocultar
+ * @param {boolean} [options.isHidden] - Estado atual do alvo
  */
 export function showTargetActions(visible, options = {}) {
     onHideCallback = options.onHide || null;
-    onSetClickCallback = options.onSetFromClick || null;
 
     if (hideTargetBtn) {
         hideTargetBtn.style.display = visible ? 'block' : 'none';
         if (visible) {
             hideTargetBtn.textContent = options.isHidden ? 'Mostrar' : 'Ocultar';
         }
-    }
-    if (setClickBtn) {
-        setClickBtn.style.display = visible ? 'block' : 'none';
     }
 }
 
@@ -711,7 +661,6 @@ function hideAllButtons() {
     if (navigateBtn) navigateBtn.style.display = 'none';
     if (addTargetBtn) addTargetBtn.style.display = 'none';
     if (hideTargetBtn) hideTargetBtn.style.display = 'none';
-    if (setClickBtn) setClickBtn.style.display = 'none';
 }
 
 function clearMarkerOverlay() {
@@ -816,13 +765,12 @@ function renderRearMarkers() {
     // Lido ANTES do dirty-check: os sliders de altura/escala usam silent=true
     // durante o arraste (sem notify/onChange), entao precisamos detectar a
     // mudanca aqui para manter os markers do rear em sincronia ao vivo.
-    const cameraHeight = state.editedCameraHeight ?? rearCameraConfig.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
-    const distanceScale = state.editedDistanceScale ?? rearCameraConfig.distance_scale ?? 1.0;
-    const markerScale = state.editedMarkerScale ?? rearCameraConfig.marker_scale ?? 1.0;
+    // Altura de camera, escala de distancia e escala de marcador nao influenciam
+    // mais o icone, entao saem da assinatura do dirty-check.
 
     // Assinatura do config do projetor (reaproveitada no dirty-check e no
     // setCameraConfig). Inclui os valores editados via slider.
-    const configKey = `${cameraHeight}|${distanceScale}|${markerScale}|${rearCameraConfig.lon}|${rearCameraConfig.lat}|${rearCameraConfig.heading}`;
+    const configKey = `${rearCameraConfig.lon}|${rearCameraConfig.lat}|${rearCameraConfig.heading}`;
 
     // Dirty-check: redesenha quando a camera (lon/lat), o estado de selecao
     // (rearMarkersDirty) ou os valores editados via slider (configKey) mudam.
@@ -849,9 +797,6 @@ function renderRearMarkers() {
     // e reatribuicao por frame).
     if (configChanged) {
         Object.assign(_rearProjectorConfig, rearCameraConfig);
-        _rearProjectorConfig.height = cameraHeight;
-        _rearProjectorConfig.distance_scale = distanceScale;
-        _rearProjectorConfig.marker_scale = markerScale;
         markerProjector.setCameraConfig(_rearProjectorConfig);
         _lastRearConfigKey = configKey;
     }
@@ -867,101 +812,36 @@ function renderRearMarkers() {
     // Pre-computa as invariantes trig do frame para reaproveitar em metersToScreen.
     markerProjector.beginFrame(yaw, pitch, fov);
 
+    // Mesma foto, logo o mesmo arranjo por direcao do overlay principal, e o
+    // mesmo desenho. Antes esta tela projetava pelo modelo de chao, ou seja,
+    // mostrava os alvos em lugar diferente do resto do sistema.
+    const layout = layoutDirections(rearTargets, fov, markerProjector, rearCameraConfig);
+    const baseOffset = PREVIEW_HEIGHT * NAV_CONSTANTS.HORIZON_BASE_OFFSET_REL;
+
     for (const target of rearTargets) {
-        const hidden = isTargetHidden(target.id);
-        const override = getEffectiveOverride(target.id);
+        const placement = layout.get(target.id);
+        if (!placement) continue;   // alem do limite por direcao
 
-        let x, z, y, horizontalDistance;
-        let heightOffset = 0;
+        const meters = markerProjector.lonLatToMeters(
+            target.lon, target.lat,
+            rearCameraConfig.lon, rearCameraConfig.lat
+        );
+        const bearing = ((((Math.atan2(meters.x, -meters.z) * 180) / Math.PI) + 360) % 360);
 
-        if (override && override.bearing !== null) {
-            // Override position
-            const headingRad = (override.bearing * Math.PI) / 180;
-            const groundDistance = override.distance ?? 5;
-            x = Math.sin(headingRad) * groundDistance;
-            z = -Math.cos(headingRad) * groundDistance;
-            heightOffset = override.height ?? 0;
-            y = -cameraHeight + heightOffset;
-            horizontalDistance = groundDistance;
-        } else {
-            // GPS position
-            const meters = markerProjector.lonLatToMeters(
-                target.lon, target.lat,
-                rearCameraConfig.lon, rearCameraConfig.lat
-            );
-            x = meters.x * distanceScale;
-            z = meters.z * distanceScale;
-            y = -cameraHeight;
-            horizontalDistance = Math.sqrt(x * x + z * z);
-        }
-
-        const projected = markerProjector.metersToScreen(x, y, z, yaw, pitch, fov);
+        const projected = markerProjector.projectOnHorizon(bearing, yaw, pitch, fov);
         if (!projected.visible) continue;
 
-        const radius = markerProjector.calculateMarkerSize(
-            NAV_CONSTANTS.MARKER_WORLD_RADIUS, horizontalDistance, fov, heightOffset
-        );
-        const flattenY = markerProjector.calculateFlattenRatio(horizontalDistance, pitch, heightOffset);
-
         const isSelected = target.id === state.selectedTargetId;
+        const hidden = isTargetHidden(target.id);
 
-        // Draw marker with shadow, outer ring, and inner dot (matches main renderer style)
         markerCtx.save();
-        markerCtx.translate(projected.screenX, projected.screenY);
-
-        if (hidden) {
-            markerCtx.globalAlpha = 0.4;
-        }
-
-        // Shadow below marker
-        markerCtx.save();
-        markerCtx.scale(1, flattenY);
-        markerCtx.beginPath();
-        markerCtx.arc(0, 3 / flattenY, radius * 1.1, 0, Math.PI * 2);
-        markerCtx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-        markerCtx.fill();
-        markerCtx.restore();
-
-        // Selection glow
-        if (isSelected) {
-            markerCtx.save();
-            markerCtx.scale(1, flattenY);
-            markerCtx.beginPath();
-            markerCtx.arc(0, 0, radius * 1.4, 0, Math.PI * 2);
-            markerCtx.fillStyle = 'rgba(250, 179, 135, 0.3)';
-            markerCtx.fill();
-            markerCtx.restore();
-        }
-
-        // Outer circle — fill
-        markerCtx.save();
-        markerCtx.scale(1, flattenY);
-        markerCtx.beginPath();
-        markerCtx.arc(0, 0, radius, 0, Math.PI * 2);
-        markerCtx.restore();
-        markerCtx.fillStyle = isSelected ? MARKER_FILL_SELECTED : hidden ? MARKER_FILL_HIDDEN : MARKER_FILL;
-        markerCtx.fill();
-
-        // Outer circle — border
-        markerCtx.save();
-        markerCtx.scale(1, flattenY);
-        markerCtx.beginPath();
-        markerCtx.arc(0, 0, radius, 0, Math.PI * 2);
-        markerCtx.restore();
-        markerCtx.strokeStyle = isSelected ? MARKER_STROKE_SELECTED : MARKER_STROKE;
-        markerCtx.lineWidth = isSelected ? 3 : 2;
-        markerCtx.stroke();
-
-        // Inner dot
-        const innerRadius = radius * 0.4;
-        markerCtx.save();
-        markerCtx.scale(1, flattenY);
-        markerCtx.beginPath();
-        markerCtx.arc(0, 0, innerRadius, 0, Math.PI * 2);
-        markerCtx.restore();
-        markerCtx.fillStyle = isSelected ? MARKER_DOT_SELECTED : hidden ? MARKER_DOT_HIDDEN : MARKER_DOT;
-        markerCtx.fill();
-
+        markerCtx.translate(projected.screenX, projected.screenY + baseOffset - placement.rise);
+        drawArmillarySphere(markerCtx, placement.radius, {
+            highlighted: false,
+            selected: isSelected,
+            hidden,
+            opacity: rankOpacity(placement.rank, isSelected),
+        });
         markerCtx.restore();
     }
 }
@@ -1039,7 +919,6 @@ export function disposePreviewViewer() {
     addTargetBtn = null;
     closeBtn = null;
     hideTargetBtn = null;
-    setClickBtn = null;
     currentTargetId = null;
     rearPhotoId = null;
     currentSpherePhotoId = null;
@@ -1048,7 +927,6 @@ export function disposePreviewViewer() {
     onCloseCallback = null;
     onAddTargetCallback = null;
     onHideCallback = null;
-    onSetClickCallback = null;
     markerCanvas = null;
     markerCtx = null;
     markerProjector = null;

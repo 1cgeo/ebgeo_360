@@ -5,10 +5,9 @@
 
 import {
     state, onChange, isDirty,
-    setMeshRotationY, setCameraHeight,
-    setMeshRotationX, setMeshRotationZ, setDistanceScale, setMarkerScale,
-    setTargetOverride, clearTargetOverrideEdit,
-    selectTarget, deselectTarget, setSetFromClickMode,
+    setMeshRotationY,
+    setMeshRotationX, setMeshRotationZ,
+    selectTarget, deselectTarget,
     setTargetHidden, isTargetHidden,
     getCurrentPhotoIndex, resetAllReviewedState,
 } from './state.js';
@@ -45,11 +44,8 @@ let lastStructureSignature = null;
 let onSaveCallback = null;
 let onDiscardCallback = null;
 let onMeshRotationPreview = null;
-let onCameraHeightPreview = null;
 let onMeshRotationXPreview = null;
 let onMeshRotationZPreview = null;
-let onDistanceScalePreview = null;
-let onMarkerScalePreview = null;
 let onNavigateToPhoto = null;
 let onMarkReviewedCallback = null;
 let onNextPhotoCallback = null;
@@ -138,11 +134,8 @@ export function initPanel(container, options = {}) {
     onSaveCallback = options.onSave || null;
     onDiscardCallback = options.onDiscard || null;
     onMeshRotationPreview = options.onMeshRotationPreview || null;
-    onCameraHeightPreview = options.onCameraHeightPreview || null;
     onMeshRotationXPreview = options.onMeshRotationXPreview || null;
     onMeshRotationZPreview = options.onMeshRotationZPreview || null;
-    onDistanceScalePreview = options.onDistanceScalePreview || null;
-    onMarkerScalePreview = options.onMarkerScalePreview || null;
     onNavigateToPhoto = options.onNavigateToPhoto || null;
     onMarkReviewedCallback = options.onMarkReviewed || null;
     onNextPhotoCallback = options.onNextPhoto || null;
@@ -223,7 +216,6 @@ function buildStructureSignature(s, targets, selectedTarget) {
         // Presenca/identidade do editor de override (estrutura distinta por target
         // e por modo set-from-click / overrides existentes / oculto / manual).
         selectedTarget ? selectedTarget.id : '',
-        selectedTarget ? (s.setFromClickMode ? 1 : 0) : 0,
         selectedTarget ? (s.editedTargetOverrides.has(selectedTarget.id) ? 1 : 0) : 0,
         selectedTarget ? (s.originalTargetOverrides.has(selectedTarget.id) ? 1 : 0) : 0,
         selectedTarget ? (isTargetHidden(selectedTarget.id) ? 1 : 0) : 0,
@@ -258,22 +250,19 @@ function applyTargetedUpdates(s, targets, dirty) {
         if (input && document.activeElement !== input) input.value = value.toFixed(decimals);
     };
     setSlider('mesh-rot-slider', 'mesh-rot-input', s.editedMeshRotationY, 1);
-    setSlider('cam-height-slider', 'cam-height-input', s.editedCameraHeight, 1);
     setSlider('mesh-rotx-slider', 'mesh-rotx-input', s.editedMeshRotationX, 1);
     setSlider('mesh-rotz-slider', 'mesh-rotz-input', s.editedMeshRotationZ, 1);
-    setSlider('dist-scale-slider', 'dist-scale-input', s.editedDistanceScale, 2);
-    setSlider('marker-scale-slider', 'marker-scale-input', s.editedMarkerScale, 2);
 
-    const setDelta = (idx, edited, original, unit) => {
-        const deltas = panelEl.querySelectorAll('.cal-panel__delta');
-        if (deltas[idx]) deltas[idx].innerHTML = getDeltaText(edited, original, unit);
+    // Por ID, e nao por posicao na lista de .cal-panel__delta: o indice
+    // posicional quebrou em silencio quando os sliders de altura e escala saíram
+    // do meio, escrevendo o delta do pitch no slot do roll.
+    const setDelta = (id, edited, original, unit) => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = getDeltaText(edited, original, unit);
     };
-    setDelta(0, s.editedMeshRotationY, s.originalMeshRotationY);
-    setDelta(1, s.editedCameraHeight, s.originalCameraHeight, 'm');
-    setDelta(2, s.editedMeshRotationX, s.originalMeshRotationX);
-    setDelta(3, s.editedMeshRotationZ, s.originalMeshRotationZ);
-    setDelta(4, s.editedDistanceScale, s.originalDistanceScale, 'x');
-    setDelta(5, s.editedMarkerScale, s.originalMarkerScale, 'x');
+    setDelta('delta-mesh-rot-y', s.editedMeshRotationY, s.originalMeshRotationY);
+    setDelta('delta-mesh-rot-x', s.editedMeshRotationX, s.originalMeshRotationX);
+    setDelta('delta-mesh-rot-z', s.editedMeshRotationZ, s.originalMeshRotationZ);
 
     // --- Botoes de batch (rotulos refletem valores atuais) ---
     const setText = (id, text) => {
@@ -281,11 +270,8 @@ function applyTargetedUpdates(s, targets, dirty) {
         if (el) el.innerHTML = text;
     };
     setText('btn-batch-mesh', `rotation_y &rarr; ${(s.editedMeshRotationY ?? 180).toFixed(1)}&deg;`);
-    setText('btn-batch-height', `height &rarr; ${(s.editedCameraHeight ?? 2.5).toFixed(1)}m`);
     setText('btn-batch-rotx', `rotation_x &rarr; ${(s.editedMeshRotationX ?? 0).toFixed(1)}&deg;`);
     setText('btn-batch-rotz', `rotation_z &rarr; ${(s.editedMeshRotationZ ?? 0).toFixed(1)}&deg;`);
-    setText('btn-batch-scale', `distance_scale &rarr; ${(s.editedDistanceScale ?? 1.0).toFixed(2)}x`);
-    setText('btn-batch-marker-scale', `marker_scale &rarr; ${(s.editedMarkerScale ?? 1.0).toFixed(2)}x`);
 
     // --- Salvar/Descartar (estado disabled) ---
     const saveBtn = document.getElementById('btn-save');
@@ -321,7 +307,6 @@ function applyTargetedUpdates(s, targets, dirty) {
             info.innerHTML = `
                 <span class="cal-panel__target-name">${displayName}</span>
                 ${nextBadge}
-                ${renderOverrideIndicator(target, s)}
                 ${hidden ? '<span class="cal-panel__hidden-badge">oculto</span>' : ''}
             `;
         }
@@ -412,10 +397,6 @@ function renderPanel(s) {
                 <input type="checkbox" id="spherical-grid-toggle" />
                 <span>Grade esf&eacute;rica [G]</span>
             </label>
-            <label class="cal-panel__grid-toggle">
-                <input type="checkbox" id="ground-grid-toggle" />
-                <span>Grade de ch&atilde;o</span>
-            </label>
         </div>
 
         <div class="cal-panel__actions">
@@ -440,7 +421,6 @@ function renderPanel(s) {
         </div>
         ` : ''}
 
-        ${selectedTarget ? renderOverrideEditor(selectedTarget, s) : ''}
 
         ${renderSlidersSection(s)}
 
@@ -464,6 +444,10 @@ function renderPanel(s) {
 // ============================================================================
 
 function renderSlidersSection(s) {
+    // Restaram apenas as rotacoes da malha, que sao calibracao da IMAGEM.
+    // camera_height, distance_scale e marker_scale saíram porque o marcador
+    // deixou de depender de qualquer medida: ele e posicionado de forma
+    // relativa, e posicao errada se corrige movendo a FOTO.
     const content = `
         <div class="cal-panel__slider-section">
             <h4 class="cal-panel__subtitle">mesh_rotation_y</h4>
@@ -475,28 +459,10 @@ function renderSlidersSection(s) {
                     min="0" max="360" step="0.1"
                     value="${(s.editedMeshRotationY ?? 180).toFixed(1)}" />
             </div>
-            <div class="cal-panel__delta">
+            <div class="cal-panel__delta" id="delta-mesh-rot-y">
                 ${getDeltaText(s.editedMeshRotationY, s.originalMeshRotationY)}
             </div>
             <button id="mesh-rot-reset" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
-                Resetar
-            </button>
-        </div>
-
-        <div class="cal-panel__slider-section">
-            <h4 class="cal-panel__subtitle">camera_height</h4>
-            <div class="cal-panel__slider-group">
-                <input type="range" id="cam-height-slider" class="cal-panel__slider"
-                    min="0.5" max="10" step="0.1"
-                    value="${s.editedCameraHeight ?? 2.5}" />
-                <input type="number" id="cam-height-input" class="cal-panel__input cal-panel__input--narrow"
-                    min="0.5" max="10" step="0.1"
-                    value="${(s.editedCameraHeight ?? 2.5).toFixed(1)}" />
-            </div>
-            <div class="cal-panel__delta">
-                ${getDeltaText(s.editedCameraHeight, s.originalCameraHeight, 'm')}
-            </div>
-            <button id="cam-height-reset" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
                 Resetar
             </button>
         </div>
@@ -511,7 +477,7 @@ function renderSlidersSection(s) {
                     min="-30" max="30" step="0.1"
                     value="${(s.editedMeshRotationX ?? 0).toFixed(1)}" />
             </div>
-            <div class="cal-panel__delta">
+            <div class="cal-panel__delta" id="delta-mesh-rot-x">
                 ${getDeltaText(s.editedMeshRotationX, s.originalMeshRotationX)}
             </div>
             <button id="mesh-rotx-reset" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
@@ -529,7 +495,7 @@ function renderSlidersSection(s) {
                     min="-30" max="30" step="0.1"
                     value="${(s.editedMeshRotationZ ?? 0).toFixed(1)}" />
             </div>
-            <div class="cal-panel__delta">
+            <div class="cal-panel__delta" id="delta-mesh-rot-z">
                 ${getDeltaText(s.editedMeshRotationZ, s.originalMeshRotationZ)}
             </div>
             <button id="mesh-rotz-reset" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
@@ -537,41 +503,6 @@ function renderSlidersSection(s) {
             </button>
         </div>
 
-        <div class="cal-panel__slider-section">
-            <h4 class="cal-panel__subtitle">distance_scale</h4>
-            <div class="cal-panel__slider-group">
-                <input type="range" id="dist-scale-slider" class="cal-panel__slider"
-                    min="0.1" max="5.0" step="0.01"
-                    value="${s.editedDistanceScale ?? 1.0}" />
-                <input type="number" id="dist-scale-input" class="cal-panel__input cal-panel__input--narrow"
-                    min="0.1" max="5.0" step="0.01"
-                    value="${(s.editedDistanceScale ?? 1.0).toFixed(2)}" />
-            </div>
-            <div class="cal-panel__delta">
-                ${getDeltaText(s.editedDistanceScale, s.originalDistanceScale, 'x')}
-            </div>
-            <button id="dist-scale-reset" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
-                Resetar
-            </button>
-        </div>
-
-        <div class="cal-panel__slider-section">
-            <h4 class="cal-panel__subtitle">marker_scale</h4>
-            <div class="cal-panel__slider-group">
-                <input type="range" id="marker-scale-slider" class="cal-panel__slider"
-                    min="0.1" max="5.0" step="0.01"
-                    value="${s.editedMarkerScale ?? 1.0}" />
-                <input type="number" id="marker-scale-input" class="cal-panel__input cal-panel__input--narrow"
-                    min="0.1" max="5.0" step="0.01"
-                    value="${(s.editedMarkerScale ?? 1.0).toFixed(2)}" />
-            </div>
-            <div class="cal-panel__delta">
-                ${getDeltaText(s.editedMarkerScale, s.originalMarkerScale, 'x')}
-            </div>
-            <button id="marker-scale-reset" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
-                Resetar
-            </button>
-        </div>
     `;
 
     return renderCollapsibleSection('sliders', 'Parametros de Calibração', content);
@@ -586,20 +517,11 @@ function renderBatchSection(s) {
             <button id="btn-batch-mesh" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
                 rotation_y &rarr; ${(s.editedMeshRotationY ?? 180).toFixed(1)}&deg;
             </button>
-            <button id="btn-batch-height" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
-                height &rarr; ${(s.editedCameraHeight ?? 2.5).toFixed(1)}m
-            </button>
             <button id="btn-batch-rotx" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
                 rotation_x &rarr; ${(s.editedMeshRotationX ?? 0).toFixed(1)}&deg;
             </button>
             <button id="btn-batch-rotz" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
                 rotation_z &rarr; ${(s.editedMeshRotationZ ?? 0).toFixed(1)}&deg;
-            </button>
-            <button id="btn-batch-scale" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
-                distance_scale &rarr; ${(s.editedDistanceScale ?? 1.0).toFixed(2)}x
-            </button>
-            <button id="btn-batch-marker-scale" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
-                marker_scale &rarr; ${(s.editedMarkerScale ?? 1.0).toFixed(2)}x
             </button>
             <button id="btn-batch-all" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
                 Todos
@@ -620,38 +542,46 @@ function renderTargetsSection(targets, selectedTarget, s) {
         <div class="cal-panel__target-list" id="target-list">
             ${targets.map(t => renderTargetItem(t, s)).join('')}
         </div>
+        ${selectedTarget ? renderTargetActions(selectedTarget) : ''}
     `;
 
     return renderCollapsibleSection('targets', 'Targets', content, { count: targets.length });
 }
 
 /**
- * Renderiza o badge de override de um target (override editado/limpo/original).
- * Extraido para ser reutilizado tanto no render completo quanto nas atualizacoes
- * pontuais da lista de targets.
- * @param {Object} target - Target
- * @param {Object} s - Estado atual
- * @returns {string} HTML do badge (vazio se nao houver override)
+ * Acoes do alvo selecionado.
+ *
+ * Estes tres botoes moravam dentro do editor de override e quase foram perdidos
+ * junto com ele. Ocultar e remover conexao sao a UNICA propriedade que sobrou do
+ * icone: acrescentar e tirar alvo por causa de parede. Nada aqui move marcador.
+ *
+ * @param {Object} target - Alvo selecionado
+ * @returns {string} HTML das acoes
  */
-function renderOverrideIndicator(target, s) {
-    if (s.editedTargetOverrides.has(target.id)) {
-        const edited = s.editedTargetOverrides.get(target.id);
-        if (edited.bearing === null && edited.distance === null) {
-            return '<span class="cal-panel__override-badge cal-panel__override-badge--cleared">limpo</span>';
-        }
-        return '<span class="cal-panel__override-badge cal-panel__override-badge--set">override</span>';
-    }
-    if (s.originalTargetOverrides.has(target.id)) {
-        return '<span class="cal-panel__override-badge cal-panel__override-badge--original">override</span>';
-    }
-    return '';
+function renderTargetActions(target) {
+    const hidden = isTargetHidden(target.id);
+    const isManual = target.is_original === false;
+
+    return `
+        <div class="cal-panel__target-actions">
+            <button id="btn-toggle-hidden" class="cal-panel__btn cal-panel__btn--small ${hidden ? 'cal-panel__btn--hidden-active' : 'cal-panel__btn--ghost'}">
+                ${hidden ? 'Mostrar Target' : 'Ocultar Target'}
+            </button>
+            ${isManual ? `
+                <button id="btn-delete-target" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--danger">
+                    Remover Conexao
+                </button>
+            ` : ''}
+            <button id="btn-deselect-target" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
+                Fechar
+            </button>
+        </div>
+    `;
 }
 
 function renderTargetItem(target, s) {
     const isSelected = target.id === s.selectedTargetId;
     const hidden = isTargetHidden(target.id);
-
-    const overrideIndicator = renderOverrideIndicator(target, s);
 
     const hiddenBadge = hidden ? '<span class="cal-panel__hidden-badge">oculto</span>' : '';
 
@@ -665,85 +595,9 @@ function renderTargetItem(target, s) {
             <div class="cal-panel__target-info">
                 <span class="cal-panel__target-name">${displayName}</span>
                 ${nextBadge}
-                ${overrideIndicator}
                 ${hiddenBadge}
             </div>
             <span class="cal-panel__target-dist">${distText}</span>
-        </div>
-    `;
-}
-
-function renderOverrideEditor(target, s) {
-    const edited = s.editedTargetOverrides.get(target.id);
-    const original = s.originalTargetOverrides.get(target.id);
-    const effective = edited || original || { bearing: null, distance: null, height: null };
-
-    const hasEffectiveOverride = effective.bearing !== null;
-    const hidden = isTargetHidden(target.id);
-    const isManual = target.is_original === false;
-
-    // Distance default includes distance_scale (GPS projection applies it, override does not)
-    const distanceScale = s.editedDistanceScale ?? 1;
-
-    const bearingVal = effective.bearing ?? target.bearing ?? 0;
-    const distanceVal = effective.distance ?? ((target.distance ?? 5) * distanceScale);
-    const heightVal = effective.height ?? 0;
-
-    return `
-        <div class="cal-panel__section cal-panel__section--override">
-            <h3 class="cal-panel__title">${hasEffectiveOverride ? 'Override' : 'Target'}: ${target.display_name || target.id.slice(0, 8)}</h3>
-
-            <div class="cal-panel__slider-group">
-                <label class="cal-panel__label">Bearing</label>
-                <input type="range" id="override-bearing-slider" class="cal-panel__slider"
-                    min="0" max="360" step="0.5"
-                    value="${bearingVal}" />
-                <input type="number" id="override-bearing-input" class="cal-panel__input cal-panel__input--narrow"
-                    min="0" max="360" step="0.5"
-                    value="${bearingVal.toFixed(1)}" />
-            </div>
-
-            <div class="cal-panel__slider-group">
-                <label class="cal-panel__label">Dist (m)</label>
-                <input type="range" id="override-distance-slider" class="cal-panel__slider"
-                    min="0.5" max="200" step="0.1"
-                    value="${distanceVal}" />
-                <input type="number" id="override-distance-input" class="cal-panel__input cal-panel__input--narrow"
-                    min="0.5" max="500" step="0.1"
-                    value="${distanceVal.toFixed(1)}" />
-            </div>
-
-            <div class="cal-panel__slider-group">
-                <label class="cal-panel__label">Altura (m)</label>
-                <input type="range" id="override-height-slider" class="cal-panel__slider"
-                    min="-5" max="5" step="0.1"
-                    value="${heightVal}" />
-                <input type="number" id="override-height-input" class="cal-panel__input cal-panel__input--narrow"
-                    min="-10" max="10" step="0.1"
-                    value="${heightVal.toFixed(1)}" />
-            </div>
-
-            <div class="cal-panel__override-actions">
-                <button id="btn-set-from-click" class="cal-panel__btn cal-panel__btn--small ${s.setFromClickMode ? 'cal-panel__btn--active' : ''}">
-                    ${s.setFromClickMode ? 'Clique no viewer...' : 'Definir com Clique'}
-                </button>
-                ${hasEffectiveOverride ? `
-                    <button id="btn-clear-override" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
-                        Limpar Override
-                    </button>
-                ` : ''}
-                <button id="btn-toggle-hidden" class="cal-panel__btn cal-panel__btn--small ${hidden ? 'cal-panel__btn--hidden-active' : 'cal-panel__btn--ghost'}">
-                    ${hidden ? 'Mostrar Target' : 'Ocultar Target'}
-                </button>
-                ${isManual ? `
-                    <button id="btn-delete-target" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--danger">
-                        Remover Conexao
-                    </button>
-                ` : ''}
-                <button id="btn-deselect-target" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
-                    Fechar
-                </button>
-            </div>
         </div>
     `;
 }
@@ -881,39 +735,9 @@ function attachEvents() {
         if (onMeshRotationPreview) onMeshRotationPreview(state.originalMeshRotationY);
     });
 
-    // camera_height slider
-    const camHeightSlider = document.getElementById('cam-height-slider');
-    const camHeightInput = document.getElementById('cam-height-input');
+    // camera_height, distance_scale e marker_scale saíram por inteiro: nenhum
+    // deles influencia o marcador, que agora e posicionado de forma relativa.
 
-    if (camHeightSlider) {
-        camHeightSlider.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            setCameraHeight(val, true);
-            if (onCameraHeightPreview) onCameraHeightPreview(val);
-            if (camHeightInput) camHeightInput.value = val.toFixed(1);
-        });
-        camHeightSlider.addEventListener('change', (e) => {
-            const val = parseFloat(e.target.value);
-            setCameraHeight(val);
-            if (onCameraHeightPreview) onCameraHeightPreview(val);
-        });
-    }
-
-    if (camHeightInput) {
-        camHeightInput.addEventListener('change', (e) => {
-            let val = parseFloat(e.target.value);
-            if (isNaN(val)) val = 2.5;
-            val = Math.max(0.5, Math.min(10, val));
-            setCameraHeight(val);
-            if (onCameraHeightPreview) onCameraHeightPreview(val);
-        });
-    }
-
-    // Reset camera_height
-    document.getElementById('cam-height-reset')?.addEventListener('click', () => {
-        setCameraHeight(state.originalCameraHeight);
-        if (onCameraHeightPreview) onCameraHeightPreview(state.originalCameraHeight);
-    });
 
     // mesh_rotation_x slider
     const meshXSlider = document.getElementById('mesh-rotx-slider');
@@ -981,78 +805,11 @@ function attachEvents() {
         if (onMeshRotationZPreview) onMeshRotationZPreview(state.originalMeshRotationZ);
     });
 
-    // distance_scale slider
-    const distScaleSlider = document.getElementById('dist-scale-slider');
-    const distScaleInput = document.getElementById('dist-scale-input');
 
-    if (distScaleSlider) {
-        distScaleSlider.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            setDistanceScale(val, true);
-            if (onDistanceScalePreview) onDistanceScalePreview(val);
-            if (distScaleInput) distScaleInput.value = val.toFixed(2);
-        });
-        distScaleSlider.addEventListener('change', (e) => {
-            const val = parseFloat(e.target.value);
-            setDistanceScale(val);
-            if (onDistanceScalePreview) onDistanceScalePreview(val);
-        });
-    }
-
-    if (distScaleInput) {
-        distScaleInput.addEventListener('change', (e) => {
-            let val = parseFloat(e.target.value);
-            if (isNaN(val)) val = 1.0;
-            val = Math.max(0.1, Math.min(5.0, val));
-            setDistanceScale(val);
-            if (onDistanceScalePreview) onDistanceScalePreview(val);
-        });
-    }
-
-    document.getElementById('dist-scale-reset')?.addEventListener('click', () => {
-        setDistanceScale(state.originalDistanceScale);
-        if (onDistanceScalePreview) onDistanceScalePreview(state.originalDistanceScale);
-    });
-
-    // marker_scale slider
-    const markerScaleSlider = document.getElementById('marker-scale-slider');
-    const markerScaleInput = document.getElementById('marker-scale-input');
-
-    if (markerScaleSlider) {
-        markerScaleSlider.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            setMarkerScale(val, true);
-            if (onMarkerScalePreview) onMarkerScalePreview(val);
-            if (markerScaleInput) markerScaleInput.value = val.toFixed(2);
-        });
-        markerScaleSlider.addEventListener('change', (e) => {
-            const val = parseFloat(e.target.value);
-            setMarkerScale(val);
-            if (onMarkerScalePreview) onMarkerScalePreview(val);
-        });
-    }
-
-    if (markerScaleInput) {
-        markerScaleInput.addEventListener('change', (e) => {
-            let val = parseFloat(e.target.value);
-            if (isNaN(val)) val = 1.0;
-            val = Math.max(0.1, Math.min(5.0, val));
-            setMarkerScale(val);
-            if (onMarkerScalePreview) onMarkerScalePreview(val);
-        });
-    }
-
-    document.getElementById('marker-scale-reset')?.addEventListener('click', () => {
-        setMarkerScale(state.originalMarkerScale);
-        if (onMarkerScalePreview) onMarkerScalePreview(state.originalMarkerScale);
-    });
 
     // Batch update buttons
     document.getElementById('btn-batch-mesh')?.addEventListener('click', () => {
         handleBatchUpdate({ mesh_rotation_y: state.editedMeshRotationY });
-    });
-    document.getElementById('btn-batch-height')?.addEventListener('click', () => {
-        handleBatchUpdate({ camera_height: state.editedCameraHeight });
     });
     document.getElementById('btn-batch-rotx')?.addEventListener('click', () => {
         handleBatchUpdate({ mesh_rotation_x: state.editedMeshRotationX });
@@ -1060,20 +817,11 @@ function attachEvents() {
     document.getElementById('btn-batch-rotz')?.addEventListener('click', () => {
         handleBatchUpdate({ mesh_rotation_z: state.editedMeshRotationZ });
     });
-    document.getElementById('btn-batch-scale')?.addEventListener('click', () => {
-        handleBatchUpdate({ distance_scale: state.editedDistanceScale });
-    });
-    document.getElementById('btn-batch-marker-scale')?.addEventListener('click', () => {
-        handleBatchUpdate({ marker_scale: state.editedMarkerScale });
-    });
     document.getElementById('btn-batch-all')?.addEventListener('click', () => {
         handleBatchUpdate({
             mesh_rotation_y: state.editedMeshRotationY,
-            camera_height: state.editedCameraHeight,
             mesh_rotation_x: state.editedMeshRotationX,
             mesh_rotation_z: state.editedMeshRotationZ,
-            distance_scale: state.editedDistanceScale,
-            marker_scale: state.editedMarkerScale,
         });
     });
     document.getElementById('btn-reset-reviewed')?.addEventListener('click', () => {
@@ -1093,103 +841,9 @@ function attachEvents() {
         }
     });
 
-    // Override bearing/distance/height sliders
-    const bearingSlider = document.getElementById('override-bearing-slider');
-    const bearingInput = document.getElementById('override-bearing-input');
-    const distanceSlider = document.getElementById('override-distance-slider');
-    const distanceInput = document.getElementById('override-distance-input');
-    const heightSlider = document.getElementById('override-height-slider');
-    const heightInput = document.getElementById('override-height-input');
-
-    /** Helper to read current height value from slider */
-    const getHeightVal = () => parseFloat(heightSlider?.value ?? 0);
-
-    if (bearingSlider) {
-        bearingSlider.addEventListener('input', (e) => {
-            const bearing = parseFloat(e.target.value);
-            if (bearingInput) bearingInput.value = bearing.toFixed(1);
-            const distVal = parseFloat(distanceSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearing, distVal, getHeightVal(), true);
-        });
-        bearingSlider.addEventListener('change', (e) => {
-            const bearing = parseFloat(e.target.value);
-            const distVal = parseFloat(distanceSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearing, distVal, getHeightVal());
-        });
-    }
-
-    if (bearingInput) {
-        bearingInput.addEventListener('change', (e) => {
-            let bearing = parseFloat(e.target.value);
-            if (isNaN(bearing)) bearing = 0;
-            bearing = Math.max(0, Math.min(360, bearing));
-            const distVal = parseFloat(distanceSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearing, distVal, getHeightVal());
-        });
-    }
-
-    if (distanceSlider) {
-        distanceSlider.addEventListener('input', (e) => {
-            const distance = parseFloat(e.target.value);
-            if (distanceInput) distanceInput.value = distance.toFixed(1);
-            const bearingVal = parseFloat(bearingSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearingVal, distance, getHeightVal(), true);
-        });
-        distanceSlider.addEventListener('change', (e) => {
-            const distance = parseFloat(e.target.value);
-            const bearingVal = parseFloat(bearingSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearingVal, distance, getHeightVal());
-        });
-    }
-
-    if (distanceInput) {
-        distanceInput.addEventListener('change', (e) => {
-            let distance = parseFloat(e.target.value);
-            if (isNaN(distance)) distance = 5;
-            distance = Math.max(0.5, Math.min(500, distance));
-            const bearingVal = parseFloat(bearingSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearingVal, distance, getHeightVal());
-        });
-    }
-
-    if (heightSlider) {
-        heightSlider.addEventListener('input', (e) => {
-            const height = parseFloat(e.target.value);
-            if (heightInput) heightInput.value = height.toFixed(1);
-            const bearingVal = parseFloat(bearingSlider?.value ?? 0);
-            const distVal = parseFloat(distanceSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearingVal, distVal, height, true);
-        });
-        heightSlider.addEventListener('change', (e) => {
-            const height = parseFloat(e.target.value);
-            const bearingVal = parseFloat(bearingSlider?.value ?? 0);
-            const distVal = parseFloat(distanceSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearingVal, distVal, height);
-        });
-    }
-
-    if (heightInput) {
-        heightInput.addEventListener('change', (e) => {
-            let height = parseFloat(e.target.value);
-            if (isNaN(height)) height = 0;
-            height = Math.max(-10, Math.min(10, height));
-            const bearingVal = parseFloat(bearingSlider?.value ?? 0);
-            const distVal = parseFloat(distanceSlider?.value ?? 0);
-            setTargetOverride(state.selectedTargetId, bearingVal, distVal, height);
-        });
-    }
-
-    // Set from click button
-    document.getElementById('btn-set-from-click')?.addEventListener('click', () => {
-        setSetFromClickMode(!state.setFromClickMode);
-    });
-
-    // Clear override
-    document.getElementById('btn-clear-override')?.addEventListener('click', () => {
-        if (state.selectedTargetId) {
-            clearTargetOverrideEdit(state.selectedTargetId);
-        }
-    });
+    // O editor de override saiu por inteiro (sliders de rumo, distancia e
+    // altura, definir-com-clique e limpar). O icone nao e mais calibravel:
+    // posicao errada se corrige movendo a FOTO, nao empurrando o marcador.
 
     // Deselect target
     document.getElementById('btn-deselect-target')?.addEventListener('click', () => {
@@ -1342,11 +996,8 @@ async function handleBatchUpdate(values) {
 
     const fields = [];
     if (values.mesh_rotation_y !== undefined) fields.push(`rotation_y=${values.mesh_rotation_y.toFixed(1)}`);
-    if (values.camera_height !== undefined) fields.push(`height=${values.camera_height.toFixed(1)}`);
     if (values.mesh_rotation_x !== undefined) fields.push(`rotation_x=${values.mesh_rotation_x.toFixed(1)}`);
     if (values.mesh_rotation_z !== undefined) fields.push(`rotation_z=${values.mesh_rotation_z.toFixed(1)}`);
-    if (values.distance_scale !== undefined) fields.push(`dist_scale=${values.distance_scale.toFixed(2)}`);
-    if (values.marker_scale !== undefined) fields.push(`marker_scale=${values.marker_scale.toFixed(2)}`);
     const desc = fields.join(', ');
 
     // Confirm with user

@@ -10,7 +10,8 @@ import { NAV_CONSTANTS } from './constants.js';
 import { StreetViewProjector } from './projector.js';
 import { StreetViewRenderer } from './renderer.js';
 import { StreetViewHitTester } from './hit-tester.js';
-import { getEffectiveOverride, state, isTargetHidden, onChange } from './state.js';
+import { state, isTargetHidden, onChange } from './state.js';
+import { setHoveredTarget as setMinimapHoveredTarget } from './minimap.js';
 
 // ============================================================================
 // MODULE STATE
@@ -33,15 +34,15 @@ let nearbyPhotos = [];              // Nearby unconnected photos for visual repr
 let nearbyPreviewEnabled = false;   // Whether nearby preview mode is active
 let onNearbyClickCallback = null;   // Called when a nearby photo marker is clicked
 let nearestTargetId = null;        // Nearest target by geographic distance (set once per photo — EBGeo pattern)
-let cursorNearestTargetId = null;  // Nearest target to cursor on ground (dynamic per frame)
+// Arranjo das filas por direcao, recalculado uma vez por frame antes de projetar
+let directionLayout = null;  // Nearest target to cursor on ground (dynamic per frame)
 
-// Ground grid
-let groundGridVisible = false;
 
 // Mouse state
 let mouseX = 0;
 let mouseY = 0;
-let hoveredId = null;
+let hoveredId = null;          // alvo sob o mouse DENTRO do 360
+let externalHoveredId = null;  // alvo sob o mouse no MINIMAPA
 
 // Current camera state (stored from last render for click handling)
 let currentYaw = 0;
@@ -58,13 +59,6 @@ let lastFov = NaN;
 let lastMouseX = NaN;
 let lastMouseY = NaN;
 
-// ── Cache da grade de chao (funcao pura de yaw/pitch/fov/cameraConfig) ──
-let groundGridCache = null;
-let gridCacheYaw = NaN;
-let gridCachePitch = NaN;
-let gridCacheFov = NaN;
-let gridCacheHeight = NaN;
-let gridCacheDistanceScale = NaN;
 
 /**
  * Marca o overlay de navegacao como sujo para forcar a reprojecao/repintura
@@ -72,15 +66,10 @@ let gridCacheDistanceScale = NaN;
  */
 function markNavDirty() {
     navDirty = true;
-    // Invalida o cache da grade de chao (cameraConfig pode ter mudado)
-    groundGridCache = null;
-    gridCacheYaw = NaN;
 }
 
 // Callbacks
-let onNavigateCallback = null;
 let onTargetSelectCallback = null;
-let onSetFromClickCallback = null;
 
 // ============================================================================
 // INITIALIZATION
@@ -90,14 +79,10 @@ let onSetFromClickCallback = null;
  * Initializes the navigation system.
  * @param {HTMLElement} container - The viewer container element
  * @param {Object} options - Options
- * @param {Function} [options.onNavigate] - Called when user clicks a target to navigate
  * @param {Function} [options.onTargetSelect] - Called when user clicks a target for selection
- * @param {Function} [options.onSetFromClick] - Called when user clicks in "set from click" mode
  */
 export function initNavigator(container, options = {}) {
-    onNavigateCallback = options.onNavigate || null;
     onTargetSelectCallback = options.onTargetSelect || null;
-    onSetFromClickCallback = options.onSetFromClick || null;
 
     const width = container.clientWidth;
     const height = container.clientHeight;
@@ -117,6 +102,8 @@ export function initNavigator(container, options = {}) {
 
     // Track mouse on the container
     container.addEventListener('mousemove', onMouseMove);
+    // Sair do 360 apaga o realce dos dois lados.
+    container.addEventListener('mouseleave', onContainerMouseLeave);
 
     // Invalida o rect cacheado em resize/scroll (evita reflow por mousemove)
     window.addEventListener('resize', onWindowResize);
@@ -140,6 +127,32 @@ function onWindowResize() {
     projector.resize(w, h);
     navRenderer.resize(w, h);
     invalidateRectCache();
+    markNavDirty();
+}
+
+/**
+ * Limpa o realce quando o mouse deixa o visualizador 360.
+ */
+function onContainerMouseLeave() {
+    if (hoveredId === null) return;
+    hoveredId = null;
+    refreshCursorStyle();
+    setMinimapHoveredTarget(null);
+    markNavDirty();
+}
+
+/**
+ * Realca no 360 o alvo que o mouse tocou NO MINIMAPA.
+ * O caminho inverso de setMinimapHoveredTarget: fecha o vinculo entre as telas.
+ *
+ * @param {string|null} id - Id do alvo, ou null para limpar
+ */
+export function setHoveredFromMinimap(id) {
+    if (id === externalHoveredId) return;
+    externalHoveredId = id;
+    if (navRenderer) {
+        navRenderer.setHoveredMarker(hoveredId ?? externalHoveredId);
+    }
     markNavDirty();
 }
 
@@ -281,40 +294,35 @@ export function update(cameraState) {
     // Todas as chamadas a metersToScreen abaixo reaproveitam esse cache.
     projector.beginFrame(yaw, pitch, fov);
 
-    // ── FOV visibility (EBGeo pattern) ──
-    const shouldShowMarkers = fov > NAV_CONSTANTS.HIDE_ARROWS_FOV;
-    const scaleFactor = fov <= NAV_CONSTANTS.SCALE_ARROWS_FOV
-        ? (fov - NAV_CONSTANTS.HIDE_ARROWS_FOV) / (NAV_CONSTANTS.SCALE_ARROWS_FOV - NAV_CONSTANTS.HIDE_ARROWS_FOV)
-        : 1;
+    // ── Arranjo das filas por direcao ──
+    // Propriedade do conjunto: o tamanho e a altura de cada icone dependem dos
+    // que estao na frente dele, entao o arranjo e calculado uma vez por frame,
+    // antes de qualquer projecao.
+    directionLayout = layoutDirections(targets, fov);
 
-    // ── Project navigation targets (EBGeo pattern) ──
     const markers = [];
-
-    if (shouldShowMarkers) {
-        for (const target of targets) {
-            const projected = projectTarget(target, yaw, pitch, fov);
-            if (projected) {
-                projected.radius *= scaleFactor;
-                projected.type = 'navigation';
-                projected.data = target;
-                markers.push(projected);
-            }
+    for (const target of targets) {
+        const projected = projectTargetOnHorizon(target, yaw, pitch, fov);
+        if (projected) {
+            projected.type = 'navigation';
+            projected.data = target;
+            markers.push(projected);
         }
     }
 
-    // ── Project nearby photos as grey markers ──
+    // ── Fotos proximas, como marcadores cinza ──
     const nearbyMarkers = [];
-    if (shouldShowMarkers && nearbyPhotos.length > 0 && cameraConfig) {
+    if (nearbyPhotos.length > 0 && cameraConfig) {
         for (const photo of nearbyPhotos) {
             const projected = projectNearbyPhoto(photo, yaw, pitch, fov);
-            if (projected) {
-                projected.radius *= scaleFactor;
-                nearbyMarkers.push(projected);
-            }
+            if (projected) nearbyMarkers.push(projected);
         }
     }
 
-    // ── Update hit tester (includes nearby markers when preview enabled) ──
+    // ── Area de clique: maior que o desenho, com piso relativo ao canvas ──
+    assignHitRadii(markers);
+    assignHitRadii(nearbyMarkers);
+
     const allHittable = nearbyPreviewEnabled ? [...markers, ...nearbyMarkers] : markers;
     hitTester.setMarkers(allHittable);
 
@@ -324,154 +332,24 @@ export function update(cameraState) {
     if (newHoveredId !== hoveredId) {
         hoveredId = newHoveredId;
         refreshCursorStyle();
+        // Acende o mesmo alvo no minimapa: o operador ve na planta onde fica o
+        // marcador que esta mirando na foto.
+        setMinimapHoveredTarget(newHoveredId);
     }
 
-    // ── Update renderer (EBGeo pattern) ──
+    // ── Update renderer ──
+    // O realce vale para o mouse no 360 OU no minimapa. Sem juntar os dois aqui,
+    // o realce vindo do minimapa morreria no frame seguinte, porque este teste
+    // de acerto usa a posicao do mouse dentro do 360 e devolve "nada".
+    navRenderer.setHoveredMarker(hoveredId ?? externalHoveredId);
     navRenderer.setMarkers(markers);
     navRenderer.setSelectedMarker(null); // calibration doesn't have POI selection
     navRenderer.setNearestMarker(nearestTargetId);
-
-    // ── Ground cursor (EBGeo updateGroundCursor pattern) ──
-    updateGroundCursor(markers, yaw, pitch, fov);
-
-    // Set cursor nearest after updateGroundCursor computes it
-    navRenderer.setCursorNearestMarker(cursorNearestTargetId);
-
-    // ── Ground grid (cacheado: funcao pura de yaw/pitch/fov/altura/escala) ──
-    if (groundGridVisible && cameraConfig) {
-        const gridHeight = cameraConfig.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
-        const gridDistanceScale = cameraConfig.distance_scale ?? 1.0;
-        if (
-            !groundGridCache
-            || yaw !== gridCacheYaw || pitch !== gridCachePitch || fov !== gridCacheFov
-            || gridHeight !== gridCacheHeight || gridDistanceScale !== gridCacheDistanceScale
-        ) {
-            groundGridCache = projectGroundGrid(yaw, pitch, fov);
-            gridCacheYaw = yaw;
-            gridCachePitch = pitch;
-            gridCacheFov = fov;
-            gridCacheHeight = gridHeight;
-            gridCacheDistanceScale = gridDistanceScale;
-        }
-        navRenderer.setGroundGrid(groundGridCache);
-    } else {
-        navRenderer.setGroundGrid(null);
-    }
-
-    // ── Set nearby markers for rendering (only when preview mode is active) ──
+    navRenderer.setCursorNearestMarker(hoveredId ?? externalHoveredId);
     navRenderer.setNearbyMarkers(nearbyPreviewEnabled ? nearbyMarkers : []);
-
-    // ── Ghost marker for set-from-click preview ──
-    updateGhostMarker(yaw, pitch, fov);
 
     // ── Render ──
     navRenderer.render();
-}
-
-// ============================================================================
-// GROUND CURSOR  (verbatim EBGeo updateGroundCursor)
-// ============================================================================
-
-/**
- * Updates the ground cursor that follows the mouse.
- * Don't show cursor if hovering a marker (EBGeo pattern).
- */
-function updateGroundCursor(markers, yaw, pitch, fov) {
-    // EBGeo: if (this.markerToolActive || this.renderer.hoveredMarkerId) …
-    if (hoveredId) {
-        navRenderer.setGroundCursor(null);
-        cursorNearestTargetId = null;
-        navRenderer.setCursorNearestMarker(null);
-        return;
-    }
-
-    // Project mouse position to ground
-    const ground = projector.screenToGround(mouseX, mouseY, yaw, pitch, fov);
-
-    if (!ground) {
-        navRenderer.setGroundCursor(null);
-        cursorNearestTargetId = null;
-        navRenderer.setCursorNearestMarker(null);
-        return;
-    }
-
-    // Calculate flatten ratio for the cursor position
-    const cursorDistance = Math.sqrt(ground.x * ground.x + ground.z * ground.z);
-    const flattenY = projector.calculateFlattenRatio(cursorDistance, pitch);
-
-    // Find the nearest target to the cursor position (dynamically)
-    const nearestTarget = findNearestTargetToCursor(ground);
-    cursorNearestTargetId = nearestTarget?.id || null;
-
-    // Calculate arrow angle pointing to nearest marker using screen coordinates
-    let arrowAngle = null;
-    if (nearestTarget) {
-        // Find the projected marker to get its screen position
-        const projectedMarker = markers.find(m => m.id === nearestTarget.id);
-        if (projectedMarker) {
-            // EBGeo: calculateArrowAngleToScreen
-            const dx = projectedMarker.screenX - mouseX;
-            const dy = projectedMarker.screenY - mouseY;
-            arrowAngle = Math.atan2(dx, -dy);
-        }
-    }
-
-    // Set ground cursor data (fov needed for physically-based sizing)
-    navRenderer.setGroundCursor({
-        screenX: mouseX,
-        screenY: mouseY,
-        flattenY,
-        arrowAngle,
-        distance: cursorDistance,
-        fov,
-    });
-}
-
-// ============================================================================
-// GHOST MARKER  (set-from-click preview)
-// ============================================================================
-
-/**
- * Updates the ghost marker that previews where the override will land.
- * Only active when setFromClickMode is on and a target is selected.
- */
-function updateGhostMarker(yaw, pitch, fov) {
-    if (!state.setFromClickMode || !state.selectedTargetId || !cameraConfig) {
-        navRenderer.setGhostMarker(null);
-        return;
-    }
-
-    const ground = projector.screenToGround(mouseX, mouseY, yaw, pitch, fov);
-    if (!ground) {
-        navRenderer.setGhostMarker(null);
-        return;
-    }
-
-    // Compute bearing and distance from ground position
-    const bearing = Math.atan2(ground.x, -ground.z);
-    let bearingDeg = (bearing * 180) / Math.PI;
-    if (bearingDeg < 0) bearingDeg += 360;
-    const distance = Math.sqrt(ground.x * ground.x + ground.z * ground.z);
-
-    if (distance < 0.5) {
-        navRenderer.setGhostMarker(null);
-        return;
-    }
-
-    const cameraHeight = cameraConfig.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
-    const radius = projector.calculateMarkerSize(
-        NAV_CONSTANTS.MARKER_WORLD_RADIUS, distance, fov
-    );
-    const flattenY = projector.calculateFlattenRatio(distance, pitch);
-
-    navRenderer.setGhostMarker({
-        screenX: mouseX,
-        screenY: mouseY,
-        radius,
-        flattenY,
-        bearing: bearingDeg,
-        distance,
-    });
 }
 
 // ============================================================================
@@ -479,201 +357,235 @@ function updateGhostMarker(yaw, pitch, fov) {
 // ============================================================================
 
 /**
- * Projects a navigation target to screen coordinates.
- * Mirrors EBGeo StreetViewNavigator.projectTarget exactly.
+ * Resolves the world bearing and ground distance of a target.
+ *
+ * Lat/lon is the only source. The per-target overrides that used to be
+ * consulted here are gone on purpose: they were calibration of the ICON, and
+ * a wrong position is now corrected by moving the PHOTO, not by nudging the
+ * marker that points at it. One of them, an override_distance of 17.3 m on a
+ * target actually 10.2 m away, silently reordered the queue.
+ *
+ * @param {Object} target - Target object
+ * @returns {{bearing: number, distance: number}} Bearing in degrees, distance in meters
  */
-function projectTarget(target, yaw, pitch, fov) {
-    if (!cameraConfig) return null;
-
-    // Check for effective override (edited > original)
-    const override = getEffectiveOverride(target.id);
-
-    // If target has a ground-plane override, project from bearing + distance
-    // and also compute the original GPS position for the visual indicator.
-    if (override && override.bearing !== null) {
-        const result = projectFromOverride(
-            override.bearing,
-            override.distance ?? 5,
-            target, yaw, pitch, fov,
-            override.height ?? 0
-        );
-        if (result) {
-            // Also project the original GPS position
-            const orig = projectOriginalPosition(target, yaw, pitch, fov);
-            if (orig) {
-                result.originalScreenX = orig.screenX;
-                result.originalScreenY = orig.screenY;
-                result.originalRadius = orig.radius;
-                result.originalFlattenY = orig.flattenY;
-            }
-        }
-        return result;
+export function resolveTargetVector(target, proj = projector, camera = cameraConfig) {
+    if (target.bearing != null && target.distance != null) {
+        return { bearing: target.bearing, distance: target.distance };
     }
 
-    // Convert lon/lat to meters, then apply distance_scale
-    let { x, z } = projector.lonLatToMeters(
-        target.lon, target.lat,
-        cameraConfig.lon, cameraConfig.lat
+    // Fallback for older metadata that carries no precomputed vector
+    const { x, z } = proj.lonLatToMeters(
+        target.lon,
+        target.lat,
+        camera.lon,
+        camera.lat
     );
-    const distanceScale = cameraConfig.distance_scale ?? 1.0;
-    x *= distanceScale;
-    z *= distanceScale;
-
-    const cameraHeight = cameraConfig.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
-    const y = -cameraHeight;
-
-    // Horizontal distance (for flatten ratio — ground-plane perspective)
-    const horizontalDistance = Math.sqrt(x * x + z * z);
-
-    // Project to screen
-    const projected = projector.metersToScreen(x, y, z, yaw, pitch, fov);
-
-    if (!projected.visible) return null;
-
-    const radius = projector.calculateMarkerSize(
-        NAV_CONSTANTS.MARKER_WORLD_RADIUS, horizontalDistance, fov
-    );
-    const flattenY = projector.calculateFlattenRatio(horizontalDistance, pitch);
-
     return {
-        id: target.id,
-        screenX: projected.screenX,
-        screenY: projected.screenY,
-        distance: projected.distance,
-        radius,
-        flattenY,
-        // Calibration-specific metadata
-        isNext: target.next,
-        hasOverride: override !== null,
-        isCalibrationSelected: target.id === state.selectedTargetId,
-        isHidden: isTargetHidden(target.id),
-        displayName: target.display_name || target.id.slice(0, 8),
+        bearing: target.bearing ?? ((((Math.atan2(x, -z) * 180) / Math.PI) + 360) % 360),
+        distance: target.distance ?? Math.sqrt(x * x + z * z)
     };
 }
 
 /**
- * Projects from override coordinates (bearing + ground distance + height offset).
- * Uses the same ground-plane projection as geographic markers and the mouse cursor,
- * so override markers look identical to where the user clicked.
- * The height offset raises/lowers the marker from the ground plane.
+ * Lays out every target as a queue along its direction.
  *
- * @param {number} bearingDeg - Bearing from camera in degrees (0=North, CW)
- * @param {number} groundDistance - Distance from camera on the ground plane in meters
- * @param {Object} target - Target data
- * @param {number} yaw - Camera yaw
- * @param {number} pitch - Camera pitch
- * @param {number} fov - Camera FOV
- * @param {number} [overrideHeight=0] - Manual height offset in meters (positive = above ground)
+ * This is where "relative, not faithful" lives. Distance never reaches the
+ * screen as a length: it is used twice, and only as an ORDER. Once to rank the
+ * targets within a direction, and once, weighted, to place each target in the
+ * distance order of the whole photo, so that a far target still reads as far
+ * even when nothing shares its direction.
+ *
+ * A target only joins a queue when it would actually COVER the one in front:
+ * two icons of angular radius r cover each other below 2r of bearing
+ * separation, so that, and not a guessed bucket, is what defines "the same
+ * direction". A target off to the side keeps its own place near the bottom
+ * of the band instead of being pushed up for nothing.
+ *
+ * Height and size then decay by the same ratio (see constants.js), which
+ * makes the queue fit the band for ANY number of icons, with every centre
+ * clear of the disc in front. Nothing caps the count: a queue ends only when
+ * the next icon would be too small to read.
+ *
+ * @param {Array} targets - Navigation targets for the current photo
+ * @param {number} fov - Camera vertical FOV in degrees
+ * @returns {Map<string, {rank: number, radius: number, elevationDeg: number}>} Layout per target id
  */
-function projectFromOverride(bearingDeg, groundDistance, target, yaw, pitch, fov, overrideHeight = 0) {
-    if (!cameraConfig) return null;
+export function layoutDirections(targets, fov, proj = projector, camera = cameraConfig) {
+    const vectors = targets
+        .map(t => ({ id: t.id, ...resolveTargetVector(t, proj, camera) }))
+        .sort((a, b) => a.distance - b.distance);
 
-    const headingRad = (bearingDeg * Math.PI) / 180;
+    // Place in the distance order of the whole photo, 0 = nearest of all.
+    // A single target is the nearest of all, so it gets no nudge at all.
+    const span = Math.max(1, vectors.length - 1);
+    vectors.forEach((v, index) => { v.distanceRatio = index / span; });
 
-    // Convert bearing + distance to ground-plane (x, z) in meters
-    const x = Math.sin(headingRad) * groundDistance;
-    const z = -Math.cos(headingRad) * groundDistance;
+    const directions = [];
+    const layout = new Map();
 
-    // Place on the ground plane with manual height offset
-    const cameraHeight = cameraConfig.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
-    const y = -cameraHeight + overrideHeight;
+    for (const v of vectors) {
+        // A target belongs to a queue when the icon it WOULD get overlaps the
+        // icon of the one already there, so the threshold shrinks as the
+        // queue grows: what is side by side stays side by side.
+        const group = directions.find(d => {
+            const diff = Math.abs(((v.bearing - d.bearing + 540) % 360) - 180);
+            const last = d.members[d.members.length - 1];
+            const joinedRank = proj.effectiveRank(d.members.length, v.distanceRatio);
+            const reach = (proj.angularRadiusDeg(last.rank)
+                + proj.angularRadiusDeg(joinedRank))
+                * (NAV_CONSTANTS.HORIZON_DIRECTION_OVERLAP_FACTOR / 2);
+            return diff <= reach;
+        });
 
-    const horizontalDistance = groundDistance;
+        if (group) {
+            v.rank = proj.effectiveRank(group.members.length, v.distanceRatio);
+            group.members.push(v);
+        } else {
+            v.rank = proj.effectiveRank(0, v.distanceRatio);
+            directions.push({ bearing: v.bearing, members: [v] });
+        }
+    }
 
-    const projected = projector.metersToScreen(x, y, z, yaw, pitch, fov);
+    for (const direction of directions) {
+        for (const member of direction.members) {
+            // The queue ends where legibility does, not at a chosen number.
+            if (proj.angularRadiusDeg(member.rank) < NAV_CONSTANTS.HORIZON_MIN_ANGULAR_DRAW) {
+                continue;
+            }
 
-    if (!projected.visible) return null;
+            layout.set(member.id, {
+                rank: member.rank,
+                radius: proj.angularMarkerRadius(member.rank, fov),
+                elevationDeg: proj.elevationDeg(member.rank),
+            });
+        }
+    }
 
-    const radius = projector.calculateMarkerSize(
-        NAV_CONSTANTS.MARKER_WORLD_RADIUS, horizontalDistance, fov, overrideHeight
-    );
-    const flattenY = projector.calculateFlattenRatio(horizontalDistance, pitch, overrideHeight);
+    return layout;
+}
 
+/**
+ * Metadados que so a calibracao usa: selecao para edicao e alvo oculto.
+ * @param {Object} target - Alvo
+ * @returns {Object} Campos extras do marcador
+ */
+function calibrationMeta(target) {
     return {
-        id: target.id,
-        screenX: projected.screenX,
-        screenY: projected.screenY,
-        distance: projected.distance,
-        radius,
-        flattenY,
-        // Calibration-specific metadata
         isNext: target.next,
-        hasOverride: true,
         isCalibrationSelected: target.id === state.selectedTargetId,
         isHidden: isTargetHidden(target.id),
         displayName: target.display_name || target.id.slice(0, 8),
     };
 }
 
-/**
- * Projects the original GPS position of a target (ignoring overrides).
- * Used to show the original position indicator when an override is active.
- */
-function projectOriginalPosition(target, yaw, pitch, fov) {
-    if (!cameraConfig) return null;
+function projectTargetOnHorizon(target, yaw, pitch, fov) {
+    const placement = directionLayout?.get(target.id);
+    if (!placement) return null;   // too small to read: the queue ended here
 
-    let { x, z } = projector.lonLatToMeters(
-        target.lon, target.lat,
-        cameraConfig.lon, cameraConfig.lat
+    const { bearing } = resolveTargetVector(target);
+    const projected = projector.projectOnHorizon(
+        bearing, yaw, pitch, fov, placement.elevationDeg
     );
-    const distanceScale = cameraConfig.distance_scale ?? 1.0;
-    x *= distanceScale;
-    z *= distanceScale;
 
-    const cameraHeight = cameraConfig.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
-    const y = -cameraHeight;
-    const horizontalDistance = Math.sqrt(x * x + z * z);
+    // Outside the horizontal field of view: keep it as an edge arrow so the
+    // operator still knows there is a way out in that direction.
+    if (!projected.visible) {
+        if (Math.abs(projected.azimuthRelDeg) > NAV_CONSTANTS.HORIZON_EDGE_MAX_AZIMUTH) {
+            return null;
+        }
+        const margin = overlayCanvas.width * NAV_CONSTANTS.HORIZON_EDGE_MARGIN_REL;
+        return {
+            id: target.id,
+            screenX: projected.azimuthRelDeg > 0 ? overlayCanvas.width - margin : margin,
+            screenY: overlayCanvas.height / 2,
+            distance: placement.rank,
+            radius: Math.max(
+                overlayCanvas.height * NAV_CONSTANTS.HORIZON_MIN_SIZE_REL,
+                placement.radius * 0.7
+            ),
+            rank: placement.rank,
+            offscreen: true,
+            offscreenSide: projected.azimuthRelDeg > 0 ? 'right' : 'left'
+        };
+    }
 
-    const projected = projector.metersToScreen(x, y, z, yaw, pitch, fov);
-    if (!projected.visible) return null;
-
-    const radius = projector.calculateMarkerSize(
-        NAV_CONSTANTS.MARKER_WORLD_RADIUS, horizontalDistance, fov
-    );
-    const flattenY = projector.calculateFlattenRatio(horizontalDistance, pitch);
-
-    return { screenX: projected.screenX, screenY: projected.screenY, radius, flattenY };
+    return {
+        id: target.id,
+        screenX: projected.screenX,
+        // The first icon sits just below the horizon and the queue climbs
+        // from there, by gaps derived from the icons themselves.
+        screenY: projected.screenY,
+        // Sorting key for draw order: nearer icons paint on top.
+        distance: placement.rank,
+        radius: placement.radius,
+        rank: placement.rank,
+        offscreen: false,
+        sphere: true,
+        ...calibrationMeta(target),
+    };
 }
 
-// ============================================================================
-// NEARBY PHOTO PROJECTION
-// ============================================================================
+/**
+ * Gives every marker a clickable radius that is larger than its drawing and
+ * never smaller than a fingertip.
+ *
+ * Doing it here, rather than in the hit tester, is what allows the floor to
+ * be relative to the canvas: the navigator is the only one that knows how
+ * big the canvas is.
+ *
+ * Exportada e com a altura por parametro para que o teste exercite ESTA funcao,
+ * e nao uma copia dela: o teste antes reimplementava a formula, entao ficaria
+ * verde mesmo se a producao mudasse.
+ *
+ * @param {Array} markers - Projected navigation markers, mutated in place
+ * @param {number} [height] - Altura do canvas; usa o overlay quando omitida
+ */
+export function assignHitRadii(markers, height = overlayCanvas?.height ?? 0) {
+    const floor = height * NAV_CONSTANTS.HIT_RADIUS_MIN_REL;
+    for (const marker of markers) {
+        marker.hitRadius = Math.max(
+            marker.radius * NAV_CONSTANTS.HIT_RADIUS_MULTIPLIER,
+            floor
+        );
+    }
+}
 
 /**
- * Projects a nearby (unconnected) photo to screen coordinates.
- * Rendered as smaller grey markers to distinguish from navigation targets.
+ * Projeta uma foto proxima (nao conectada) pelo mesmo modelo dos alvos.
+ *
+ * Sao candidatas a virar alvo, entao precisam ser desenhadas pelo mesmo criterio
+ * do que vao se tornar: direcao do lat/long, e nada de distancia no desenho.
+ *
+ * @param {Object} photo - Foto proxima com lon/lat
+ * @param {number} yaw - Yaw da camera em radianos
+ * @param {number} pitch - Pitch da camera em radianos
+ * @param {number} fov - Campo de visao em graus
+ * @returns {Object|null} Marcador projetado, ou null se fora da vista
  */
 function projectNearbyPhoto(photo, yaw, pitch, fov) {
     if (!cameraConfig) return null;
 
-    let { x, z } = projector.lonLatToMeters(
+    const { x, z } = projector.lonLatToMeters(
         photo.lon, photo.lat,
         cameraConfig.lon, cameraConfig.lat
     );
-    const distanceScale = cameraConfig.distance_scale ?? 1.0;
-    x *= distanceScale;
-    z *= distanceScale;
+    const bearing = ((((Math.atan2(x, -z) * 180) / Math.PI) + 360) % 360);
 
-    const cameraHeight = cameraConfig.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
-    const y = -cameraHeight;
-
-    const horizontalDistance = Math.sqrt(x * x + z * z);
-
-    const projected = projector.metersToScreen(x, y, z, yaw, pitch, fov);
-    if (!projected.visible) return null;
-
-    const radius = projector.calculateMarkerSize(
-        NAV_CONSTANTS.MARKER_WORLD_RADIUS, horizontalDistance, fov
+    // Desenhada na mesma faixa dos alvos, na altura de quem seria o primeiro da
+    // fila: e uma candidata a virar alvo, nao um alvo atras de outro.
+    const projected = projector.projectOnHorizon(
+        bearing, yaw, pitch, fov, projector.elevationDeg(0)
     );
-    const flattenY = projector.calculateFlattenRatio(horizontalDistance, pitch);
+    if (!projected.visible) return null;
 
     return {
         id: photo.id,
         screenX: projected.screenX,
         screenY: projected.screenY,
-        distance: projected.distance,
-        radius,
-        flattenY,
+        distance: Math.hypot(x, z),
+        radius: projector.angularMarkerRadius(1, fov),
+        rank: 1,
+        offscreen: false,
         type: 'nearby',
         displayName: photo.displayName || photo.id.slice(0, 8),
         data: photo,
@@ -685,112 +597,11 @@ function projectNearbyPhoto(photo, yaw, pitch, fov) {
 // ============================================================================
 
 /** Ground grid radial distances in meters */
-const GROUND_GRID_RINGS = [2, 5, 8, 10, 15, 20, 25, 30, 40, 50, 60, 75, 100, 130, 170, 200, 250, 300];
 /** Ground grid radial bearing lines every 10 degrees */
-const GROUND_GRID_BEARINGS = Array.from({ length: 36 }, (_, i) => i * 10);
-
-/**
- * Projects a ground-plane grid onto screen coordinates.
- * Ring lines at fixed distances + radial bearing lines.
- * Respects camera_height and distance_scale via projector.metersToScreen().
- *
- * @param {number} yaw - Camera yaw in radians
- * @param {number} pitch - Camera pitch in radians
- * @param {number} fov - Camera FOV in degrees
- * @returns {{ lines: Array<{points: Array<{x:number,y:number}>, highlight: boolean}> }}
- */
-function projectGroundGrid(yaw, pitch, fov) {
-    const cameraHeight = cameraConfig.height ?? NAV_CONSTANTS.DEFAULT_CAMERA_HEIGHT;
-    const distanceScale = cameraConfig.distance_scale ?? 1.0;
-    const groundY = -cameraHeight;
-    const lines = [];
-
-    // Ring lines (circles at fixed distances on ground plane)
-    for (const rawDist of GROUND_GRID_RINGS) {
-        const dist = rawDist * distanceScale;
-        const points = [];
-        const segments = 72;
-        for (let i = 0; i <= segments; i++) {
-            const angle = (i / segments) * Math.PI * 2;
-            const x = Math.sin(angle) * dist;
-            const z = -Math.cos(angle) * dist;
-            const projected = projector.metersToScreen(x, groundY, z, yaw, pitch, fov);
-            if (projected.visible) {
-                points.push({ x: projected.screenX, y: projected.screenY });
-            } else if (points.length > 0) {
-                if (points.length >= 2) {
-                    lines.push({ points: [...points], highlight: false });
-                }
-                points.length = 0;
-            }
-        }
-        if (points.length >= 2) {
-            lines.push({ points, highlight: false });
-        }
-    }
-
-    // Radial bearing lines (straight lines from camera outward)
-    const maxDist = GROUND_GRID_RINGS[GROUND_GRID_RINGS.length - 1] * distanceScale;
-    for (const bearingDeg of GROUND_GRID_BEARINGS) {
-        const bearingRad = (bearingDeg * Math.PI) / 180;
-        const sinB = Math.sin(bearingRad);
-        const cosB = -Math.cos(bearingRad);
-        const points = [];
-        const segments = 40;
-        for (let i = 1; i <= segments; i++) {
-            const d = (i / segments) * maxDist;
-            const x = sinB * d;
-            const z = cosB * d;
-            const projected = projector.metersToScreen(x, groundY, z, yaw, pitch, fov);
-            if (projected.visible) {
-                points.push({ x: projected.screenX, y: projected.screenY });
-            } else if (points.length > 0) {
-                if (points.length >= 2) {
-                    lines.push({ points: [...points], highlight: bearingDeg % 90 === 0 });
-                }
-                points.length = 0;
-            }
-        }
-        if (points.length >= 2) {
-            lines.push({ points, highlight: bearingDeg % 90 === 0 });
-        }
-    }
-
-    return { lines };
-}
 
 // ============================================================================
 // NEAREST-TO-CURSOR  (verbatim EBGeo findNearestTargetToCursor)
 // ============================================================================
-
-/**
- * Finds the nearest navigation target to the cursor position on the ground.
- */
-function findNearestTargetToCursor(cursorGround) {
-    if (!targets.length || !cameraConfig) return null;
-
-    let nearestTarget = null;
-    let nearestDist = Infinity;
-
-    for (const target of targets) {
-        if (isTargetHidden(target.id)) continue;
-        const { x: targetX, z: targetZ } = projector.lonLatToMeters(
-            target.lon, target.lat,
-            cameraConfig.lon, cameraConfig.lat
-        );
-
-        const dx = targetX - cursorGround.x;
-        const dz = targetZ - cursorGround.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-
-        if (dist < nearestDist) {
-            nearestDist = dist;
-            nearestTarget = target;
-        }
-    }
-
-    return nearestTarget;
-}
 
 // ============================================================================
 // CLICK HANDLING
@@ -808,25 +619,6 @@ export function handleClick(event) {
     // event.clientX/clientY are already canvas-relative (viewer.js subtracts rect)
     const canvasX = event.clientX;
     const canvasY = event.clientY;
-
-    // "Set from click" mode: capture ground-plane coordinates
-    if (state.setFromClickMode && state.selectedTargetId) {
-        if (onSetFromClickCallback && projector) {
-            const ground = projector.screenToGround(
-                canvasX, canvasY,
-                currentYaw, currentPitch, currentFov
-            );
-            if (ground) {
-                // Convert ground (x, z) to bearing and distance from camera
-                const bearing = Math.atan2(ground.x, -ground.z);
-                let bearingDeg = (bearing * 180) / Math.PI;
-                if (bearingDeg < 0) bearingDeg += 360;
-                const distance = Math.sqrt(ground.x * ground.x + ground.z * ground.z);
-                onSetFromClickCallback({ bearing: bearingDeg, distance });
-            }
-        }
-        return;
-    }
 
     // Normal mode: check if a marker was clicked
     const hitMarker = hitTester.testPoint(canvasX, canvasY);
@@ -893,49 +685,6 @@ export function updateCameraState(cameraState) {
 }
 
 /**
- * Gets the projected markers for external use (e.g., minimap).
- * @returns {Array}
- */
-export function getProjectedMarkers() {
-    return navRenderer?.markers ?? [];
-}
-
-/**
- * Gets the overlay canvas.
- * @returns {HTMLCanvasElement}
- */
-export function getOverlayCanvas() {
-    return overlayCanvas;
-}
-
-/**
- * Shows or hides the ground-plane grid overlay.
- * @param {boolean} visible - Whether to show the ground grid
- */
-export function setGroundGridVisible(visible) {
-    groundGridVisible = visible;
-    if (!visible && navRenderer) {
-        navRenderer.setGroundGrid(null);
-    }
-    markNavDirty();
-}
-
-/**
- * Returns whether the ground grid is currently visible.
- * @returns {boolean}
- */
-export function isGroundGridVisible() {
-    return groundGridVisible;
-}
-
-/**
- * Updates the cursor style based on current mode.
- */
-export function refreshCursor() {
-    refreshCursorStyle();
-}
-
-/**
  * Disposes of the navigator.
  */
 export function disposeNavigator() {
@@ -965,11 +714,9 @@ export function disposeNavigator() {
     nearbyPreviewEnabled = false;
     onNearbyClickCallback = null;
     nearestTargetId = null;
-    cursorNearestTargetId = null;
+    externalHoveredId = null;
     // Reseta dirty-flags e caches
     navDirty = true;
     lastYaw = NaN; lastPitch = NaN; lastFov = NaN;
     lastMouseX = NaN; lastMouseY = NaN;
-    groundGridCache = null;
-    gridCacheYaw = NaN;
 }
