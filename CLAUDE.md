@@ -84,7 +84,7 @@ tests/
 - **projects** — slug, name, location, center coordinates, entry photo ID, photo count
 - **photos** — coordinates, heading, mesh_rotation_y/x/z, floor_level, calibration_reviewed, sequence number (plus the inert camera_height/distance_scale/marker_scale)
 - **photos_rtree** — R-tree spatial index for geographic queries
-- **targets** — Navigation graph (source→target with distance, bearing, hidden, is_original, is_manual; plus the inert override_*)
+- **targets** — Navigation graph (source→target with distance, bearing, hidden, is_original; plus the inert override_*)
 - **deleted_photos** — soft-delete tombstones
 - **photos_rowid** — stable rowid mapping for the R-tree
 
@@ -109,7 +109,6 @@ tests/
 - Clamps old `override_pitch < 0.5` values to `5m` default
 - Adds `hidden` column to `targets` (default 0)
 - Adds `override_height` column to `targets` (default NULL)
-- Adds `is_manual` column to `targets` (default 0) — marks operator-created connections
 - Creates `deleted_photos` and the `targets`/`deleted_photos` indexes
 
 ## API Endpoints
@@ -129,14 +128,9 @@ tests/
 | Endpoint | Description |
 |----------|-------------|
 | `PUT /api/v1/photos/:uuid/calibration` | Update mesh_rotation_y (0–360) |
-| `PUT /api/v1/photos/:uuid/height` | Update camera_height (0.1–20 m). **Inert**: nothing reads it |
 | `PUT /api/v1/photos/:uuid/rotation-x` | Update mesh_rotation_x (−30–30) |
 | `PUT /api/v1/photos/:uuid/rotation-z` | Update mesh_rotation_z (−30–30) |
-| `PUT /api/v1/photos/:uuid/distance-scale` | Update distance_scale. **Inert** |
-| `PUT /api/v1/photos/:uuid/marker-scale` | Update marker_scale. **Inert** |
 | `PUT /api/v1/photos/:uuid/reviewed` | Mark photo reviewed/unreviewed |
-| `PUT /api/v1/targets/:sourceId/:targetId/override` | Set bearing/distance/height overrides. **Inert**, and no UI writes them |
-| `DELETE /api/v1/targets/:sourceId/:targetId/override` | Clear overrides. **Inert** |
 | `PUT /api/v1/targets/:sourceId/:targetId/visibility` | Set target hidden state (hidden: bool) |
 | `GET /api/v1/photos/:uuid/nearby?radius=100` | Find nearby unconnected photos within radius |
 | `POST /api/v1/targets` | Create new target connection (source_id, target_id) |
@@ -275,7 +269,8 @@ draw, no slider edits them, and the save flow no longer writes them.
 They are deliberately NOT dropped: the archive holds 519 overrides, 444 of them
 in a single 77-photo project, and they are the record of which photos are badly
 positioned. An inventory is in `docs/overrides-inventario.json`. The write
-endpoints still exist as API surface but have no visual effect.
+endpoints that used to set them (`/height`, `/distance-scale`, `/marker-scale`,
+`PUT`/`DELETE .../override`) were REMOVED; the columns remain only as memory.
 
 ### Three.js Rotation Order
 The panorama sphere uses Euler order `ZXY` — matrix `Rz·Rx·Ry` — meaning Y (heading) is applied first to pixels, then X (pitch), then Z (roll) in the corrected frame. Both `viewer.js` (calibration) and `street_view_viewer.js` (ebgeo_web) must use the same order.
@@ -358,10 +353,10 @@ app.js (orchestrator)
 3. Grid toggle — perspective grid on/off
 4. Save/Discard buttons — enabled when dirty
 5. Review actions — mark reviewed, reviewed → next
-6. **Collapsible**: Parametros de Calibração — 6 sliders (rotation_y/x/z, height, distance/marker_scale)
+6. **Collapsible**: Parametros de Calibração — 3 sliders (rotation_y/x/z only; the height/distance_scale/marker_scale sliders were removed with the ground model)
 7. **Collapsible**: Aplicar ao Projeto — batch update buttons
-8. **Collapsible**: Targets (N) — clickable target list with override/hidden badges
-9. Override editor — bearing/distance/height sliders, set-from-click, hide/show, delete (when target selected)
+8. **Collapsible**: Targets (N) — clickable target list with hidden badges
+9. Target actions (when selected) — Ocultar/Mostrar Target, Remover Conexao (only for is_original=0), Fechar. The old per-target override editor was removed.
 10. **Collapsible**: Fotos Proximas (N) — nearby unconnected photos with Preview toggle
 11. Fotos do Projeto — full photo list with review status
 
@@ -378,8 +373,8 @@ app.js (orchestrator)
 - `refreshTargetsAndNearby()` re-fetches metadata and updates targets/nearby via `state.refreshTargets()` preserving calibration edits
 
 ### State Update Pattern
-- `loadPhoto()` — full reset: all calibration edits, overrides, hidden state, nearby
-- `refreshTargets()` — partial reset: only targets/overrides/hidden, preserves calibration edits (used after add/delete target)
+- `loadPhoto()` — full reset: calibration edits, hidden state, nearby
+- `refreshTargets()` — partial reset: only targets/hidden, preserves calibration edits (used after add/delete target)
 - `onChange(fn)` — subscribe to state changes; panel re-renders on every notify
 - Slider drag uses `silent=true` to skip panel re-render during drag, notify on release
 

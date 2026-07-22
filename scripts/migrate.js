@@ -10,7 +10,9 @@
  * Includes adaptive spatial target generation (sector-based, per-project adaptive radius).
  *
  * Usage:
- *   node scripts/migrate.js --metadata <METADATA_DIR> --images <IMG_DIR> [--output <DATA_DIR>] [--workers <N>] [--skip-images]
+ *   node scripts/migrate.js --metadata <METADATA_DIR> --images <IMG_DIR>
+ *     [--output <DATA_DIR>] [--workers <N>] [--skip-images] [--skip-targets]
+ *     [--multiplier <N>] [--max-targets <N>] [--sectors <N>] [--per-sector <N>]
  */
 
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
@@ -57,7 +59,7 @@ function parseArgs() {
   }
 
   if (!opts.metadata || !opts.images) {
-    console.error('Usage: node migrate.js --metadata <METADATA_DIR> --images <IMG_DIR> [--output <DATA_DIR>] [--workers <N>] [--skip-images]');
+    console.error('Usage: node migrate.js --metadata <METADATA_DIR> --images <IMG_DIR> [--output <DATA_DIR>] [--workers <N>] [--skip-images] [--skip-targets] [--multiplier <N>] [--max-targets <N>] [--sectors <N>] [--per-sector <N>]');
     process.exit(1);
   }
 
@@ -169,6 +171,14 @@ function readAllMetadata(metadataDir) {
       const raw = readFileSync(join(metadataDir, file), 'utf-8');
       const data = JSON.parse(raw);
       const name = file.replace('.json', '');
+
+      // Um JSON que parseia mas nao traz camera.lat/lon nao tem como ser
+      // posicionado: pula com aviso, em vez de deixar meta.camera.lat estourar
+      // TypeError la na frente e abortar o lote inteiro por um arquivo ruim.
+      if (data.camera?.lat == null || data.camera?.lon == null) {
+        console.warn(`  Warning: skipping ${file}: missing camera.lat/lon`);
+        continue;
+      }
 
       photos.set(name, {
         originalName: name,
@@ -713,7 +723,7 @@ function populateMetadata(opts, photos, projects, sequences, projectUUIDs, photo
 
         insertPhoto.run(
           uuid, projectId, originalName, displayName, i + 1,
-          cam.lat, cam.lon, cam.ele, heading, cam.cameraHeight || cam.height || null,
+          cam.lat, cam.lon, cam.ele, heading, cam.cameraHeight ?? cam.height ?? null,
           rotation.mesh_rotation_y, rotation.mesh_rotation_x, rotation.mesh_rotation_z,
           cam.distance_scale ?? 1.0, cam.floor_level ?? 1,
           null, null // sizes filled during image processing

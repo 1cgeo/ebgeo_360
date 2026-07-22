@@ -1,8 +1,8 @@
 /**
  * @fileoverview Canvas 2D renderer for Street View 360 calibration navigation elements.
  *
- * All rendering code (renderNavigationMarker, renderGroundCursor, renderCursorArrow)
- * is taken verbatim from EBGeo's StreetViewRenderer.  The only addition is the
+ * The marker rendering (renderMarker, drawArmillarySphere, rankOpacity) is a
+ * behavioural mirror of EBGeo's StreetViewRenderer. The only addition is the
  * orange calibration-selection highlight used when a target is selected for editing.
  */
 

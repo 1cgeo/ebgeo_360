@@ -82,22 +82,10 @@ export function getIndexDb() {
       indexDb.exec('ALTER TABLE targets ADD COLUMN override_height REAL');
     }
 
-    // Migrate: create deleted_photos table if missing
-    const delTable = indexDb.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='deleted_photos'").all();
-    if (delTable.length === 0) {
-      indexDb.exec(`CREATE TABLE IF NOT EXISTS deleted_photos (
-        photo_id TEXT PRIMARY KEY REFERENCES photos(id),
-        deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )`);
-    }
-
-    // Migrate: indices criados para DBs existentes (idempotente)
-    // - idx_targets_target: indexa o ramo target_id do DELETE em soft-delete
-    // - idx_targets_source_order: satisfaz o ORDER BY das queries de targets por source
-    // - idx_deleted_photos: PK ja indexa photo_id, mas garantimos o filtro NOT IN
-    indexDb.exec('CREATE INDEX IF NOT EXISTS idx_targets_target ON targets(target_id)');
-    indexDb.exec('CREATE INDEX IF NOT EXISTS idx_targets_source_order ON targets(source_id, is_next DESC, distance_m ASC)');
-    indexDb.exec('CREATE INDEX IF NOT EXISTS idx_deleted_photos ON deleted_photos(photo_id)');
+    // deleted_photos e os indices idx_targets_target/idx_targets_source_order
+    // vivem no schema.sql, que roda incondicionalmente acima (com IF NOT EXISTS),
+    // entao ja existem aqui: recria-los era redundancia. O filtro por photo_id
+    // em deleted_photos e servido pelo indice automatico da PRIMARY KEY.
   })();
 
   return indexDb;

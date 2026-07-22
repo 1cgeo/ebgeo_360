@@ -16,7 +16,7 @@ import {
     selectTarget, deselectTarget,
     setProjectContext, setCalibrationReviewed, getNextPhotoId, getPrevPhotoId,
     setNearbyPhotos, isTargetHidden, refreshTargets,
-    setMeshRotationX, setMeshRotationY, setMeshRotationZ,
+    setMeshRotationX, setMeshRotationZ,
     setTargetHidden as stateSetTargetHidden,
 } from './state.js';
 import {
@@ -27,7 +27,7 @@ import {
 } from './viewer.js';
 import {
     initNavigator, setCameraConfig, setTargets,
-    update as updateNavigator, handleClick, updateCameraState, setHoveredFromMinimap,
+    update as updateNavigator, handleClick, setHoveredFromMinimap,
     setNearbyPhotos as navSetNearbyPhotos, setNearbyPreviewMode,
     disposeNavigator,
 } from './navigator.js';
@@ -227,7 +227,11 @@ async function startCalibration(photoId) {
 
         // Onde a camera estava olhando NO MUNDO, antes de trocar de foto.
         // Lido aqui porque loadPhoto logo abaixo sobrescreve o metadata anterior.
-        const prevWorldHeading = state.currentPhotoId
+        // So vale se ja havia uma sessao viva (initialized): ao voltar para
+        // Projetos e reentrar, currentPhotoId/currentMetadata ficam com o valor
+        // da foto anterior e getHeading() devolve um lon velho, o que faria a
+        // foto nova entrar girada em vez de comecar no proprio heading (lon=0).
+        const prevWorldHeading = (initialized && state.currentPhotoId)
             ? (state.currentMetadata?.camera?.heading ?? 0) + getHeading()
             : null;
 
@@ -480,7 +484,6 @@ function teardownSubsystems() {
 
 function onViewerRender(cameraState) {
     // Update navigator projection each frame
-    updateCameraState(cameraState);
     updateNavigator(cameraState);
 
     // Sync rear view camera direction with main viewer (opposite direction)
@@ -677,14 +680,11 @@ function handleDiscard() {
     viewerSetMeshRotationY(state.originalMeshRotationY);
     viewerSetMeshRotationX(state.originalMeshRotationX);
     viewerSetMeshRotationZ(state.originalMeshRotationZ);
-    // Reset navigator camera config to original height, distance_scale and marker_scale
+    // Restaura o cameraConfig do navigator ao metadata original da foto. So o
+    // lat/lon/heading importam ao marcador; height/distance_scale/marker_scale
+    // seguem no objeto mas sao inertes.
     if (state.currentMetadata?.camera) {
-        setCameraConfig({
-            ...state.currentMetadata.camera,
-            height: state.originalCameraHeight,
-            distance_scale: state.originalDistanceScale,
-            marker_scale: state.originalMarkerScale,
-        });
+        setCameraConfig(state.currentMetadata.camera);
     }
     showToast('Alteracoes descartadas', 'info');
 }

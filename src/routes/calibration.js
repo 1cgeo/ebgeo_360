@@ -1,7 +1,8 @@
 /**
  * @module routes/calibration
  * @description Write endpoints for the calibration interface.
- * Allows updating photo mesh_rotation_y and target override bearing/distance.
+ * Updates photo mesh_rotation y/x/z, review flag, target visibility, and
+ * create/delete of target connections.
  */
 
 import {

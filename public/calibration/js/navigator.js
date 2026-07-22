@@ -1,9 +1,9 @@
 /**
  * @fileoverview Navigation orchestrator for the Street View 360 calibration interface.
- * Projects targets to screen coordinates, manages ground cursor, handles click/hover.
+ * Projects targets to screen coordinates and handles click/hover.
  *
- * All projection, sizing, flattening and cursor logic is taken verbatim from
- * EBGeo's StreetViewNavigator so that the calibration view matches production.
+ * The marker logic is a behavioural mirror of EBGeo's StreetViewNavigator so the
+ * calibration view matches production (parity checked by numeric cross-check).
  */
 
 import { NAV_CONSTANTS } from './constants.js';
@@ -35,7 +35,7 @@ let nearbyPreviewEnabled = false;   // Whether nearby preview mode is active
 let onNearbyClickCallback = null;   // Called when a nearby photo marker is clicked
 let nearestTargetId = null;        // Nearest target by geographic distance (set once per photo — EBGeo pattern)
 // Arranjo das filas por direcao, recalculado uma vez por frame antes de projetar
-let directionLayout = null;  // Nearest target to cursor on ground (dynamic per frame)
+let directionLayout = null;
 
 
 // Mouse state
@@ -43,11 +43,6 @@ let mouseX = 0;
 let mouseY = 0;
 let hoveredId = null;          // alvo sob o mouse DENTRO do 360
 let externalHoveredId = null;  // alvo sob o mouse no MINIMAPA
-
-// Current camera state (stored from last render for click handling)
-let currentYaw = 0;
-let currentPitch = 0;
-let currentFov = 75;
 
 // ── Dirty-checking (evita reprojetar/repintar o overlay com a cena estatica) ──
 // O overlay so e recomputado quando a camera, o mouse, os dados ou o estado de
@@ -267,11 +262,6 @@ export function update(cameraState) {
     // EBGeo: const pitch = (latDeg * Math.PI) / 180;
     // latRad is already in radians, so use directly.
     const pitch = latRad;
-
-    // Store for click handling
-    currentYaw = yaw;
-    currentPitch = pitch;
-    currentFov = fov;
 
     // ── Dirty-check: pula a reprojecao/repintura quando nada mudou ──
     // Renderiza quando: dados/estado sujos (navDirty), camera mudou, mouse
@@ -593,17 +583,6 @@ function projectNearbyPhoto(photo, yaw, pitch, fov) {
 }
 
 // ============================================================================
-// GROUND GRID PROJECTION
-// ============================================================================
-
-/** Ground grid radial distances in meters */
-/** Ground grid radial bearing lines every 10 degrees */
-
-// ============================================================================
-// NEAREST-TO-CURSOR  (verbatim EBGeo findNearestTargetToCursor)
-// ============================================================================
-
-// ============================================================================
 // CLICK HANDLING
 // ============================================================================
 
@@ -655,9 +634,7 @@ function refreshCursorStyle() {
     const container = overlayCanvas.parentElement;
     if (!container) return;
 
-    if (state.setFromClickMode) {
-        container.style.cursor = 'crosshair';
-    } else if (hoveredId) {
+    if (hoveredId) {
         container.style.cursor = 'pointer';
     } else {
         container.style.cursor = 'grab';
@@ -667,22 +644,6 @@ function refreshCursorStyle() {
 // ============================================================================
 // PUBLIC UTILITIES
 // ============================================================================
-
-/**
- * Stores the latest camera state for use in click handling.
- * Converts raw viewer yaw (lon in radians) to world-heading-based yaw
- * so that screenToSpherical returns headings relative to north.
- * @param {{ yaw: number, pitch: number, fov: number }} cameraState
- */
-export function updateCameraState(cameraState) {
-    const lonDeg = (cameraState.yaw * 180) / Math.PI;
-    const imageHeading = cameraConfig?.heading ?? 0;
-    const worldHeadingDeg = imageHeading + lonDeg;
-    const correctedYaw = -(worldHeadingDeg * Math.PI) / 180;
-    currentYaw = correctedYaw;
-    currentPitch = cameraState.pitch;
-    currentFov = cameraState.fov;
-}
 
 /**
  * Disposes of the navigator.

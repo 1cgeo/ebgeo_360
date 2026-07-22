@@ -267,14 +267,6 @@ describe('PUT /api/v1/photos/:uuid/rotation-z', () => {
 });
 
 // ============================================================================
-// PUT /api/v1/photos/:uuid/distance-scale
-// ============================================================================
-
-// ============================================================================
-// PUT /api/v1/photos/:uuid/marker-scale
-// ============================================================================
-
-// ============================================================================
 // POST /api/v1/projects/:slug/reset-reviewed
 // ============================================================================
 
@@ -371,30 +363,15 @@ describe('PUT /api/v1/projects/:slug/batch-calibration (extended)', () => {
     assert.equal(res.statusCode, 400);
   });
 
-  it('validates new field ranges', async () => {
-    const res1 = await app.inject({
+  it('rejects an out-of-range mesh_rotation_x', async () => {
+    const res = await app.inject({
       method: 'PUT',
       url: `/api/v1/projects/${SEEDS.PROJECT_SLUG}/batch-calibration`,
       payload: { mesh_rotation_x: 50 },
     });
-    assert.equal(res1.statusCode, 400);
-
-    const res2 = await app.inject({
-      method: 'PUT',
-      url: `/api/v1/projects/${SEEDS.PROJECT_SLUG}/batch-calibration`,
-      payload: { distance_scale: 0.01 },
-    });
-    assert.equal(res2.statusCode, 400);
+    assert.equal(res.statusCode, 400);
   });
 });
-
-// ============================================================================
-// PUT /api/v1/targets/:sourceId/:targetId/override
-// ============================================================================
-
-// ============================================================================
-// DELETE /api/v1/targets/:sourceId/:targetId/override
-// ============================================================================
 
 // ============================================================================
 // PUT /api/v1/targets/:sourceId/:targetId/visibility

@@ -160,13 +160,7 @@ function stmts() {
         AND id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
 
-    batchUpdateCameraHeight: db.prepare(`
-      UPDATE photos SET camera_height = ?
-      WHERE project_id = (SELECT id FROM projects WHERE slug = ?)
-        AND id NOT IN (SELECT photo_id FROM deleted_photos)
-    `),
-
-    // ---- Mesh rotation X/Z and distance scale ----
+    // ---- Mesh rotation X/Z ----
     updateMeshRotationX: db.prepare(
       'UPDATE photos SET mesh_rotation_x = ? WHERE id = ?'
     ),
@@ -183,18 +177,6 @@ function stmts() {
 
     batchUpdateMeshRotationZ: db.prepare(`
       UPDATE photos SET mesh_rotation_z = ?
-      WHERE project_id = (SELECT id FROM projects WHERE slug = ?)
-        AND id NOT IN (SELECT photo_id FROM deleted_photos)
-    `),
-
-    batchUpdateDistanceScale: db.prepare(`
-      UPDATE photos SET distance_scale = ?
-      WHERE project_id = (SELECT id FROM projects WHERE slug = ?)
-        AND id NOT IN (SELECT photo_id FROM deleted_photos)
-    `),
-
-    batchUpdateMarkerScale: db.prepare(`
-      UPDATE photos SET marker_scale = ?
       WHERE project_id = (SELECT id FROM projects WHERE slug = ?)
         AND id NOT IN (SELECT photo_id FROM deleted_photos)
     `),

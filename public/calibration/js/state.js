@@ -10,25 +10,20 @@
 export const state = {
     currentPhotoId: null,
     currentMetadata: null,
+    // So mesh rotation y/x/z e o estado hidden dos alvos sao editaveis. Os
+    // campos camera_height/distance_scale/marker_scale e os overrides por alvo
+    // sairam com o modelo de chao: as colunas continuam no banco (inertes), mas
+    // nada na UI as edita, entao nao ha edited/original a rastrear aqui.
     originalMeshRotationY: null,
     editedMeshRotationY: null,
-    originalCameraHeight: null,
-    editedCameraHeight: null,
     originalMeshRotationX: null,
     editedMeshRotationX: null,
     originalMeshRotationZ: null,
     editedMeshRotationZ: null,
-    originalDistanceScale: null,
-    editedDistanceScale: null,
-    originalMarkerScale: null,
-    editedMarkerScale: null,
-    originalTargetOverrides: new Map(),
-    editedTargetOverrides: new Map(),
     originalTargetHidden: new Map(),   // targetId -> boolean
     editedTargetHidden: new Map(),     // targetId -> boolean
     nearbyPhotos: [],                  // nearby unconnected photos from API
     selectedTargetId: null,
-    setFromClickMode: false,
     // Review workflow
     currentProjectSlug: null,
     projectPhotos: [],         // [{id, displayName, sequenceNumber, reviewed}]
@@ -97,14 +92,6 @@ export function isDirty() {
         return true;
     }
 
-    // Check camera_height
-    if (
-        state.editedCameraHeight !== null &&
-        state.editedCameraHeight !== state.originalCameraHeight
-    ) {
-        return true;
-    }
-
     // Check mesh_rotation_x
     if (
         state.editedMeshRotationX !== null &&
@@ -119,33 +106,6 @@ export function isDirty() {
         state.editedMeshRotationZ !== state.originalMeshRotationZ
     ) {
         return true;
-    }
-
-    // Check distance_scale
-    if (
-        state.editedDistanceScale !== null &&
-        state.editedDistanceScale !== state.originalDistanceScale
-    ) {
-        return true;
-    }
-
-    // Check marker_scale
-    if (
-        state.editedMarkerScale !== null &&
-        state.editedMarkerScale !== state.originalMarkerScale
-    ) {
-        return true;
-    }
-
-    // Check target overrides
-    for (const [targetId, edited] of state.editedTargetOverrides) {
-        const original = state.originalTargetOverrides.get(targetId);
-        const origB = original?.bearing ?? null;
-        const origD = original?.distance ?? null;
-        const origH = original?.height ?? 0;
-        if (edited.bearing !== origB || edited.distance !== origD || (edited.height ?? 0) !== origH) {
-            return true;
-        }
     }
 
     // Check target hidden changes
@@ -182,10 +142,6 @@ export function loadPhoto(photoId, metadata) {
     state.originalMeshRotationY = meshRotY;
     state.editedMeshRotationY = meshRotY;
 
-    const camHeight = metadata.camera?.height ?? 2.5;
-    state.originalCameraHeight = camHeight;
-    state.editedCameraHeight = camHeight;
-
     const meshRotX = metadata.camera?.mesh_rotation_x ?? 0;
     state.originalMeshRotationX = meshRotX;
     state.editedMeshRotationX = meshRotX;
@@ -194,31 +150,12 @@ export function loadPhoto(photoId, metadata) {
     state.originalMeshRotationZ = meshRotZ;
     state.editedMeshRotationZ = meshRotZ;
 
-    const distScale = metadata.camera?.distance_scale ?? 1.0;
-    state.originalDistanceScale = distScale;
-    state.editedDistanceScale = distScale;
-
-    const markScale = metadata.camera?.marker_scale ?? 1.0;
-    state.originalMarkerScale = markScale;
-    state.editedMarkerScale = markScale;
-
-    // Extract existing target overrides and hidden state from metadata
-    state.originalTargetOverrides.clear();
-    state.editedTargetOverrides.clear();
+    // Extract existing hidden state from metadata
     state.originalTargetHidden.clear();
     state.editedTargetHidden.clear();
 
     if (metadata.targets) {
         for (const target of metadata.targets) {
-            if (target.override_bearing != null) {
-                const override = {
-                    bearing: target.override_bearing,
-                    distance: target.override_distance ?? 5,
-                    height: target.override_height ?? 0,
-                };
-                state.originalTargetOverrides.set(target.id, { ...override });
-                state.editedTargetOverrides.set(target.id, { ...override });
-            }
             if (target.hidden) {
                 state.originalTargetHidden.set(target.id, true);
                 state.editedTargetHidden.set(target.id, true);
@@ -228,7 +165,6 @@ export function loadPhoto(photoId, metadata) {
 
     state.nearbyPhotos = [];
     state.selectedTargetId = null;
-    state.setFromClickMode = false;
     state.calibrationReviewed = Boolean(metadata.camera?.calibration_reviewed);
 
     notify();
@@ -243,23 +179,12 @@ export function loadPhoto(photoId, metadata) {
 export function refreshTargets(metadata) {
     state.currentMetadata = { ...state.currentMetadata, targets: metadata.targets };
 
-    // Rebuild target overrides and hidden state from fresh metadata
-    state.originalTargetOverrides.clear();
-    state.editedTargetOverrides.clear();
+    // Rebuild hidden state from fresh metadata
     state.originalTargetHidden.clear();
     state.editedTargetHidden.clear();
 
     if (metadata.targets) {
         for (const target of metadata.targets) {
-            if (target.override_bearing != null) {
-                const override = {
-                    bearing: target.override_bearing,
-                    distance: target.override_distance ?? 5,
-                    height: target.override_height ?? 0,
-                };
-                state.originalTargetOverrides.set(target.id, { ...override });
-                state.editedTargetOverrides.set(target.id, { ...override });
-            }
             if (target.hidden) {
                 state.originalTargetHidden.set(target.id, true);
                 state.editedTargetHidden.set(target.id, true);
@@ -333,12 +258,11 @@ export function setNearbyPhotos(photos) {
 }
 
 /**
- * Selects a target for editing its override.
+ * Selects a target (to show its Ocultar/Remover actions).
  * @param {string} targetId - Target photo UUID
  */
 export function selectTarget(targetId) {
     state.selectedTargetId = targetId;
-    state.setFromClickMode = false;
     notify();
 }
 
@@ -347,7 +271,6 @@ export function selectTarget(targetId) {
  */
 export function deselectTarget() {
     state.selectedTargetId = null;
-    state.setFromClickMode = false;
     notify();
 }
 
@@ -356,23 +279,14 @@ export function deselectTarget() {
  */
 export function discardChanges() {
     state.editedMeshRotationY = state.originalMeshRotationY;
-    state.editedCameraHeight = state.originalCameraHeight;
     state.editedMeshRotationX = state.originalMeshRotationX;
     state.editedMeshRotationZ = state.originalMeshRotationZ;
-    state.editedDistanceScale = state.originalDistanceScale;
-    state.editedMarkerScale = state.originalMarkerScale;
-
-    state.editedTargetOverrides.clear();
-    for (const [targetId, override] of state.originalTargetOverrides) {
-        state.editedTargetOverrides.set(targetId, { ...override });
-    }
 
     state.editedTargetHidden.clear();
     for (const [targetId, hidden] of state.originalTargetHidden) {
         state.editedTargetHidden.set(targetId, hidden);
     }
 
-    state.setFromClickMode = false;
     notify();
 }
 
@@ -381,25 +295,8 @@ export function discardChanges() {
  */
 export function markSaved() {
     state.originalMeshRotationY = state.editedMeshRotationY;
-    state.originalCameraHeight = state.editedCameraHeight;
     state.originalMeshRotationX = state.editedMeshRotationX;
     state.originalMeshRotationZ = state.editedMeshRotationZ;
-    state.originalDistanceScale = state.editedDistanceScale;
-    state.originalMarkerScale = state.editedMarkerScale;
-
-    state.originalTargetOverrides.clear();
-    for (const [targetId, edited] of state.editedTargetOverrides) {
-        if (edited.bearing !== null && edited.distance !== null) {
-            state.originalTargetOverrides.set(targetId, { ...edited });
-        }
-    }
-
-    // Clean up null overrides from edits (bearing+distance null = cleared)
-    for (const [targetId, edited] of state.editedTargetOverrides) {
-        if (edited.bearing === null && edited.distance === null) {
-            state.editedTargetOverrides.delete(targetId);
-        }
-    }
 
     state.originalTargetHidden.clear();
     for (const [targetId, hidden] of state.editedTargetHidden) {

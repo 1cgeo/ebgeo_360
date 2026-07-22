@@ -10,7 +10,6 @@
 import * as THREE from 'three';
 import { getPhotoImageUrl } from './api.js';
 import { StreetViewProjector } from './projector.js';
-import { NAV_CONSTANTS } from './constants.js';
 import { state, isTargetHidden, onChange } from './state.js';
 import { drawArmillarySphere, rankOpacity } from './renderer.js';
 import { layoutDirections } from './navigator.js';
@@ -464,7 +463,7 @@ export function syncRearViewCamera(mainLonDeg, mainLatDeg, mainFov) {
 /**
  * Sets the target data for rendering markers on the rear view.
  * @param {Array} targets - Array of target objects from the API
- * @param {Object} cameraConfig - Camera metadata { heading, height, lon, lat, distance_scale, marker_scale }
+ * @param {Object} cameraConfig - Camera metadata { heading, lon, lat }
  */
 export function setRearViewTargets(targets, cameraConfig) {
     rearTargets = targets || [];
@@ -750,9 +749,8 @@ function onPointerUp(e) {
 
 /**
  * Projects and renders navigation markers on the rear view overlay canvas.
- * Uses the same projection math as the main navigator but for the rear view camera.
- * Reads current edited state values for height/distance_scale/marker_scale so that
- * markers stay in sync with the main view during live slider previews.
+ * Uses the same relative-horizon projection as the main navigator, for the rear
+ * view camera.
  */
 function renderRearMarkers() {
     if (!markerCtx || currentMode !== 'rear' || !rearCameraConfig) {
@@ -816,7 +814,6 @@ function renderRearMarkers() {
     // mesmo desenho. Antes esta tela projetava pelo modelo de chao, ou seja,
     // mostrava os alvos em lugar diferente do resto do sistema.
     const layout = layoutDirections(rearTargets, fov, markerProjector, rearCameraConfig);
-    const baseOffset = PREVIEW_HEIGHT * NAV_CONSTANTS.HORIZON_BASE_OFFSET_REL;
 
     for (const target of rearTargets) {
         const placement = layout.get(target.id);
@@ -828,14 +825,19 @@ function renderRearMarkers() {
         );
         const bearing = ((((Math.atan2(meters.x, -meters.z) * 180) / Math.PI) + 360) % 360);
 
-        const projected = markerProjector.projectOnHorizon(bearing, yaw, pitch, fov);
+        // A altura entra na propria projecao, igual ao navigator principal: o
+        // icone e desenhado no seu proprio elevationDeg. O modelo antigo somava
+        // um baseOffset em pixel e subtraia um placement.rise, ambos mortos hoje
+        // (HORIZON_BASE_OFFSET_REL e placement.rise nao existem), o que fazia
+        // translate(x, NaN) e a esfera nao desenhava.
+        const projected = markerProjector.projectOnHorizon(bearing, yaw, pitch, fov, placement.elevationDeg);
         if (!projected.visible) continue;
 
         const isSelected = target.id === state.selectedTargetId;
         const hidden = isTargetHidden(target.id);
 
         markerCtx.save();
-        markerCtx.translate(projected.screenX, projected.screenY + baseOffset - placement.rise);
+        markerCtx.translate(projected.screenX, projected.screenY);
         drawArmillarySphere(markerCtx, placement.radius, {
             highlighted: false,
             selected: isSelected,

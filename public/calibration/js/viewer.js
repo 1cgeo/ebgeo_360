@@ -26,11 +26,6 @@ let dragStartLon = 0;
 let dragStartLat = 0;
 let pointerDownTime = 0;
 
-// Current mesh rotation applied
-let currentMeshRotationY = 180;
-let currentMeshRotationX = 0;
-let currentMeshRotationZ = 0;
-
 // Perspective grid
 let gridGroup = null;
 let gridVisible = false;
@@ -225,7 +220,6 @@ export async function loadProgressive(previewUrl, fullUrl) {
  * @param {number} degrees - Rotation in degrees (0-360)
  */
 export function setMeshRotationY(degrees) {
-    currentMeshRotationY = degrees;
     if (sphere) {
         sphere.rotation.y = THREE.MathUtils.degToRad(degrees);
     }
@@ -237,7 +231,6 @@ export function setMeshRotationY(degrees) {
  * @param {number} degrees - Rotation in degrees (-30 to +30)
  */
 export function setMeshRotationX(degrees) {
-    currentMeshRotationX = degrees;
     if (sphere) {
         sphere.rotation.x = THREE.MathUtils.degToRad(degrees);
     }
@@ -249,7 +242,6 @@ export function setMeshRotationX(degrees) {
  * @param {number} degrees - Rotation in degrees (-30 to +30)
  */
 export function setMeshRotationZ(degrees) {
-    currentMeshRotationZ = degrees;
     if (sphere) {
         sphere.rotation.z = THREE.MathUtils.degToRad(degrees);
     }

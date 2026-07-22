@@ -20,7 +20,6 @@ import { batchUpdateProject, resetProjectReviewed } from './api.js';
 let panelEl = null;
 let isSaving = false;
 let sphericalGridVisible = false;
-let groundGridVisible = false;
 
 // Collapsible section state (persisted in localStorage)
 const collapsedSections = new Map();
@@ -52,7 +51,6 @@ let onNextPhotoCallback = null;
 let onPrevPhotoCallback = null;
 let onBackToProjectsCallback = null;
 let onSphericalGridToggleCallback = null;
-let onGroundGridToggleCallback = null;
 let onAddTargetCallback = null;
 let onDeleteTargetCallback = null;
 let onNearbyPreviewToggleCallback = null;
@@ -142,7 +140,6 @@ export function initPanel(container, options = {}) {
     onPrevPhotoCallback = options.onPrevPhoto || null;
     onBackToProjectsCallback = options.onBackToProjects || null;
     onSphericalGridToggleCallback = options.onSphericalGridToggle || null;
-    onGroundGridToggleCallback = options.onGroundGridToggle || null;
     onAddTargetCallback = options.onAddTarget || null;
     onDeleteTargetCallback = options.onDeleteTarget || null;
     onNearbyPreviewToggleCallback = options.onNearbyPreviewToggle || null;
@@ -194,35 +191,19 @@ function buildStructureSignature(s, targets, selectedTarget) {
     const collapsedSig = ['sliders', 'batch', 'targets', 'nearby']
         .map(k => `${k}:${isSectionCollapsed(k) ? 1 : 0}`)
         .join(',');
-    // Valores exibidos no editor de override (quando aberto). O editor de override
-    // nao e atualizado pelo caminho rapido, entao qualquer mudanca nesses valores
-    // deve forcar o rebuild completo para mante-lo sincronizado.
-    let overrideSig = '';
-    if (selectedTarget) {
-        const eff =
-            s.editedTargetOverrides.get(selectedTarget.id) ||
-            s.originalTargetOverrides.get(selectedTarget.id) ||
-            {};
-        // distance_scale entra na assinatura porque, sem override, a distancia
-        // default exibida no editor deriva dele.
-        overrideSig = `${eff.bearing ?? ''}|${eff.distance ?? ''}|${eff.height ?? ''}|${s.editedDistanceScale ?? ''}`;
-    }
-
     return [
         hasProject ? 1 : 0,
         s.currentPhotoId || '',
         // Badge "REVISADA" + rotulo/classe do botao de revisao dependem disto.
         s.calibrationReviewed ? 1 : 0,
-        // Presenca/identidade do editor de override (estrutura distinta por target
-        // e por modo set-from-click / overrides existentes / oculto / manual).
+        // Identidade das acoes do target selecionado: o rotulo Ocultar/Mostrar
+        // depende do estado hidden, e a presenca de "Remover Conexao" depende de
+        // is_original === false.
         selectedTarget ? selectedTarget.id : '',
-        selectedTarget ? (s.editedTargetOverrides.has(selectedTarget.id) ? 1 : 0) : 0,
-        selectedTarget ? (s.originalTargetOverrides.has(selectedTarget.id) ? 1 : 0) : 0,
         selectedTarget ? (isTargetHidden(selectedTarget.id) ? 1 : 0) : 0,
         selectedTarget ? (selectedTarget.is_original === false ? 1 : 0) : 0,
         nearbyPreviewEnabled ? 1 : 0,
         previewingNearbyId || '',
-        overrideSig,
         collapsedSig,
         targetsSig,
         photosSig,
@@ -690,14 +671,6 @@ function attachEvents() {
             if (onSphericalGridToggleCallback) onSphericalGridToggleCallback(sphericalGridVisible);
         });
     }
-    const groundGridToggle = document.getElementById('ground-grid-toggle');
-    if (groundGridToggle) {
-        groundGridToggle.checked = groundGridVisible;
-        groundGridToggle.addEventListener('change', (e) => {
-            groundGridVisible = e.target.checked;
-            if (onGroundGridToggleCallback) onGroundGridToggleCallback(groundGridVisible);
-        });
-    }
 
     // mesh_rotation_y slider
     const meshSlider = document.getElementById('mesh-rot-slider');
@@ -1052,16 +1025,6 @@ async function handleResetReviewed() {
 export function setSphericalGridToggleState(visible) {
     sphericalGridVisible = visible;
     const el = document.getElementById('spherical-grid-toggle');
-    if (el) el.checked = visible;
-}
-
-/**
- * Updates the ground grid toggle state (called from keyboard shortcut).
- * @param {boolean} visible - Whether the ground grid is visible
- */
-export function setGroundGridToggleState(visible) {
-    groundGridVisible = visible;
-    const el = document.getElementById('ground-grid-toggle');
     if (el) el.checked = visible;
 }
 
