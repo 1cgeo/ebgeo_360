@@ -6,6 +6,7 @@
  *
  * Produces:
  *   - fotos.pmtiles — Point layer with one feature per photo
+ *   - fotos_linha.pmtiles — Line layer with the capture track (from project_tracks)
  *
  * Requires tippecanoe: either installed locally or via Docker.
  * If tippecanoe is not found locally, falls back to Docker image "tippecanoe:latest".
@@ -96,10 +97,14 @@ if (useDocker) {
  */
 function runTippecanoe(tippecanoeArgs, mountDir) {
   if (useDocker) {
+    // A imagem nao define ENTRYPOINT (Cmd = /bin/bash), entao o binario precisa
+    // ser nomeado explicitamente — sem isso o runc tenta executar o primeiro
+    // argumento ('-o') como se fosse o programa.
     const dockerArgs = [
       'run', '--rm',
       '-v', `${mountDir}:/data`,
       'tippecanoe:latest',
+      'tippecanoe',
       ...tippecanoeArgs,
     ];
     execFileSync('docker', dockerArgs, { stdio: 'inherit' });
@@ -175,6 +180,50 @@ await new Promise((resolveStream, rejectStream) => {
 console.log(`  ${pointCount} point features written.`);
 
 // ============================================================
+// Phase 1b: Generate track GeoJSON (linhas)
+// ============================================================
+//
+// O tracado sai de `project_tracks`, populado por scripts/import-tracks.js.
+// Antes a camada de linha era mantida a mao: decodificava-se o proprio PMTiles,
+// mesclava-se o geojson do lote novo e re-encodava. Cada volta desse ciclo
+// passava a geometria por mais uma simplificacao do tippecanoe, entao a linha
+// perdia vertices a cada importacao. Gerando do banco, a fonte e sempre a
+// mesma e o resultado nao degrada.
+
+console.log('[1b] Generating track GeoJSON from project_tracks...');
+
+const tracksPath = join(outputDir, '_fotos_linha.geojson');
+const tracksStmt = db.prepare(`
+  SELECT pr.slug AS origem, t.coords
+  FROM project_tracks t
+  JOIN projects pr ON pr.id = t.project_id
+  ORDER BY pr.slug, t.id
+`);
+
+let trackCount = 0;
+let vertexCount = 0;
+const trackStream = createWriteStream(tracksPath);
+try {
+  for (const t of tracksStmt.iterate()) {
+    const coords = JSON.parse(t.coords);
+    trackStream.write(`${JSON.stringify({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: coords },
+      properties: { origem: t.origem },
+    })}\n`);
+    trackCount++;
+    vertexCount += coords.length;
+  }
+} finally {
+  trackStream.end();
+}
+await new Promise((resolveStream, rejectStream) => {
+  trackStream.on('finish', resolveStream);
+  trackStream.on('error', rejectStream);
+});
+console.log(`  ${trackCount} track features written (${vertexCount} vertices).`);
+
+// ============================================================
 // Phase 2: Run tippecanoe for points
 // ============================================================
 
@@ -204,25 +253,65 @@ const tippecanoeArgs = useDocker
       pointsPath,
     ];
 
+// Zoom maximo da camada de LINHA. Nao pode ser `-zg`: o tippecanoe escolhe um
+// teto pela distancia media entre feicoes e quantiza a geometria a resolucao
+// daquele tile. Em z11 (o valor herdado do arquivo antigo) cada unidade vale
+// ~5 m; em z14 vale ~0,55 m, bem abaixo dos 13-19 m entre fotos consecutivas.
+const TRACK_MAXZOOM = 14;
+
+// `--no-line-simplification` e o que realmente faz o tracado bater com a fonte.
+// Sem ele o tippecanoe simplifica ate no zoom maximo: no DCMun, 305 dos 1437
+// vertices do geojson ficavam a mais de 1 m de qualquer vertice gravado. O
+// comprimento total se preservava, mas as curvas viravam retas.
+const trackArgs = (saida, entrada) => [
+  '-o', saida,
+  '-l', 'fotos_linha',
+  '-z', String(TRACK_MAXZOOM),
+  '--no-line-simplification',
+  '--no-simplification-of-shared-nodes',
+  '--no-feature-limit',
+  '--no-tile-size-limit',
+  '--force',
+  entrada,
+];
+
 let exitCode = 0;
 try {
   runTippecanoe(tippecanoeArgs, outputDir);
   console.log(`  fotos.pmtiles generated at ${pointsOutput}`);
 
+  const tracksOutput = join(outputDir, 'fotos_linha.pmtiles');
+  if (trackCount > 0) {
+    console.log('[2b] Running tippecanoe for the track (fotos_linha.pmtiles)...');
+    runTippecanoe(
+      useDocker
+        ? trackArgs('/data/fotos_linha.pmtiles', '/data/_fotos_linha.geojson')
+        : trackArgs(tracksOutput, tracksPath),
+      outputDir,
+    );
+    console.log(`  fotos_linha.pmtiles generated at ${tracksOutput}`);
+  } else {
+    console.log('[2b] project_tracks vazia — fotos_linha.pmtiles nao regenerado.');
+    console.log('     Rode: node scripts/import-tracks.js');
+  }
+
   // Summary
   console.log('\nDone!');
   console.log(`  ${projectSlugs.size} projects`);
   console.log(`  ${pointCount} photo points → fotos.pmtiles`);
+  if (trackCount > 0) console.log(`  ${trackCount} track lines → fotos_linha.pmtiles (maxzoom ${TRACK_MAXZOOM})`);
   console.log(`  Output: ${outputDir}`);
 } catch (error) {
-  console.error('Error running tippecanoe for points:', error.message);
+  console.error('Error running tippecanoe:', error.message);
   exitCode = 1;
 } finally {
-  // Remove o GeoJSON temporario tanto em sucesso quanto em falha.
-  try {
-    unlinkSync(pointsPath);
-  } catch {
-    // Ignore cleanup errors
+  // Remove os GeoJSON temporarios tanto em sucesso quanto em falha.
+  for (const tmp of [pointsPath, tracksPath]) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      // Ignore cleanup errors
+    }
   }
   db.close();
 }

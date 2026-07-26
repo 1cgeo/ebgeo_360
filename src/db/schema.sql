@@ -74,6 +74,27 @@ CREATE TABLE IF NOT EXISTS deleted_photos (
     deleted_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Tracado da captura, uma LineString por linha.
+--
+-- E a MESMA linha que vai para o fotos_linha.pmtiles, so que aqui atribuida a
+-- um projeto. Guardar no banco tira a dependencia do PMTiles para qualquer
+-- consumidor que precise do tracado de um projeto so (o modo mapa da
+-- calibracao), e inverte a direcao da geracao: o PMTiles passa a sair daqui,
+-- em vez de ser decodificado e remesclado a cada importacao.
+--
+-- `coords` e um JSON [[lon,lat],...]. SQLite nao tem tipo geometrico e o
+-- consumo e sempre "devolva a linha inteira deste projeto" — nunca uma consulta
+-- espacial sobre os vertices —, entao um blob JSON serve e evita uma tabela de
+-- vertices com milhoes de linhas.
+CREATE TABLE IF NOT EXISTS project_tracks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id  TEXT NOT NULL REFERENCES projects(id),
+    coords      TEXT NOT NULL,
+    source      TEXT NOT NULL DEFAULT 'geojson'
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_tracks_project ON project_tracks(project_id);
+
 CREATE INDEX IF NOT EXISTS idx_photos_project ON photos(project_id);
 CREATE INDEX IF NOT EXISTS idx_photos_original ON photos(original_name);
 CREATE INDEX IF NOT EXISTS idx_targets_source ON targets(source_id);

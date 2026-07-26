@@ -153,6 +153,30 @@ function stmts() {
         AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
 
+    // ---- Modo mapa da calibracao ----
+    // Tudo que o mapa do projeto precisa por foto: posicao, estado de revisao e
+    // os tres angulos, para o operador ver os parametros sem abrir a foto.
+    mapPhotosByProjectSlug: db.prepare(`
+      SELECT ph.id, ph.display_name, ph.sequence_number, ph.lon, ph.lat,
+             ph.heading, ph.mesh_rotation_y, ph.mesh_rotation_x, ph.mesh_rotation_z,
+             ph.calibration_reviewed
+      FROM photos ph
+      JOIN projects p ON p.id = ph.project_id
+      WHERE p.slug = ?
+        AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)
+      ORDER BY ph.sequence_number ASC
+    `),
+
+    // Tracado da captura do projeto (project_tracks), populado por
+    // scripts/import-tracks.js a partir do geojson do levantamento.
+    tracksByProjectSlug: db.prepare(`
+      SELECT t.coords
+      FROM project_tracks t
+      JOIN projects p ON p.id = t.project_id
+      WHERE p.slug = ?
+      ORDER BY t.id
+    `),
+
     // ---- Batch calibration (writes) ----
     batchUpdateMeshRotationY: db.prepare(`
       UPDATE photos SET mesh_rotation_y = ?
@@ -400,6 +424,25 @@ export function getPhotosByProjectSlug(slug) {
  */
 export function getReviewStatsByProjectSlug(slug) {
   return stmts().reviewStatsByProjectSlug.get(slug);
+}
+
+/**
+ * Gets every photo of a project with position, review state and the three
+ * calibration angles — o payload do modo mapa da calibracao.
+ * @param {string} slug - Project slug
+ * @returns {Array<Object>} Rows ordered by sequence_number
+ */
+export function getMapPhotosByProjectSlug(slug) {
+  return stmts().mapPhotosByProjectSlug.all(slug);
+}
+
+/**
+ * Gets the capture track of a project as arrays of [lon, lat].
+ * @param {string} slug - Project slug
+ * @returns {Array<Array<[number, number]>>} One entry per LineString
+ */
+export function getTracksByProjectSlug(slug) {
+  return stmts().tracksByProjectSlug.all(slug).map(r => JSON.parse(r.coords));
 }
 
 // ---- Batch calibration functions ----
