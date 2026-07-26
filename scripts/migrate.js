@@ -71,6 +71,16 @@ function parseArgs() {
 // ============================================================
 
 const PROJECTS = [
+  // === Lote 2026-07 (fonte D:\dados_ebgeo) ===
+  // AMAN: substituição do projeto antigo (5.312 fotos) pelo lote streetviewaman
+  // (11.756). Rodar com --metadata apontando para a pasta PREPARADA — os JSONs
+  // da fonte não têm `next` e trazem 166 targets longos redundantes.
+  // Ver docs/migracao-aman.md.
+  { name: 'Academia Militar das Agulhas Negras', slug: 'aman', description: 'Imagens panorâmicas da Academia Militar das Agulhas Negras', capture_date: '2025-11-06', location: 'Resende, RJ', lat: -22.439251, lon: -44.380062, entryPhoto: 'MULTICAPTURA_7674_000990' },
+
+  // DCMun — JÁ IMPORTADO em 2026-07-26 (1.235 fotos). Ver docs/migracao-dcmun.md.
+  // { name: 'Depósito Central de Munição', slug: 'dcmun', description: 'Imagens panorâmicas do Depósito Central de Munição', capture_date: '2026-06-23', location: 'Paracambi, RJ', lat: -22.660976, lon: -43.714590, entryPhoto: 'MULTICAPTURA_0000_000154' },
+
   // === Lote 2026 (SANTIAGO/METADADOS + FAXINAL + SAICA, fonte D:\360\data\Nao_Processados) — JÁ IMPORTADOS, comentados (UUIDs randômicos: re-rodar duplicaria; apagar linhas do slug antes de re-migrar) ===
   // { name: 'Santa Cruz', slug: 'santa_cruz', description: 'Imagens panorâmicas em Santa Cruz', capture_date: '2026-02-25', location: 'Santa Cruz do Sul, RS', lat: -29.819208, lon: -52.374102, entryPhoto: 'PIC_20260225_112413_26_02_25_14_14_49_output_079' },
   // { name: 'Santiago', slug: 'santiago', description: 'Imagens panorâmicas em Santiago', capture_date: '2026-02-26', location: 'Santiago, RS', lat: -29.125918, lon: -54.919573, entryPhoto: 'PIC_20260301_100418_26_03_01_10_46_39_output_124' },
@@ -124,6 +134,47 @@ function bearing(lat1, lon1, lat2, lon2) {
   const x = Math.cos(lat1 * DEG_TO_RAD) * Math.sin(lat2 * DEG_TO_RAD) -
             Math.sin(lat1 * DEG_TO_RAD) * Math.cos(lat2 * DEG_TO_RAD) * Math.cos(dLon);
   return ((Math.atan2(y, x) * RAD_TO_DEG) + 360) % 360;
+}
+
+// ============================================================
+// Leitura resiliente do disco de origem
+// ============================================================
+
+/** Tentativas de leitura por imagem antes de desistir dela. */
+const IMAGE_READ_ATTEMPTS = 8;
+/** Quanto esperar, no máximo, um HD externo desconectado voltar. */
+const DRIVE_WAIT_MS = 30 * 60 * 1000;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Espera o diretório de origem reaparecer.
+ *
+ * Um HD externo que cai não volta em milissegundos, e às vezes precisa de
+ * intervenção física. Em vez de queimar as tentativas contra um caminho morto,
+ * sonda o diretório e avisa no console, dando tempo de reconectar o cabo sem
+ * perder a migração inteira.
+ *
+ * @param {string} dir - Diretório que deve existir
+ * @param {number} [limitMs] - Desistir depois disso
+ * @returns {Promise<boolean>} true se o diretório voltou
+ */
+async function waitForDrive(dir, limitMs = DRIVE_WAIT_MS) {
+  if (existsSync(dir)) return true;
+  const start = Date.now();
+  let warned = false;
+  while (Date.now() - start < limitMs) {
+    if (existsSync(dir)) {
+      console.log(`\n  Drive back after ${((Date.now() - start) / 1000).toFixed(0)}s, resuming.`);
+      return true;
+    }
+    if (!warned) {
+      console.log(`\n  WAITING: ${dir} disappeared — reconnect the drive (giving up in ${limitMs / 60000} min)`);
+      warned = true;
+    }
+    await sleep(5000);
+  }
+  return false;
 }
 
 /**
@@ -843,27 +894,44 @@ async function processImages(opts, projects, sequences, photoUUIDs, indexDb) {
           const uuid = photoUUIDs.get(originalName);
           const imgPath = join(opts.images, `${originalName}.jpg`);
 
-          if (!existsSync(imgPath)) {
+          if (!existsSync(imgPath) && !(await waitForDrive(opts.images))) {
             errors++;
             chunkErrors.push({ originalName, reason: 'JPG file not found' });
             return null;
           }
 
-          try {
-            const imgBuffer = readFileSync(imgPath);
-            // Decodifica o JPG uma única vez; `clone()` reusa o pipeline já
-            // decodificado para gerar as duas saídas WebP (evita decode duplo).
-            const base = sharp(imgBuffer);
-            const [fullBuf, prevBuf] = await Promise.all([
-              base.clone().webp({ quality: 80 }).toBuffer(),
-              base.clone().resize(512, 256, { fit: 'fill' }).webp({ quality: 70 }).toBuffer(),
-            ]);
-            return { uuid, fullBuf, prevBuf };
-          } catch (err) {
-            errors++;
-            chunkErrors.push({ originalName, reason: err.message });
-            return null;
+          // Retry com espera crescente. Ler de HD externo falha de dois jeitos
+          // que não são corrupção: o drive engasga sob leitura paralela
+          // sustentada ("UNKNOWN: unknown error, read") ou desconecta de vez.
+          // Sem retry uma migração de 11.756 fotos perdeu 8.972 imagens, e as
+          // MESMAS leituras passaram depois, uma a uma.
+          for (let attempt = 1; attempt <= IMAGE_READ_ATTEMPTS; attempt++) {
+            try {
+              const imgBuffer = readFileSync(imgPath);
+              // Decodifica o JPG uma única vez; `clone()` reusa o pipeline já
+              // decodificado para gerar as duas saídas WebP (evita decode duplo).
+              const base = sharp(imgBuffer);
+              const [fullBuf, prevBuf] = await Promise.all([
+                base.clone().webp({ quality: 80 }).toBuffer(),
+                base.clone().resize(512, 256, { fit: 'fill' }).webp({ quality: 70 }).toBuffer(),
+              ]);
+              return { uuid, fullBuf, prevBuf };
+            } catch (err) {
+              if (attempt === IMAGE_READ_ATTEMPTS) {
+                errors++;
+                chunkErrors.push({ originalName, reason: err.message });
+                return null;
+              }
+              // Diretório inteiro sumiu = drive desconectado, não arquivo ruim.
+              if (!existsSync(opts.images) && !(await waitForDrive(opts.images))) {
+                errors++;
+                chunkErrors.push({ originalName, reason: 'drive did not come back' });
+                return null;
+              }
+              await sleep(Math.min(30000, 300 * 2 ** attempt));
+            }
           }
+          return null;
         });
 
         const results = await runWithConcurrency(tasks, CHUNK_SIZE);
