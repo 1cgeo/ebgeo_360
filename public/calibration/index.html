@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EBGeo360 — Calibração</title>
 
+    <!-- Favicon embutido. Sem ele o browser pede /favicon.ico em toda carga e o
+         404 resultante suja o console de quem esta depurando a interface. -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23181825' stroke='%2389b4fa' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%2389b4fa'/%3E%3C/svg%3E" />
+
     <!-- Resource hints: pre-resolve DNS/TLS para as origens externas no caminho de carga.
          cdn.jsdelivr.net serve MapLibre + Three; tile.openstreetmap.org serve os tiles do minimapa. -->
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
@@ -100,6 +104,223 @@
                região atrás do painel a cada frame — um dos efeitos mais caros de GPU.
                O background rgba(24,24,37,0.92) já é quase opaco, então o ganho visual
                do blur era marginal. Mantemos o fundo semi-opaco sólido existente. */
+        }
+
+        /* ================================================================
+           MODO MAPA DO PROJETO — cobre o viewer inteiro, com o painel de
+           calibracao continuando visivel a direita.
+           ================================================================ */
+        #project-map {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 360px;
+            bottom: 0;
+            z-index: 30;
+            background: #11111b;
+        }
+
+        #project-map[hidden] {
+            display: none;
+        }
+
+        .pmap__canvas {
+            position: absolute;
+            inset: 0;
+        }
+
+        .pmap--carregando::after {
+            content: 'Carregando o projeto...';
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(17, 17, 27, 0.75);
+            color: #cdd6f4;
+            font-size: 14px;
+            z-index: 3;
+        }
+
+        .pmap__legend {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 2;
+            background: rgba(24, 24, 37, 0.94);
+            border: 1px solid #313244;
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: #cdd6f4;
+            font-size: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 190px;
+        }
+
+        .pmap__legend-close {
+            background: #313244;
+            color: #cdd6f4;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .pmap__legend-close:hover {
+            background: #45475a;
+        }
+
+        .pmap__legend-stat {
+            font-weight: 600;
+        }
+
+        .pmap__legend-keys {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            color: #a6adc8;
+        }
+
+        .pmap__legend-keys i {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+
+        /* O trajeto e linha, nao ponto: a amostra na legenda acompanha. */
+        .pmap__legend-keys i.pmap__legend-linha {
+            width: 14px;
+            height: 3px;
+            border-radius: 2px;
+        }
+
+        .pmap__card {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            z-index: 2;
+            width: 300px;
+            background: rgba(24, 24, 37, 0.96);
+            border: 1px solid #313244;
+            border-radius: 10px;
+            padding: 12px;
+            color: #cdd6f4;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .pmap__card[hidden] {
+            display: none;
+        }
+
+        .pmap__card-close {
+            position: absolute;
+            top: 6px;
+            right: 8px;
+            background: transparent;
+            border: none;
+            color: #a6adc8;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .pmap__card-close:hover {
+            color: #f38ba8;
+        }
+
+        .pmap__card-img {
+            width: 100%;
+            aspect-ratio: 2 / 1;
+            object-fit: cover;
+            border-radius: 6px;
+            background: #11111b;
+            display: block;
+        }
+
+        .pmap__card-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .pmap__card-name {
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .pmap__card-sub {
+            font-size: 11px;
+            color: #a6adc8;
+        }
+
+        .pmap__badge {
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: #45475a;
+            color: #cdd6f4;
+        }
+
+        .pmap__badge--ok {
+            background: #a6e3a1;
+            color: #11111b;
+        }
+
+        .pmap__angles {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+        }
+
+        .pmap__angle {
+            background: #1e1e2e;
+            border: 1px solid #313244;
+            border-radius: 6px;
+            padding: 5px 4px;
+            text-align: center;
+        }
+
+        .pmap__angle span {
+            display: block;
+            font-size: 10px;
+            color: #a6adc8;
+        }
+
+        .pmap__angle strong {
+            font-size: 13px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .pmap__card-btn {
+            background: #89b4fa;
+            color: #11111b;
+            border: none;
+            border-radius: 6px;
+            padding: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .pmap__card-btn:hover:not(:disabled) {
+            background: #b4befe;
+        }
+
+        .pmap__card-btn:disabled {
+            background: #313244;
+            color: #6c7086;
+            cursor: default;
         }
 
         /* ================================================================
@@ -1004,6 +1225,9 @@
                 <div class="loading-spinner"></div>
             </div>
         </div>
+
+        <!-- Modo mapa do projeto (sobrepoe o viewer; oculto por padrao) -->
+        <div id="project-map" hidden></div>
 
         <!-- Calibration sidebar -->
         <div id="calibration-panel">

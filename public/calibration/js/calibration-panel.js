@@ -47,6 +47,7 @@ let onMeshRotationXPreview = null;
 let onMeshRotationZPreview = null;
 let onNavigateToPhoto = null;
 let onMarkReviewedCallback = null;
+let onOpenProjectMapCallback = null;
 let onNextPhotoCallback = null;
 let onPrevPhotoCallback = null;
 let onBackToProjectsCallback = null;
@@ -145,6 +146,7 @@ export function initPanel(container, options = {}) {
     onNearbyPreviewToggleCallback = options.onNearbyPreviewToggle || null;
     onNearbySelectCallback = options.onNearbySelect || null;
     onDeletePhotoCallback = options.onDeletePhoto || null;
+    onOpenProjectMapCallback = options.onOpenProjectMap || null;
 
     // Initialize collapsed state from localStorage
     initCollapsedState();
@@ -362,6 +364,9 @@ function renderPanel(s) {
             <span class="cal-panel__photo-counter">${photoIdx} / ${totalPhotos}</span>
             <button id="btn-next-photo" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost" title="Proxima foto">&rarr;</button>
         </div>
+        <button id="btn-project-map" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost" title="Ver o projeto inteiro no mapa [M]">
+            Mapa do projeto [M]
+        </button>
         ` : ''}
 
         <div class="cal-panel__section">
@@ -921,6 +926,10 @@ function attachEvents() {
 
     document.getElementById('btn-back-projects')?.addEventListener('click', () => {
         if (onBackToProjectsCallback) onBackToProjectsCallback();
+    });
+
+    document.getElementById('btn-project-map')?.addEventListener('click', () => {
+        if (onOpenProjectMapCallback) onOpenProjectMapCallback();
     });
 
     // Open photo JSON in new tab

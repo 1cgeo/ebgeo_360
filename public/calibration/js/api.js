@@ -157,6 +157,30 @@ export async function fetchProjectPhotos(slug, { signal } = {}) {
 }
 
 /**
+ * Fetches everything the calibration map mode draws for one project:
+ * photos with position, review state and the three angles, plus the capture
+ * track as arrays of coordinates.
+ * @param {string} slug - Project slug
+ * @param {{ signal?: AbortSignal }} [options] - Opcoes de cancelamento
+ * @returns {Promise<{slug: string, photos: Array, track: Array, bounds: Array<number>, reviewStats: {total: number, reviewed: number}}>}
+ */
+export async function fetchProjectMap(slug, { signal } = {}) {
+    const { signal: reqSignal, cleanup } = withTimeout(signal);
+    try {
+        const response = await fetch(`${BASE}/projects/${slug}/map`, {
+            cache: 'no-cache',
+            signal: reqSignal,
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch map for project ${slug} (HTTP ${response.status})`);
+        }
+        return await response.json();
+    } finally {
+        cleanup();
+    }
+}
+
+/**
  * Saves the mesh_rotation_x calibration value for a photo.
  * @param {string} photoId - Photo UUID
  * @param {number} meshRotationX - New mesh_rotation_x value in degrees

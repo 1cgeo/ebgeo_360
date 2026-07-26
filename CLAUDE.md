@@ -31,7 +31,10 @@ installing a compiler.
 npm start              # Start server (node --env-file=.env src/server.js)
 npm run dev            # Dev server with auto-restart (--watch)
 npm run migrate        # Import JSON metadata + JPG images into SQLite
-npm run generate-pmtiles  # Generate PMTiles for map markers
+npm run generate-pmtiles  # Generate fotos.pmtiles + fotos_linha.pmtiles from index.db
+npm run import-tracks     # Populate project_tracks (capture track) from geojson/PMTiles
+# Import photos that exist in fotos.geojson + images but have no metadata JSON:
+node scripts/import-geojson-photos.js --slug <slug> --geojson <fotos.geojson> --images <dir>
 npm run cleanup-wal    # Checkpoint/clean SQLite WAL files
 npm test               # Run tests (node:test built-in)
 npm run lint           # ESLint (--max-warnings 0); ignores public/ and docs/
@@ -72,7 +75,7 @@ public/calibration/        # Calibration web interface
 
 tests/
 ├── unit/                  # cache, orientation (quaternion), calibration-horizon-marker
-├── integration/           # health, projects, photos, calibration, queries
+├── integration/           # health, projects, photos, calibration, project-map, queries
 └── helpers/               # build-app.js (Fastify builder), test-db.js (seed data)
 ```
 
@@ -87,6 +90,55 @@ tests/
 - **targets** — Navigation graph (source→target with distance, bearing, hidden, is_original; plus the inert override_*)
 - **deleted_photos** — soft-delete tombstones
 - **photos_rowid** — stable rowid mapping for the R-tree
+- **project_tracks** — capture track, one LineString per row (`coords` = JSON `[[lon,lat],…]`)
+
+### Photos with an image but no metadata JSON
+
+`migrate.js` walks the METADATA directory, so a photo that has a JPG and a point
+in `fotos.geojson` but no `.json` is invisible to it — 578 of AMAN's 12.334 were
+in that state. `scripts/import-geojson-photos.js` imports them from the geojson.
+
+The interesting part is `heading`, without which the viewer cannot place markers.
+It is recovered as **the bearing to the next photo in `time_img` order along the
+track**. The direction matters: a LineString is not always drawn the way the
+vehicle drove (209 of AMAN's 445 segments are reversed), and using the raw
+segment direction puts 3% of headings 180° out. Measured against the 11.753
+photos that do have a heading, the time-ordered bearing lands within 1.3° at the
+median and 30° at p97.7, with no inverted cases.
+
+The script is **re-runnable**, which matters when reading from an external drive:
+the image step converts every photo of the project that has no BLOB, rather than
+only the rows it just inserted. Inserting rows first and converting after — the
+obvious order — silently strands photos if the drive drops mid-run, because the
+next run sees them as already imported. Both this script and `migrate.js` retry
+reads 8 times with backoff and wait up to 30 min for a disconnected drive to come
+back.
+
+### The capture track lives in the database
+
+`project_tracks` holds the same geometry as `fotos_linha.pmtiles`, but attributed
+to a project. `scripts/import-tracks.js` populates it, preferring
+`data/_source_backup/{slug}_fotos_linha.geojson` and falling back to decoding the
+PMTiles for projects whose source geojson is not on this machine. Legacy PMTiles
+features carry no project, so they are attributed by proximity: each vertex votes
+for the project owning the nearest photo (worst vertex lands 28 m from a photo of
+the chosen project; median 3.5 m).
+
+`generate-pmtiles.js` then builds **both** layers from the database, so the
+PMTiles is a derivative of the DB rather than its own lineage. The old workflow —
+decode the PMTiles, merge the new batch's geojson, re-encode — pushed the
+geometry through another simplification pass on every import.
+
+Two flags matter when encoding the line and are easy to lose:
+
+- `-z14`, never `-zg`. Tippecanoe quantises geometry to the finest tile; at the
+  inherited `z11` a unit is ~5 m, at z14 it is ~0.55 m — well under the 13–19 m
+  between consecutive photos.
+- `--no-line-simplification`. Tippecanoe simplifies even at max zoom. Without
+  this flag 305 of DCMun's 1437 source vertices ended up more than 1 m from any
+  stored vertex: total length survived, curves became straight lines. With it,
+  the worst deviation across DCMun/AMAN/Faxinal is **0.44 m**, which is just the
+  z14 grid.
 
 ### {slug}.db (Per-project images)
 - **images** — photo_id → full_webp BLOB + preview_webp BLOB
@@ -137,6 +189,7 @@ tests/
 | `DELETE /api/v1/targets/:sourceId/:targetId` | Delete a target (is_original=0 only) |
 | `DELETE /api/v1/photos/:uuid` | Soft-delete a photo (tombstone in `deleted_photos`) |
 | `GET /api/v1/projects/:slug/photos` | List photos with review status |
+| `GET /api/v1/projects/:slug/map` | Map mode payload: every photo with position, review state and the 3 angles, plus the capture track |
 | `POST /api/v1/projects/:slug/reset-reviewed` | Reset all photos to unreviewed |
 | `PUT /api/v1/projects/:slug/batch-calibration` | Batch update calibration fields for all photos |
 
@@ -342,13 +395,43 @@ app.js (orchestrator)
 ├── calibration-panel.js  Sidebar panel: sliders, target list, save/discard, review workflow
 ├── preview-viewer.js  Mini Three.js viewer: shows target/nearby photo 360 preview
 ├── minimap.js         MapLibre GL minimap: camera position, targets, nearby photos
+├── project-map.js     MapLibre GL project map mode: whole project, click to preview/enter
 ├── state.js           Centralized state + onChange listeners (notify pattern)
 ├── api.js             REST API client (fetch wrappers)
 └── constants.js       NAV_CONSTANTS shared between projector/renderer
 ```
 
+### Project Map Mode
+
+Toggled with `M` or the "Mapa do projeto" button in the panel; `Escape` also
+closes it. Covers the viewer (the panel stays visible) and shows **one project**
+— joining projects would only inflate the payload.
+
+- Points are coloured by review state (green reviewed / amber pending) with the
+  photo open in the viewer highlighted in blue.
+- Clicking a point opens a card with the `preview` WebP, the review badge, the
+  three angles (`mesh_rotation_y/x/z`) and an "Entrar na foto" button that goes
+  through `navigateToPhoto` — so the dirty-state dialog still applies.
+- Marking a photo reviewed repaints it on the map immediately
+  (`setPhotoReviewedOnMap`); the payload is only re-fetched when the project
+  changes.
+
+The track is the **same line as `fotos_linha.pmtiles`**, stored per project in
+`project_tracks` (see below). The PMTiles file itself is not usable here: it is
+one file holding every project, and the 21 pre-2026 ones are all written as
+`origem = 'legado'` with no way to tell them apart.
+
+The track is drawn twice, with crossfaded opacity: **under** the points above
+zoom 17.5, **over** them below 16.5. Below z17 the photo dots touch each other
+(15 m apart is 6.8 px at z16, and the dot radius is already 5 px), so a line
+underneath is completely hidden — which is exactly the scale where the survey
+shape matters most.
+
+MapLibre is only instantiated on first open, so a calibration session that never
+opens the map pays no extra WebGL context.
+
 ### Panel Structure (top to bottom)
-1. Review nav — project progress bar, prev/next photo buttons
+1. Review nav — project progress bar, prev/next photo buttons, "Mapa do projeto [M]"
 2. Photo section — display name + reviewed badge (no coords/UUID)
 3. Grid toggle — perspective grid on/off
 4. Save/Discard buttons — enabled when dirty

@@ -18,6 +18,8 @@ import {
   updateCalibrationReviewed,
   getPhotosByProjectSlug,
   getReviewStatsByProjectSlug,
+  getMapPhotosByProjectSlug,
+  getTracksByProjectSlug,
   batchUpdateMeshRotationY,
   batchUpdateMeshRotationX,
   batchUpdateMeshRotationZ,
@@ -169,6 +171,55 @@ export default async function calibrationRoutes(fastify) {
         total: stats.total,
         reviewed: stats.reviewed,
       },
+    };
+  });
+
+  // GET /api/v1/projects/:slug/map — tudo que o modo mapa da calibracao desenha
+  //
+  // Um projeto so, sempre: o mapa serve para revisar UM levantamento, e juntar
+  // projetos so encareceria o payload sem servir a ninguem.
+  //
+  // O tracado vem de `project_tracks` — a MESMA linha do fotos_linha.pmtiles,
+  // so que guardada por projeto no banco (ver scripts/import-tracks.js). Servir
+  // daqui evita expor o PMTiles, que e um arquivo unico com os 28 projetos
+  // misturados e sem como separar os antigos, todos gravados como
+  // `origem = 'legado'`.
+  fastify.get('/api/v1/projects/:slug/map', async (request, reply) => {
+    const { slug } = request.params;
+
+    const rows = getMapPhotosByProjectSlug(slug);
+    if (!rows.length) {
+      reply.code(404);
+      return { error: 'Project not found or has no photos' };
+    }
+
+    // Arrays curtos em vez de GeoJSON completo: um projeto grande tem ~17 mil
+    // fotos, e repetir as chaves de Feature/geometry/properties em cada uma
+    // multiplicaria o corpo da resposta. O cliente monta o GeoJSON.
+    const photos = rows.map(p => ({
+      id: p.id,
+      name: p.display_name,
+      seq: p.sequence_number,
+      lon: p.lon,
+      lat: p.lat,
+      heading: p.heading,
+      ry: p.mesh_rotation_y,
+      rx: p.mesh_rotation_x,
+      rz: p.mesh_rotation_z,
+      reviewed: Boolean(p.calibration_reviewed),
+    }));
+
+    const track = getTracksByProjectSlug(slug);
+
+    const lons = rows.map(p => p.lon);
+    const lats = rows.map(p => p.lat);
+
+    return {
+      slug,
+      photos,
+      track,
+      bounds: [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)],
+      reviewStats: getReviewStatsByProjectSlug(slug),
     };
   });
 

@@ -41,6 +41,10 @@ import {
     showRearView, updateRearViewRotation, showTargetActions, updateHideButtonState,
     syncRearViewCamera, setRearViewTargets, disposePreviewViewer,
 } from './preview-viewer.js';
+import {
+    initProjectMap, openProjectMap, closeProjectMap, isProjectMapOpen,
+    setPhotoReviewedOnMap, setCurrentPhotoOnMap, disposeProjectMap,
+} from './project-map.js';
 
 // ============================================================================
 // DOM ELEMENTS
@@ -51,6 +55,7 @@ let panelContainer;
 let minimapContainer;
 let loadingOverlay;
 let projectSelector;
+let projectMapContainer;
 
 // ============================================================================
 // INITIALIZATION
@@ -62,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
     minimapContainer = document.getElementById('minimap-container');
     loadingOverlay = document.getElementById('loading-overlay');
     projectSelector = document.getElementById('project-selector');
+    projectMapContainer = document.getElementById('project-map');
 
     const params = new URLSearchParams(window.location.search);
     const photoId = params.get('photo');
@@ -249,6 +255,10 @@ async function startCalibration(photoId) {
         url.searchParams.set('photo', photoId);
         history.replaceState(null, '', url);
 
+        // Move o destaque de "voce esta aqui" no mapa, que pode estar carregado
+        // em segundo plano depois de o operador ter fechado o modo mapa.
+        setCurrentPhotoOnMap(photoId);
+
         // Configure navigator
         setCameraConfig(metadata.camera);
         setTargets(metadata.targets);
@@ -330,6 +340,17 @@ function initializeSubsystems() {
         onTargetSelect: (targetId) => selectTarget(targetId),
     });
 
+    // Modo mapa do projeto (o MapLibre so e instanciado na primeira abertura)
+    initProjectMap(projectMapContainer, {
+        onOpenPhoto: (photoId) => {
+            closeProjectMap();
+            navigateToPhoto(photoId);
+        },
+        // Sair do mapa devolve o viewer 360, que ficou escondido atras dele e
+        // pode ter perdido o tamanho correto se a janela mudou nesse meio tempo.
+        onClose: () => forceResize(),
+    });
+
     // Initialize minimap
     initMinimap(minimapContainer, {
         onTargetClick: (targetId) => selectTarget(targetId),
@@ -365,6 +386,7 @@ function initializeSubsystems() {
         onNearbyPreviewToggle: handleNearbyPreviewToggle,
         onNearbySelect: handleNearbySelect,
         onDeletePhoto: handleDeletePhoto,
+        onOpenProjectMap: toggleProjectMap,
     });
 
     // Initialize preview viewer (shows target photo when selected)
@@ -466,6 +488,7 @@ function teardownSubsystems() {
 
     disposeNavigator();
     disposeMinimap();
+    disposeProjectMap();
     disposePreviewViewer();
     disposeViewer();
 
@@ -694,14 +717,38 @@ function handleDiscard() {
 // ============================================================================
 
 async function handleMarkReviewed(reviewed) {
+    const photoId = state.currentPhotoId;
     try {
-        await setPhotoReviewed(state.currentPhotoId, reviewed);
+        await setPhotoReviewed(photoId, reviewed);
         setCalibrationReviewed(reviewed);
+        // Pinta a foto no mapa na hora. Sem isso o operador marcaria revisada,
+        // abriria o mapa e veria a foto ainda pendente — o mapa so recarrega ao
+        // trocar de projeto.
+        setPhotoReviewedOnMap(photoId, reviewed);
         showToast(reviewed ? 'Foto marcada como revisada' : 'Revisao removida', 'success');
     } catch (err) {
         console.error('Failed to set reviewed:', err);
         showToast(`Erro: ${err.message}`, 'error');
     }
+}
+
+/**
+ * Abre ou fecha o modo mapa do projeto atual.
+ *
+ * Nao exige salvar antes: o mapa nao edita nada, so mostra. Sair da foto de
+ * fato (clicando em "Entrar na foto") passa por navigateToPhoto, que ja cuida
+ * do estado sujo.
+ */
+async function toggleProjectMap() {
+    if (isProjectMapOpen()) {
+        closeProjectMap();
+        return;
+    }
+    if (!state.currentProjectSlug) {
+        showToast('Nenhum projeto carregado', 'error');
+        return;
+    }
+    await openProjectMap(state.currentProjectSlug, state.currentPhotoId);
 }
 
 async function handleNextPhoto() {
@@ -937,13 +984,26 @@ function onKeyDown(e) {
         return;
     }
 
-    // Escape = Deselect target
+    // Escape = fecha o mapa se ele estiver aberto, senao desseleciona o alvo
     if (e.key === 'Escape') {
-        if (state.selectedTargetId) {
+        if (isProjectMapOpen()) {
+            closeProjectMap();
+        } else if (state.selectedTargetId) {
             deselectTarget();
         }
         return;
     }
+
+    // M = alterna o modo mapa do projeto
+    if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        toggleProjectMap();
+        return;
+    }
+
+    // Com o mapa aberto o 360 esta escondido: os atalhos que giram a esfera ou
+    // saltam de foto nao fazem sentido e so gerariam edicao as cegas.
+    if (isProjectMapOpen()) return;
 
     // ── Smooth rotation keys (WASD) — held for continuous rotation ──
     if (['w', 'a', 's', 'd'].includes(e.key)) {

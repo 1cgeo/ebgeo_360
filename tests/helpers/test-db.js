@@ -65,6 +65,21 @@ export const SEEDS = {
   TARGET_2_TO_1_DISTANCE: 15.3,
   TARGET_2_TO_1_BEARING: 225.0,
 
+  // Tracado da captura (project_tracks) — a linha desenhada no modo mapa.
+  // Passa pelas tres fotos e tem um vertice intermediario entre a 2 e a 3, para
+  // provar que a linha nao e derivada das posicoes das fotos: ela e um dado
+  // proprio, importado do geojson do levantamento.
+  TRACK_1: [
+    [-55.78, -29.75],
+    [-55.7801, -29.7501],
+    [-55.78015, -29.75015],
+    [-55.7802, -29.7502],
+  ],
+  TRACK_2: [
+    [-55.7803, -29.7503],
+    [-55.7804, -29.7504],
+  ],
+
   // Fake image blobs
   FULL_BLOB: Buffer.from('fake-full-webp-image-data'),
   PREVIEW_BLOB: Buffer.from('fake-preview-webp-data'),
@@ -220,6 +235,13 @@ function seedIndexDb(db) {
     0, 1,
     null, null,
   );
+
+  // Tracado da captura
+  const insertTrack = db.prepare(`
+    INSERT INTO project_tracks (project_id, coords, source) VALUES (?, ?, ?)
+  `);
+  insertTrack.run(SEEDS.PROJECT_ID, JSON.stringify(SEEDS.TRACK_1), 'geojson');
+  insertTrack.run(SEEDS.PROJECT_ID, JSON.stringify(SEEDS.TRACK_2), 'geojson');
 }
 
 function seedProjectDb(db) {
