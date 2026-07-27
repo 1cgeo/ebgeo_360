@@ -7,7 +7,7 @@
 import {
     fetchProjects, fetchPhotoMetadata, getPhotoImageUrl,
     saveCalibration, saveMeshRotationX, saveMeshRotationZ,
-    setPhotoReviewed, fetchProjectPhotos,
+    setPhotoReviewed, fetchProjectPhotos, fetchAllReviewStats,
     saveTargetVisibility, fetchNearbyPhotos, createTarget, deleteTargetConnection,
     deletePhoto,
 } from './api.js';
@@ -110,18 +110,17 @@ async function showProjectSelector() {
     panelContainer.style.display = 'none';
 
     try {
-        const projects = await fetchProjects();
-
-        // Fetch review stats for all projects in parallel
-        const statsResults = await Promise.allSettled(
-            projects.map(p => fetchProjectPhotos(p.slug))
-        );
-        const statsMap = {};
-        projects.forEach((p, i) => {
-            if (statsResults[i].status === 'fulfilled') {
-                statsMap[p.slug] = statsResults[i].value.reviewStats;
-            }
-        });
+        // Uma requisicao agregada para os contadores, nao uma lista de fotos por
+        // projeto: a versao anterior baixava as 90 mil fotos do acervo (~11 MB
+        // de JSON em 27 requisicoes) so para desenhar 27 barras de progresso.
+        // Se os contadores falharem, os cartoes ainda aparecem com photoCount.
+        const [projects, statsMap] = await Promise.all([
+            fetchProjects(),
+            fetchAllReviewStats().catch(err => {
+                console.warn('Failed to load review stats:', err);
+                return {};
+            }),
+        ]);
 
         projectSelector.innerHTML = `
             <h1 class="project-selector__title">Street View 360 — Calibração</h1>

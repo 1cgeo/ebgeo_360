@@ -157,6 +157,31 @@ export async function fetchProjectPhotos(slug, { signal } = {}) {
 }
 
 /**
+ * Fetches review counters for every project in one request.
+ *
+ * O seletor de projetos so desenha barras de progresso, e buscar a lista de
+ * fotos de cada projeto para isso trazia o acervo inteiro (~11 MB de JSON).
+ * @param {{ signal?: AbortSignal }} [options] - Opcoes de cancelamento
+ * @returns {Promise<Record<string, {total: number, reviewed: number}>>} Stats por slug
+ */
+export async function fetchAllReviewStats({ signal } = {}) {
+    const { signal: reqSignal, cleanup } = withTimeout(signal);
+    try {
+        const response = await fetch(`${BASE}/projects/review-stats`, {
+            cache: 'no-cache',
+            signal: reqSignal,
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch review stats (HTTP ${response.status})`);
+        }
+        const data = await response.json();
+        return data.stats || {};
+    } finally {
+        cleanup();
+    }
+}
+
+/**
  * Fetches everything the calibration map mode draws for one project:
  * photos with position, review state and the three angles, plus the capture
  * track as arrays of coordinates.

@@ -18,6 +18,7 @@ import {
   updateCalibrationReviewed,
   getPhotosByProjectSlug,
   getReviewStatsByProjectSlug,
+  getReviewStatsAllProjects,
   getMapPhotosByProjectSlug,
   getTracksByProjectSlug,
   batchUpdateMeshRotationY,
@@ -146,6 +147,24 @@ export default async function calibrationRoutes(fastify) {
     }
 
     return { ok: true, reviewed };
+  });
+
+  // GET /api/v1/projects/review-stats — contadores de revisao de todos os projetos
+  //
+  // O seletor de projetos desenha uma barra de progresso por projeto e nada
+  // mais. Antes ele obtinha esses dois numeros chamando /projects/:slug/photos
+  // uma vez por projeto, o que trazia as 90 mil fotos do acervo (~11 MB de JSON)
+  // para somar 27 pares de inteiros. Aqui e uma varredura agregada so.
+  //
+  // Rota estatica antes de /projects/:slug em projects.js: o find-my-way do
+  // Fastify prefere o segmento literal ao parametrico, independente da ordem de
+  // registro, entao 'review-stats' nunca cai no handler de :slug.
+  fastify.get('/api/v1/projects/review-stats', async () => {
+    const stats = {};
+    for (const row of getReviewStatsAllProjects()) {
+      stats[row.slug] = { total: row.total, reviewed: row.reviewed ?? 0 };
+    }
+    return { stats };
   });
 
   // GET /api/v1/projects/:slug/photos — list photos for a project (calibration workflow)

@@ -1145,6 +1145,13 @@
             cursor: pointer;
             font-size: 11px;
             transition: background 0.15s;
+            /* A lista tem uma linha por foto do projeto — 17.590 no maior deles.
+               content-visibility deixa o navegador pular layout e pintura dos
+               itens fora da janela de 300px; contain-intrinsic-size reserva a
+               altura de uma linha para que a barra de rolagem continue com o
+               tamanho e a posicao corretos. */
+            content-visibility: auto;
+            contain-intrinsic-size: auto 21px;
         }
 
         .cal-panel__photo-item:hover {

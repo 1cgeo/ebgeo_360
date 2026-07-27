@@ -29,7 +29,39 @@ export const state = {
     projectPhotos: [],         // [{id, displayName, sequenceNumber, reviewed}]
     reviewStats: null,         // {total, reviewed}
     calibrationReviewed: false,
+    // Versao da LISTA de fotos do projeto: muda quando a identidade/ordem dos
+    // itens muda (troca de projeto, exclusao de foto, reset de revisoes), nunca
+    // quando so o estado de revisao de uma foto muda. O painel usa isso para
+    // decidir se precisa reconstruir a lista — com 17 mil fotos, reconstrui-la a
+    // cada troca de foto era o custo dominante da interface.
+    projectPhotosVersion: 0,
 };
+
+// Indices da lista de fotos do projeto (id -> foto, id -> posicao).
+//
+// Sem eles cada consulta era uma varredura linear, e o painel fazia uma
+// varredura POR ITEM renderizado — quadratico sobre 17.590 fotos no maior
+// projeto. Reconstruidos junto com projectPhotos em setProjectContext.
+const photoById = new Map();
+const photoIndexById = new Map();
+
+function rebuildPhotoIndex() {
+    photoById.clear();
+    photoIndexById.clear();
+    state.projectPhotos.forEach((p, i) => {
+        photoById.set(p.id, p);
+        photoIndexById.set(p.id, i);
+    });
+}
+
+/**
+ * Returns a photo of the current project by id, in constant time.
+ * @param {string} photoId - Photo UUID
+ * @returns {Object|undefined}
+ */
+export function getProjectPhoto(photoId) {
+    return photoById.get(photoId);
+}
 
 // ============================================================================
 // LISTENERS
@@ -322,6 +354,8 @@ export function setProjectContext(slug, photos, reviewStats) {
     state.currentProjectSlug = slug;
     state.projectPhotos = photos;
     state.reviewStats = reviewStats;
+    state.projectPhotosVersion++;
+    rebuildPhotoIndex();
     notify();
 }
 
@@ -332,14 +366,19 @@ export function setProjectContext(slug, photos, reviewStats) {
 export function setCalibrationReviewed(reviewed) {
     state.calibrationReviewed = reviewed;
     // Also update in the projectPhotos list
-    const photo = state.projectPhotos.find(p => p.id === state.currentPhotoId);
+    const photo = photoById.get(state.currentPhotoId);
+    const wasReviewed = Boolean(photo?.reviewed);
     if (photo) {
         photo.reviewed = reviewed;
     }
-    // Update stats
-    if (state.reviewStats) {
-        const reviewedCount = state.projectPhotos.filter(p => p.reviewed).length;
-        state.reviewStats = { ...state.reviewStats, reviewed: reviewedCount };
+    // Contador ajustado pelo delta desta foto. Recontar a lista inteira a cada
+    // marcacao era uma varredura sobre as 17 mil fotos do projeto.
+    if (state.reviewStats && photo && wasReviewed !== reviewed) {
+        const delta = reviewed ? 1 : -1;
+        state.reviewStats = {
+            ...state.reviewStats,
+            reviewed: state.reviewStats.reviewed + delta,
+        };
     }
     notify();
 }
@@ -356,6 +395,9 @@ export function resetAllReviewedState() {
     if (state.reviewStats) {
         state.reviewStats = { ...state.reviewStats, reviewed: 0 };
     }
+    // Toda a lista mudou de aparencia: forca o painel a redesenha-la, em vez de
+    // aplicar a atualizacao pontual de uma foto so.
+    state.projectPhotosVersion++;
     notify();
 }
 
@@ -365,7 +407,7 @@ export function resetAllReviewedState() {
  */
 export function getNextPhotoId() {
     if (!state.projectPhotos.length || !state.currentPhotoId) return null;
-    const currentIdx = state.projectPhotos.findIndex(p => p.id === state.currentPhotoId);
+    const currentIdx = photoIndexById.get(state.currentPhotoId) ?? -1;
     if (currentIdx === -1) return null;
 
     // First try: next unreviewed after current
@@ -389,7 +431,7 @@ export function getNextPhotoId() {
  */
 export function getPrevPhotoId() {
     if (!state.projectPhotos.length || !state.currentPhotoId) return null;
-    const currentIdx = state.projectPhotos.findIndex(p => p.id === state.currentPhotoId);
+    const currentIdx = photoIndexById.get(state.currentPhotoId) ?? -1;
     if (currentIdx <= 0) return null;
     return state.projectPhotos[currentIdx - 1].id;
 }
@@ -400,5 +442,5 @@ export function getPrevPhotoId() {
  */
 export function getCurrentPhotoIndex() {
     if (!state.projectPhotos.length || !state.currentPhotoId) return 0;
-    return state.projectPhotos.findIndex(p => p.id === state.currentPhotoId) + 1;
+    return (photoIndexById.get(state.currentPhotoId) ?? -1) + 1;
 }

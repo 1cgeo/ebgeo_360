@@ -9,7 +9,7 @@ import {
     setMeshRotationX, setMeshRotationZ,
     selectTarget, deselectTarget,
     setTargetHidden, isTargetHidden,
-    getCurrentPhotoIndex, resetAllReviewedState,
+    getCurrentPhotoIndex, resetAllReviewedState, getProjectPhoto,
 } from './state.js';
 import { batchUpdateProject, resetProjectReviewed } from './api.js';
 
@@ -18,6 +18,13 @@ import { batchUpdateProject, resetProjectReviewed } from './api.js';
 // ============================================================================
 
 let panelEl = null;
+// O painel e dividido em duas regioes que se reconstroem em ritmos diferentes:
+// `bodyEl` (tudo que depende da foto aberta) e `photosEl` (a lista de fotos do
+// projeto). Trocar de foto muda os targets, o que muda a estrutura do corpo —
+// mas a lista de fotos e a mesma, e reconstrui-la junto custava recriar 17.590
+// itens de DOM a cada navegacao no maior projeto.
+let bodyEl = null;
+let photosEl = null;
 let isSaving = false;
 let sphericalGridVisible = false;
 
@@ -38,6 +45,16 @@ let lastScrolledPhotoId = null;
 // selecionado), aplicamos apenas atualizacoes pontuais (classes/valores) em vez
 // de reconstruir todo o DOM via innerHTML e re-anexar todos os listeners.
 let lastStructureSignature = null;
+
+// Assinatura da lista de fotos do projeto, que segue seu proprio ciclo: so muda
+// quando a identidade dos itens muda (outro projeto, foto excluida, reset de
+// revisoes). O estado de revisao e o realce da foto atual sao aplicados item a
+// item, sem redesenhar a lista.
+let lastPhotoListSignature = null;
+
+// Foto atualmente realcada na lista, para apagar o realce anterior sem varrer
+// todos os itens.
+let highlightedPhotoId = null;
 
 // Callbacks set by app.js
 let onSaveCallback = null;
@@ -151,6 +168,33 @@ export function initPanel(container, options = {}) {
     // Initialize collapsed state from localStorage
     initCollapsedState();
 
+    // Caches de render sao por DOM: voltar aos projetos e reentrar recria os
+    // containers abaixo, e uma assinatura sobrevivente convenceria o painel de
+    // que o DOM ja esta correto — deixando-o vazio.
+    lastStructureSignature = null;
+    lastPhotoListSignature = null;
+    highlightedPhotoId = null;
+    lastScrolledPhotoId = null;
+
+    // Duas regioes persistentes: o corpo (reconstruido a cada mudanca de
+    // estrutura) e a lista de fotos (reconstruida so quando a lista muda).
+    panelEl.innerHTML = '';
+    bodyEl = document.createElement('div');
+    bodyEl.id = 'cal-panel-body';
+    photosEl = document.createElement('div');
+    photosEl.id = 'cal-panel-photos';
+    panelEl.appendChild(bodyEl);
+    panelEl.appendChild(photosEl);
+
+    // Delegacao no container persistente: sobrevive a reconstrucao da lista,
+    // entao nao ha listener a re-anexar quando ela muda.
+    photosEl.addEventListener('click', (e) => {
+        const item = e.target.closest('[data-photo-nav-id]');
+        if (item && onNavigateToPhoto) {
+            onNavigateToPhoto(item.dataset.photoNavId);
+        }
+    });
+
     // Listen to state changes
     onChange(renderPanel);
 
@@ -181,10 +225,6 @@ function buildStructureSignature(s, targets, selectedTarget) {
     const targetsSig = targets
         .map(t => `${t.id}|${t.display_name || ''}|${t.next ? 1 : 0}|${t.distance != null ? t.distance.toFixed(1) : ''}|${t.is_original === false ? 1 : 0}`)
         .join(',');
-    // Identidade/ordem dos itens da lista de fotos (rotulo + sequencia).
-    const photosSig = s.projectPhotos
-        .map(p => `${p.id}|${p.displayName}|${p.sequenceNumber}`)
-        .join(',');
     // Identidade/ordem das fotos proximas.
     const nearbySig = (s.nearbyPhotos || [])
         .map(p => `${p.id}|${p.displayName || ''}|${p.distance != null ? p.distance.toFixed(1) : ''}`)
@@ -208,17 +248,30 @@ function buildStructureSignature(s, targets, selectedTarget) {
         previewingNearbyId || '',
         collapsedSig,
         targetsSig,
-        photosSig,
         nearbySig,
     ].join('||');
 }
 
 /**
+ * Assinatura da lista de fotos do projeto. Deliberadamente NAO inclui a foto
+ * atual nem o estado de revisao: ambos sao aplicados item a item. Incluir a foto
+ * atual aqui reconstruiria os 17.590 itens do maior projeto a cada navegacao,
+ * que era exatamente o custo dominante da interface.
+ * @param {Object} s - Estado atual
+ * @returns {string}
+ */
+function buildPhotoListSignature(s) {
+    return `${s.currentProjectSlug || ''}|${s.projectPhotosVersion}|${s.projectPhotos.length}`;
+}
+
+/**
  * Aplica atualizacoes pontuais (sem reconstruir o DOM) quando a estrutura do
  * painel nao mudou desde o ultimo render completo. Atualiza: selecao/oculto de
- * targets e respectivos badges, foto atual/revisada na lista, valores dos
- * sliders + textos de delta, contadores de progresso, badge de revisada e
- * estado disabled de Salvar/Descartar.
+ * targets e respectivos badges, valores dos sliders + textos de delta,
+ * contadores de progresso e estado disabled de Salvar/Descartar.
+ *
+ * A lista de fotos NAO e tocada aqui: ela vive em outra regiao do painel e e
+ * mantida por syncPhotoListHighlight, que roda nos dois caminhos de render.
  * @param {Object} s - Estado atual
  * @param {Array} targets - Targets da foto atual
  * @param {boolean} dirty - Se ha alteracoes nao salvas
@@ -294,26 +347,73 @@ function applyTargetedUpdates(s, targets, dirty) {
             `;
         }
     });
+}
 
-    // --- Lista de fotos: foto atual / revisada ---
-    panelEl.querySelectorAll('[data-photo-nav-id]').forEach(item => {
-        const photo = s.projectPhotos.find(p => p.id === item.dataset.photoNavId);
+/**
+ * Move o realce de "foto atual" e atualiza o estado de revisao dos itens
+ * afetados na lista de fotos.
+ *
+ * Toca no maximo dois itens (o que perdeu o realce e o que ganhou), localizados
+ * por seletor de atributo. A versao anterior varria todos os itens do DOM e,
+ * para cada um, procurava a foto correspondente por busca linear na lista —
+ * quadratico, ~309 milhoes de comparacoes por notificacao de estado no projeto
+ * de 17.590 fotos, alem de reescrever o innerHTML dos 17.590 marcadores.
+ * @param {Object} s - Estado atual
+ */
+function syncPhotoListHighlight(s) {
+    if (!photosEl) return;
+
+    const applyItem = (photoId) => {
+        if (!photoId) return;
+        const item = photosEl.querySelector(`[data-photo-nav-id="${CSS.escape(photoId)}"]`);
+        if (!item) return;
+        const photo = getProjectPhoto(photoId);
         if (!photo) return;
-        item.classList.toggle('cal-panel__photo-item--current', photo.id === s.currentPhotoId);
-        item.classList.toggle('cal-panel__photo-item--reviewed', !!photo.reviewed);
-        const status = item.querySelector('.cal-panel__photo-status');
-        if (status) status.innerHTML = photo.reviewed ? '&#10003;' : '&#9675;';
-    });
+        item.classList.toggle('cal-panel__photo-item--current', photoId === s.currentPhotoId);
+        const reviewed = !!photo.reviewed;
+        // Escreve so quando muda: a atribuicao de innerHTML custa parse mesmo
+        // quando o conteudo e identico.
+        if (item.classList.contains('cal-panel__photo-item--reviewed') !== reviewed) {
+            item.classList.toggle('cal-panel__photo-item--reviewed', reviewed);
+            const status = item.querySelector('.cal-panel__photo-status');
+            if (status) status.innerHTML = reviewed ? '&#10003;' : '&#9675;';
+        }
+    };
+
+    if (highlightedPhotoId !== s.currentPhotoId) {
+        applyItem(highlightedPhotoId);
+        highlightedPhotoId = s.currentPhotoId;
+    }
+    // A foto atual e reaplicada sempre: seu estado de revisao muda no lugar
+    // (marcar/desmarcar revisada) sem que a foto aberta mude.
+    applyItem(s.currentPhotoId);
+
+    // Rola o item da foto atual para a vista somente quando a foto muda: o
+    // scrollIntoView forca leitura de layout, cara demais para repetir a cada
+    // notificacao de estado.
+    if (s.currentPhotoId && s.currentPhotoId !== lastScrolledPhotoId) {
+        const currentItem = photosEl.querySelector('.cal-panel__photo-item--current');
+        if (currentItem) currentItem.scrollIntoView({ block: 'nearest' });
+        lastScrolledPhotoId = s.currentPhotoId;
+    }
 }
 
 function renderPanel(s) {
-    if (!panelEl) return;
+    if (!panelEl || !bodyEl) return;
 
     const dirty = isDirty();
     const meta = s.currentMetadata;
 
+    // A lista de fotos e reconstruida no seu proprio ritmo, antes do corpo:
+    // assim o realce da foto atual encontra os itens ja no DOM. O realce e
+    // sincronizado aqui, fora dos dois caminhos de render do corpo, porque a
+    // navegacao entre fotos muda a estrutura do corpo (outros targets) sem
+    // passar pelo caminho de atualizacao pontual.
+    renderPhotoListRegion(s);
+    syncPhotoListHighlight(s);
+
     if (!meta) {
-        panelEl.innerHTML = `
+        bodyEl.innerHTML = `
             <div class="cal-panel__empty">
                 <p>Nenhuma foto carregada</p>
                 <p class="cal-panel__hint">Use ?photo=UUID na URL ou selecione um projeto</p>
@@ -346,7 +446,7 @@ function renderPanel(s) {
     const total = s.reviewStats?.total ?? 0;
     const pct = total > 0 ? Math.round((reviewed / total) * 100) : 0;
 
-    panelEl.innerHTML = `
+    bodyEl.innerHTML = `
         ${hasProject ? `
         <div class="cal-panel__review-nav">
             <button id="btn-back-projects" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost" title="Voltar aos projetos">
@@ -415,14 +515,35 @@ function renderPanel(s) {
         ${renderTargetsSection(targets, selectedTarget, s)}
 
         ${renderNearbyPhotos(s)}
-
-        ${hasProject ? renderPhotoList(s) : ''}
     `;
 
     attachEvents();
 
     // Restore scroll position after DOM rebuild
     panelEl.scrollTop = scrollTop;
+}
+
+/**
+ * Reconstroi a regiao "Fotos do Projeto" apenas quando a lista muda de fato.
+ *
+ * Trocar de foto muda os targets e, com eles, a estrutura do corpo do painel —
+ * mas nao a lista de fotos. Manter as duas no mesmo innerHTML fazia cada
+ * navegacao recriar os 17.590 itens do maior projeto; separadas, a navegacao so
+ * reposiciona o realce.
+ * @param {Object} s - Estado atual
+ */
+function renderPhotoListRegion(s) {
+    if (!photosEl) return;
+
+    const signature = buildPhotoListSignature(s);
+    if (signature === lastPhotoListSignature) return;
+    lastPhotoListSignature = signature;
+
+    photosEl.innerHTML = s.projectPhotos.length ? renderPhotoList(s) : '';
+    // A lista foi refeita: nenhum item carrega realce, entao o proximo
+    // syncPhotoListHighlight precisa reaplica-lo do zero.
+    highlightedPhotoId = null;
+    lastScrolledPhotoId = null;
 }
 
 // ============================================================================
@@ -946,23 +1067,9 @@ function attachEvents() {
         }
     });
 
-    // Photo list navigation
-    document.getElementById('photo-list')?.addEventListener('click', (e) => {
-        const item = e.target.closest('[data-photo-nav-id]');
-        if (item && onNavigateToPhoto) {
-            onNavigateToPhoto(item.dataset.photoNavId);
-        }
-    });
-
-    // Scroll current photo into view in the photo list — somente quando a foto
-    // atual realmente muda, evitando leitura/escrita de layout a cada re-render.
-    if (state.currentPhotoId !== lastScrolledPhotoId) {
-        const currentPhotoItem = document.querySelector('.cal-panel__photo-item--current');
-        if (currentPhotoItem) {
-            currentPhotoItem.scrollIntoView({ block: 'nearest' });
-        }
-        lastScrolledPhotoId = state.currentPhotoId;
-    }
+    // A navegacao pela lista de fotos e delegada em `photosEl` uma unica vez em
+    // initPanel: o container sobrevive a reconstrucao do corpo, e re-anexar o
+    // listener aqui acumularia uma copia por render.
 }
 
 // ============================================================================

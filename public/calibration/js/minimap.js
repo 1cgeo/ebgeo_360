@@ -141,6 +141,24 @@ function createCameraMarkerEl() {
  */
 const CONE_HEADING_OFFSET = 0;
 
+// Elemento do cone e ultimos valores aplicados. setViewDirection roda uma vez
+// por frame; sem o cache ela refazia um querySelector e tres escritas de estilo
+// a cada frame, mesmo com a camera parada.
+let coneEl = null;
+let lastConeHeading = NaN;
+let lastConeFov = NaN;
+
+/**
+ * Devolve o elemento do cone de visada, resolvendo-o uma unica vez.
+ * @returns {HTMLElement|null}
+ */
+function getConeEl() {
+    if (!coneEl && cameraMarkerEl) {
+        coneEl = cameraMarkerEl.querySelector('.minimap-camera-marker__cone');
+    }
+    return coneEl;
+}
+
 /**
  * Aponta o cone do minimapa para onde o operador esta olhando AGORA.
  *
@@ -153,10 +171,16 @@ const CONE_HEADING_OFFSET = 0;
  */
 export function setViewDirection(headingOffsetDeg, fovDeg) {
     if (!cameraMarkerEl) return;
-    const cone = cameraMarkerEl.querySelector('.minimap-camera-marker__cone');
+    const cone = getConeEl();
     if (!cone) return;
 
     const total = (currentCamera?.heading ?? 0) + headingOffsetDeg + CONE_HEADING_OFFSET;
+
+    // Roda a 60 fps: escrever transform/border sem mudanca de valor ainda
+    // custa invalidacao de estilo no navegador. Sai cedo quando parado.
+    if (total === lastConeHeading && fovDeg === lastConeFov) return;
+    lastConeHeading = total;
+    lastConeFov = fovDeg;
     // O translate faz parte do posicionamento: escrever so o rotate apaga a
     // centralizacao e o cone salta para o lado.
     cone.style.transform = `translate(-50%, -100%) rotate(${total}deg)`;
@@ -195,9 +219,11 @@ export function updateCamera(camera, headingOffset = 0) {
     // Rotate the marker to show heading direction
     // Mesma convencao de setViewDirection (ver CONE_HEADING_OFFSET).
     const totalHeading = (camera.heading ?? 0) + headingOffset + CONE_HEADING_OFFSET;
-    const cone = cameraMarkerEl.querySelector('.minimap-camera-marker__cone');
+    const cone = getConeEl();
     if (cone) {
         cone.style.transform = `translate(-50%, -100%) rotate(${totalHeading}deg)`;
+        // Mantem o cache de setViewDirection coerente com o que esta no DOM.
+        lastConeHeading = totalHeading;
     }
 
     // Recentrar o mapa apenas quando a posicao realmente muda.
@@ -463,4 +489,9 @@ export function disposeMinimap() {
     currentCamera = null;
     currentTargets = [];
     currentNearbyPhotos = [];
+    // O marcador da camera e recriado no re-init: o cone cacheado aponta para um
+    // elemento orfao, e os ultimos valores aplicados nao valem mais.
+    coneEl = null;
+    lastConeHeading = NaN;
+    lastConeFov = NaN;
 }

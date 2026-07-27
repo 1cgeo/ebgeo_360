@@ -96,11 +96,30 @@ let rearMarkersDirty = true;
 let _lastRearMarkerLon = NaN;
 let _lastRearMarkerLat = NaN;
 
+// ── Dirty-check da cena Three.js do preview ──
+// O painel e pequeno e passa a maior parte do tempo estatico (a visao traseira
+// so se move quando o visualizador principal gira). Sem isto o painel executava
+// um lookAt + renderer.render por frame indefinidamente, inclusive escondido e
+// atras do mapa do projeto, que tem o proprio contexto WebGL.
+let previewNeedsRender = true;
+let _lastRenderLon = NaN;
+let _lastRenderLat = NaN;
+
+/**
+ * Marca a cena do preview para um novo render no proximo frame.
+ */
+function markPreviewNeedsRender() {
+    previewNeedsRender = true;
+}
+
 /**
  * Marca os markers do rear view para redesenho no proximo frame.
  */
 function markRearMarkersDirty() {
     rearMarkersDirty = true;
+    // Os markers sao desenhados num canvas 2D sobreposto, mas o estado que os
+    // move (rotacoes de malha, selecao) tambem gira a esfera.
+    markPreviewNeedsRender();
 }
 
 // ============================================================================
@@ -397,6 +416,7 @@ export async function showRearView(photoId, meshRotationY, meshRotationX = 0, me
     lat = 0;
 
     containerEl.style.display = 'block';
+    markPreviewNeedsRender();
 
     // Start animation if not running
     if (!animationFrameId) animate();
@@ -444,6 +464,8 @@ export function updateRearViewRotation(meshRotationY, meshRotationX, meshRotatio
     sphere.rotation.y = THREE.MathUtils.degToRad(meshRotationY + 180);
     sphere.rotation.x = THREE.MathUtils.degToRad(-meshRotationX);
     sphere.rotation.z = THREE.MathUtils.degToRad(-meshRotationZ);
+    // Arrastar o slider gira a esfera sem mexer na camera do preview.
+    markPreviewNeedsRender();
 }
 
 /**
@@ -491,6 +513,9 @@ export async function showPreview(targetId, displayName, meshRotationY = 180, me
     // Don't reload if same target
     if (currentTargetId === targetId && currentMode === 'target') {
         containerEl.style.display = 'block';
+        // Reexibir o painel exige repintar: o loop pula o render enquanto ele
+        // esta escondido, entao o canvas pode estar com o conteudo defasado.
+        markPreviewNeedsRender();
         return;
     }
 
@@ -523,6 +548,7 @@ export async function showPreview(targetId, displayName, meshRotationY = 180, me
         sphere.rotation.x = THREE.MathUtils.degToRad(meshRotationX);
         sphere.rotation.z = THREE.MathUtils.degToRad(meshRotationZ);
     }
+    markPreviewNeedsRender();
 
     // Start animation if not running
     if (!animationFrameId) animate();
@@ -579,6 +605,7 @@ export function hidePreview() {
             sphere.rotation.x = THREE.MathUtils.degToRad(-rearRotationX);
             sphere.rotation.z = THREE.MathUtils.degToRad(-rearRotationZ);
         }
+        markPreviewNeedsRender();
 
         lon = 0;
         lat = 0;
@@ -700,6 +727,9 @@ function loadTexture(url, isPreview, generation = loadGeneration) {
                 material.map = texture;
                 material.color.set(0xffffff);
                 material.needsUpdate = true;
+                // A textura chega fora do ciclo de interacao: sem isto a esfera
+                // so apareceria no proximo movimento de camera.
+                markPreviewNeedsRender();
                 resolve();
             },
             undefined,
@@ -857,19 +887,30 @@ function animate() {
 
     if (!camera || !scene || !renderer) return;
 
-    const phi = THREE.MathUtils.degToRad(90 - lat);
-    const theta = THREE.MathUtils.degToRad(lon);
+    // Painel fechado: nao ha o que mostrar, e o custo de render nao volta a
+    // ninguem. O loop continua para retomar sozinho quando ele reabrir.
+    if (containerEl && containerEl.style.display === 'none') return;
 
-    _lookAtTarget.set(
-        500 * Math.sin(phi) * Math.cos(theta),
-        500 * Math.cos(phi),
-        500 * Math.sin(phi) * Math.sin(theta)
-    );
-    camera.lookAt(_lookAtTarget);
+    const cameraMoved = lon !== _lastRenderLon || lat !== _lastRenderLat;
+    if (previewNeedsRender || cameraMoved) {
+        const phi = THREE.MathUtils.degToRad(90 - lat);
+        const theta = THREE.MathUtils.degToRad(lon);
 
-    renderer.render(scene, camera);
+        _lookAtTarget.set(
+            500 * Math.sin(phi) * Math.cos(theta),
+            500 * Math.cos(phi),
+            500 * Math.sin(phi) * Math.sin(theta)
+        );
+        camera.lookAt(_lookAtTarget);
 
-    // Render markers in rear view mode
+        renderer.render(scene, camera);
+
+        previewNeedsRender = false;
+        _lastRenderLon = lon;
+        _lastRenderLat = lat;
+    }
+
+    // Render markers in rear view mode (tem o proprio dirty-check dentro)
     if (currentMode === 'rear') {
         renderRearMarkers();
     }
@@ -934,4 +975,11 @@ export function disposePreviewViewer() {
     markerProjector = null;
     rearTargets = [];
     rearCameraConfig = null;
+
+    // Estado do dirty-check e por cena: uma re-inicializacao comeca com um
+    // canvas novo e vazio, que precisa de um primeiro render incondicional.
+    previewNeedsRender = true;
+    rearMarkersDirty = true;
+    _lastRenderLon = NaN;
+    _lastRenderLat = NaN;
 }

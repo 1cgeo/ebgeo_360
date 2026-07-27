@@ -153,6 +153,22 @@ function stmts() {
         AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
 
+    // Contadores de revisao de TODOS os projetos numa unica varredura.
+    //
+    // O seletor de projetos so precisa de dois numeros por projeto para desenhar
+    // a barra de progresso. Pedir isso por projeto significava buscar a lista
+    // completa de fotos de cada um — 90 mil linhas e ~11 MB de JSON em 27
+    // requisicoes paralelas so para somar dois inteiros.
+    reviewStatsAllProjects: db.prepare(`
+      SELECT p.slug AS slug,
+             COUNT(ph.id) AS total,
+             SUM(CASE WHEN ph.calibration_reviewed = 1 THEN 1 ELSE 0 END) AS reviewed
+      FROM projects p
+      LEFT JOIN photos ph ON ph.project_id = p.id
+        AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)
+      GROUP BY p.id
+    `),
+
     // ---- Modo mapa da calibracao ----
     // Tudo que o mapa do projeto precisa por foto: posicao, estado de revisao e
     // os tres angulos, para o operador ver os parametros sem abrir a foto.
@@ -424,6 +440,14 @@ export function getPhotosByProjectSlug(slug) {
  */
 export function getReviewStatsByProjectSlug(slug) {
   return stmts().reviewStatsByProjectSlug.get(slug);
+}
+
+/**
+ * Gets review stats for every project in a single scan.
+ * @returns {Array<{slug: string, total: number, reviewed: number}>}
+ */
+export function getReviewStatsAllProjects() {
+  return stmts().reviewStatsAllProjects.all();
 }
 
 /**

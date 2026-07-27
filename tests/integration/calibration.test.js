@@ -308,6 +308,50 @@ describe('POST /api/v1/projects/:slug/reset-reviewed', () => {
 });
 
 // ============================================================================
+// GET /api/v1/projects/review-stats
+// ============================================================================
+
+describe('GET /api/v1/projects/review-stats', () => {
+  it('returns the same counters as the per-project photo list', async () => {
+    const statsRes = await app.inject({
+      method: 'GET',
+      url: '/api/v1/projects/review-stats',
+    });
+    assert.equal(statsRes.statusCode, 200);
+    const { stats } = JSON.parse(statsRes.body);
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${SEEDS.PROJECT_SLUG}/photos`,
+    });
+    const { reviewStats } = JSON.parse(listRes.body);
+
+    assert.deepEqual(stats[SEEDS.PROJECT_SLUG], reviewStats);
+  });
+
+  // O seletor de projetos trocou 27 listas de fotos por esta chamada: se o
+  // segmento literal caisse no handler de :slug, ele voltaria a buscar tudo.
+  it('is routed as a literal segment, not as a project slug', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/projects/review-stats',
+    });
+    const body = JSON.parse(res.body);
+    assert.ok(body.stats, 'expected the stats map, not a single project');
+    assert.equal(body.project, undefined);
+  });
+
+  it('still resolves a real slug on the neighbouring route', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${SEEDS.PROJECT_SLUG}`,
+    });
+    assert.equal(res.statusCode, 200);
+    assert.equal(JSON.parse(res.body).project.slug, SEEDS.PROJECT_SLUG);
+  });
+});
+
+// ============================================================================
 // PUT /api/v1/projects/:slug/batch-calibration (extended fields)
 // ============================================================================
 
