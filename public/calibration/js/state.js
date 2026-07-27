@@ -29,6 +29,11 @@ export const state = {
     projectPhotos: [],         // [{id, displayName, sequenceNumber, reviewed}]
     reviewStats: null,         // {total, reviewed}
     calibrationReviewed: false,
+    // Faixas de coleta do projeto (sessoes de gravacao), ordenadas por ordinal:
+    // [{id, label, ordinal, startedAt, total, reviewed, applied}]. Vazio nos
+    // projetos que ainda nao passaram por `npm run derive-runs`, e nesse caso a
+    // interface inteira volta ao comportamento anterior.
+    runs: [],
     // Versao da LISTA de fotos do projeto: muda quando a identidade/ordem dos
     // itens muda (troca de projeto, exclusao de foto, reset de revisoes), nunca
     // quando so o estado de revisao de uma foto muda. O painel usa isso para
@@ -45,13 +50,48 @@ export const state = {
 const photoById = new Map();
 const photoIndexById = new Map();
 
+// Fotos de cada faixa, em ordem de captura (run_position). E o que a navegacao
+// Q/E percorre: revisar seguindo a faixa em vez da sequence_number, que e uma
+// BFS do grafo e troca de faixa em 89,9% das fotos consecutivas no santana.
+const photosByRun = new Map();
+
 function rebuildPhotoIndex() {
     photoById.clear();
     photoIndexById.clear();
+    photosByRun.clear();
+
     state.projectPhotos.forEach((p, i) => {
         photoById.set(p.id, p);
         photoIndexById.set(p.id, i);
+        if (p.runId) {
+            let lista = photosByRun.get(p.runId);
+            if (!lista) { lista = []; photosByRun.set(p.runId, lista); }
+            lista.push(p);
+        }
     });
+
+    // O payload vem ordenado por sequence_number (a BFS), nao por faixa, entao
+    // cada faixa precisa ser reordenada pela posicao de captura.
+    for (const lista of photosByRun.values()) {
+        lista.sort((a, b) => (a.runPosition ?? 0) - (b.runPosition ?? 0));
+    }
+}
+
+/**
+ * Returns the ordered photos of a capture run.
+ * @param {string} runId - Run UUID
+ * @returns {Array} Fotos em ordem de captura (vazio se a faixa nao existe)
+ */
+export function getRunPhotos(runId) {
+    return photosByRun.get(runId) ?? [];
+}
+
+/**
+ * Returns the run id of the photo currently open, or null.
+ * @returns {string|null}
+ */
+export function getCurrentRunId() {
+    return photoById.get(state.currentPhotoId)?.runId ?? null;
 }
 
 /**
@@ -350,10 +390,11 @@ export function markSaved() {
  * @param {Array} photos - Photo list from API
  * @param {{total: number, reviewed: number}} reviewStats - Review statistics
  */
-export function setProjectContext(slug, photos, reviewStats) {
+export function setProjectContext(slug, photos, reviewStats, runs = []) {
     state.currentProjectSlug = slug;
     state.projectPhotos = photos;
     state.reviewStats = reviewStats;
+    state.runs = runs;
     state.projectPhotosVersion++;
     rebuildPhotoIndex();
     notify();
@@ -373,12 +414,21 @@ export function setCalibrationReviewed(reviewed) {
     }
     // Contador ajustado pelo delta desta foto. Recontar a lista inteira a cada
     // marcacao era uma varredura sobre as 17 mil fotos do projeto.
-    if (state.reviewStats && photo && wasReviewed !== reviewed) {
+    if (photo && wasReviewed !== reviewed) {
         const delta = reviewed ? 1 : -1;
-        state.reviewStats = {
-            ...state.reviewStats,
-            reviewed: state.reviewStats.reviewed + delta,
-        };
+        if (state.reviewStats) {
+            state.reviewStats = {
+                ...state.reviewStats,
+                reviewed: state.reviewStats.reviewed + delta,
+            };
+        }
+        // Mesmo delta na faixa da foto, senao a barra da faixa so se atualizaria
+        // ao trocar de projeto — e e ela que diz ao operador quanto falta para
+        // a corrida acabar, que agora comanda a navegacao.
+        if (photo.runId) {
+            const faixa = state.runs.find(r => r.id === photo.runId);
+            if (faixa) faixa.reviewed += delta;
+        }
     }
     notify();
 }
@@ -395,6 +445,9 @@ export function resetAllReviewedState() {
     if (state.reviewStats) {
         state.reviewStats = { ...state.reviewStats, reviewed: 0 };
     }
+    for (const faixa of state.runs) {
+        faixa.reviewed = 0;
+    }
     // Toda a lista mudou de aparencia: forca o painel a redesenha-la, em vez de
     // aplicar a atualizacao pontual de uma foto so.
     state.projectPhotosVersion++;
@@ -407,22 +460,85 @@ export function resetAllReviewedState() {
  */
 export function getNextPhotoId() {
     if (!state.projectPhotos.length || !state.currentPhotoId) return null;
+
+    // Caminho por faixa: anda dentro da corrida, em ordem de captura, e so
+    // passa para a proxima faixa quando esta acabar. A ordem antiga era a
+    // sequence_number, que e uma BFS do grafo de navegacao e troca de faixa
+    // em 89,9% das fotos consecutivas no santana — o operador reajustava o
+    // mesmo parametro para frente e para tras o tempo todo.
+    const runId = getCurrentRunId();
+    if (runId) {
+        const daFaixa = photosByRun.get(runId) ?? [];
+        const pos = daFaixa.findIndex(p => p.id === state.currentPhotoId);
+
+        // Proxima nao revisada DENTRO da faixa (adiante, depois do inicio).
+        for (let i = pos + 1; i < daFaixa.length; i++) {
+            if (!daFaixa[i].reviewed) return daFaixa[i].id;
+        }
+        for (let i = 0; i < pos; i++) {
+            if (!daFaixa[i].reviewed) return daFaixa[i].id;
+        }
+
+        // Faixa inteira revisada: primeira pendente da proxima faixa com
+        // pendencia, em ordem de ordinal.
+        const idDaProxima = getNextRunWithPending(runId);
+        if (idDaProxima) {
+            const proxima = photosByRun.get(idDaProxima) ?? [];
+            const pendente = proxima.find(p => !p.reviewed);
+            if (pendente) return pendente.id;
+        }
+
+        // Nada pendente em lugar nenhum: segue dentro da faixa, para o fluxo
+        // continuar servindo a quem so quer passar as fotos.
+        if (pos + 1 < daFaixa.length) return daFaixa[pos + 1].id;
+        return null;
+    }
+
+    // Projeto ainda nao derivado (`npm run derive-runs` nao rodou): mantem o
+    // comportamento antigo, por sequence_number.
     const currentIdx = photoIndexById.get(state.currentPhotoId) ?? -1;
     if (currentIdx === -1) return null;
-
-    // First try: next unreviewed after current
     for (let i = currentIdx + 1; i < state.projectPhotos.length; i++) {
         if (!state.projectPhotos[i].reviewed) return state.projectPhotos[i].id;
     }
-    // Wrap around: unreviewed before current
     for (let i = 0; i < currentIdx; i++) {
         if (!state.projectPhotos[i].reviewed) return state.projectPhotos[i].id;
     }
-    // All reviewed: go to next sequentially
     if (currentIdx + 1 < state.projectPhotos.length) {
         return state.projectPhotos[currentIdx + 1].id;
     }
     return null;
+}
+
+/**
+ * Finds the next capture run (by ordinal, wrapping) that still has unreviewed
+ * photos.
+ * @param {string} fromRunId - Run to start after
+ * @returns {string|null}
+ */
+function getNextRunWithPending(fromRunId) {
+    if (!state.runs.length) return null;
+    const idx = state.runs.findIndex(r => r.id === fromRunId);
+    if (idx === -1) return null;
+    // Percorre em circulo a partir da seguinte, para nao parar no fim da lista
+    // quando o operador comecou pelo meio do projeto.
+    for (let i = 1; i <= state.runs.length; i++) {
+        const candidata = state.runs[(idx + i) % state.runs.length];
+        if (candidata.reviewed < candidata.total) return candidata.id;
+    }
+    return null;
+}
+
+/**
+ * Gets the first photo of a capture run — o alvo de "entrar na faixa".
+ * Prefere a primeira nao revisada; se a faixa estiver toda revisada, a primeira.
+ * @param {string} runId - Run UUID
+ * @returns {string|null}
+ */
+export function getRunEntryPhotoId(runId) {
+    const fotos = photosByRun.get(runId) ?? [];
+    if (!fotos.length) return null;
+    return (fotos.find(p => !p.reviewed) ?? fotos[0]).id;
 }
 
 /**
@@ -431,6 +547,17 @@ export function getNextPhotoId() {
  */
 export function getPrevPhotoId() {
     if (!state.projectPhotos.length || !state.currentPhotoId) return null;
+
+    // Anda para tras dentro da faixa. Diferente do avanco, nao pula para a
+    // faixa anterior: voltar e um gesto de "revi algo errado agora ha pouco", e
+    // saltar de faixa aqui tiraria o operador do contexto sem ele pedir.
+    const runId = getCurrentRunId();
+    if (runId) {
+        const daFaixa = photosByRun.get(runId) ?? [];
+        const pos = daFaixa.findIndex(p => p.id === state.currentPhotoId);
+        return pos > 0 ? daFaixa[pos - 1].id : null;
+    }
+
     const currentIdx = photoIndexById.get(state.currentPhotoId) ?? -1;
     if (currentIdx <= 0) return null;
     return state.projectPhotos[currentIdx - 1].id;

@@ -308,6 +308,73 @@ describe('POST /api/v1/projects/:slug/reset-reviewed', () => {
 });
 
 // ============================================================================
+// Faixas de coleta (capture_runs)
+// ============================================================================
+
+describe('GET /api/v1/projects/:slug/runs', () => {
+  // A interface trata "sem faixa" como o modo antigo de navegacao. Um 404 aqui
+  // faria o painel parecer quebrado num banco que so nao passou pelo
+  // `npm run derive-runs`, que e o estado de qualquer base recem-migrada.
+  it('devolve lista vazia, nao 404, quando o projeto nao foi derivado', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${SEEDS.PROJECT_SLUG}/runs`,
+    });
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(JSON.parse(res.body).runs, []);
+  });
+
+  it('devolve 404 para projeto inexistente', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/projects/nao-existe/runs',
+    });
+    assert.equal(res.statusCode, 404);
+  });
+});
+
+describe('PUT /api/v1/runs/:runId/batch-calibration', () => {
+  it('devolve 404 para faixa inexistente', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/runs/faixa-que-nao-existe/batch-calibration',
+      payload: { mesh_rotation_y: 180 },
+    });
+    assert.equal(res.statusCode, 404);
+  });
+
+  it('exige ao menos um campo de calibracao', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/runs/qualquer/batch-calibration',
+      payload: {},
+    });
+    assert.equal(res.statusCode, 400);
+    assert.match(JSON.parse(res.body).error, /at least one/);
+  });
+
+  // Os limites sao os mesmos dos endpoints por foto, e a validacao e
+  // compartilhada — este teste guarda contra a extracao ter afrouxado algo.
+  it('rejeita valores fora dos limites de cada eixo', async () => {
+    const casos = [
+      { mesh_rotation_y: 361 },
+      { mesh_rotation_y: -1 },
+      { mesh_rotation_x: 31 },
+      { mesh_rotation_z: -31 },
+      { mesh_rotation_y: 'texto' },
+    ];
+    for (const payload of casos) {
+      const res = await app.inject({
+        method: 'PUT',
+        url: '/api/v1/runs/qualquer/batch-calibration',
+        payload,
+      });
+      assert.equal(res.statusCode, 400, `esperava 400 para ${JSON.stringify(payload)}`);
+    }
+  });
+});
+
+// ============================================================================
 // GET /api/v1/projects/review-stats
 // ============================================================================
 

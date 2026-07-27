@@ -10,8 +10,9 @@ import {
     selectTarget, deselectTarget,
     setTargetHidden, isTargetHidden,
     getCurrentPhotoIndex, resetAllReviewedState, getProjectPhoto,
+    getCurrentRunId, getRunEntryPhotoId,
 } from './state.js';
-import { batchUpdateProject, resetProjectReviewed } from './api.js';
+import { batchUpdateProject, resetProjectReviewed, batchUpdateRun } from './api.js';
 
 // ============================================================================
 // MODULE STATE
@@ -230,8 +231,14 @@ function buildStructureSignature(s, targets, selectedTarget) {
         .map(p => `${p.id}|${p.displayName || ''}|${p.distance != null ? p.distance.toFixed(1) : ''}`)
         .join(',');
     // Secoes colapsadas afetam quais corpos existem no DOM.
-    const collapsedSig = ['sliders', 'batch', 'targets', 'nearby']
+    const collapsedSig = ['sliders', 'batch', 'runs', 'targets', 'nearby']
         .map(k => `${k}:${isSectionCollapsed(k) ? 1 : 0}`)
+        .join(',');
+    // Faixas: identidade, progresso e default aplicado. A contagem entra aqui
+    // porque marcar uma foto revisada move a barra da faixa, e o rotulo do
+    // botao "Aplicar a faixa" muda com a faixa da foto aberta.
+    const runsSig = s.runs
+        .map(r => `${r.id}|${r.reviewed}/${r.total}|${r.applied?.mesh_rotation_y ?? ''}`)
         .join(',');
     return [
         hasProject ? 1 : 0,
@@ -247,6 +254,7 @@ function buildStructureSignature(s, targets, selectedTarget) {
         nearbyPreviewEnabled ? 1 : 0,
         previewingNearbyId || '',
         collapsedSig,
+        runsSig,
         targetsSig,
         nearbySig,
     ].join('||');
@@ -512,6 +520,8 @@ function renderPanel(s) {
 
         ${hasProject ? renderBatchSection(s) : ''}
 
+        ${renderRunsSection(s)}
+
         ${renderTargetsSection(targets, selectedTarget, s)}
 
         ${renderNearbyPhotos(s)}
@@ -642,6 +652,57 @@ function renderBatchSection(s) {
     `;
 
     return renderCollapsibleSection('batch', 'Aplicar ao Projeto', content);
+}
+
+/**
+ * Secao "Faixas de Coleta".
+ *
+ * Uma faixa e uma sessao de gravacao — uma corrida continua do veiculo — e e a
+ * granularidade em que a calibracao e constante (0,60 grau de desvio dentro da
+ * faixa contra 8,40 entre faixas, medido no faxinal). Fica acima de Targets
+ * porque a faixa passou a comandar a navegacao: Q/E andam dentro dela.
+ *
+ * Some inteira nos projetos ainda nao derivados por `npm run derive-runs`, e
+ * nesse caso a navegacao volta a ser por sequence_number.
+ * @param {Object} s - Estado atual
+ * @returns {string} HTML da secao
+ */
+function renderRunsSection(s) {
+    if (!s.runs.length) return '';
+
+    const runAtual = getCurrentRunId();
+    const itens = s.runs.map(faixa => {
+        const pct = faixa.total > 0 ? Math.round((faixa.reviewed / faixa.total) * 100) : 0;
+        const completa = faixa.total > 0 && faixa.reviewed === faixa.total;
+        const aplicado = faixa.applied?.mesh_rotation_y;
+        return `
+            <div class="cal-panel__run-item ${faixa.id === runAtual ? 'cal-panel__run-item--current' : ''} ${completa ? 'cal-panel__run-item--done' : ''}"
+                 data-run-id="${faixa.id}" title="Entrar na faixa ${faixa.label}">
+                <span class="cal-panel__run-ord">${faixa.ordinal}</span>
+                <span class="cal-panel__run-label">${faixa.label}</span>
+                <span class="cal-panel__run-progress">
+                    <span class="cal-panel__run-bar"><span class="cal-panel__run-fill" style="width:${pct}%"></span></span>
+                    <span class="cal-panel__run-count">${faixa.reviewed}/${faixa.total}</span>
+                </span>
+                ${aplicado != null ? `<span class="cal-panel__run-applied" title="Default aplicado nesta faixa">${aplicado.toFixed(0)}&deg;</span>` : ''}
+            </div>
+        `;
+    }).join('');
+
+    // O botao aplica os TRES angulos correntes de uma vez. Separar por eixo,
+    // como no batch de projeto, encheria a secao de botoes para um gesto que na
+    // pratica e sempre "esta foto esta certa, vale para a corrida inteira".
+    const faixaCorrente = s.runs.find(r => r.id === runAtual);
+    const aplicar = faixaCorrente ? `
+        <button id="btn-apply-run" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost"
+                title="Aplica os tres angulos atuais as ${faixaCorrente.total} fotos da faixa ${faixaCorrente.label}">
+            Aplicar a faixa ${faixaCorrente.label} (${faixaCorrente.total} fotos)
+        </button>
+    ` : '';
+
+    return renderCollapsibleSection('runs', 'Faixas de Coleta',
+        `<div class="cal-panel__run-list" id="run-list">${itens}</div>${aplicar}`,
+        { count: s.runs.length });
 }
 
 function renderTargetsSection(targets, selectedTarget, s) {
@@ -1067,9 +1128,64 @@ function attachEvents() {
         }
     });
 
+    // Entrar numa faixa: vai para a primeira foto pendente dela (ou a primeira,
+    // se ja estiver toda revisada). Passa por onNavigateToPhoto para o dialogo
+    // de alteracoes nao salvas continuar valendo.
+    document.getElementById('run-list')?.addEventListener('click', (e) => {
+        const item = e.target.closest('[data-run-id]');
+        if (!item || !onNavigateToPhoto) return;
+        const destino = getRunEntryPhotoId(item.dataset.runId);
+        if (destino) onNavigateToPhoto(destino);
+    });
+
+    document.getElementById('btn-apply-run')?.addEventListener('click', handleApplyToRun);
+
     // A navegacao pela lista de fotos e delegada em `photosEl` uma unica vez em
     // initPanel: o container sobrevive a reconstrucao do corpo, e re-anexar o
     // listener aqui acumularia uma copia por render.
+}
+
+/**
+ * Aplica os tres angulos correntes a todas as fotos da faixa da foto aberta.
+ *
+ * Usa os valores EDITADOS, nao os salvos: o gesto natural e calibrar a foto na
+ * tela ate ficar certa e entao dizer "vale para a corrida inteira", sem ter de
+ * salvar antes.
+ */
+async function handleApplyToRun() {
+    const runId = getCurrentRunId();
+    const faixa = state.runs.find(r => r.id === runId);
+    if (!faixa) {
+        showToast('Foto sem faixa de coleta', 'error');
+        return;
+    }
+
+    const values = {
+        mesh_rotation_y: state.editedMeshRotationY ?? 180,
+        mesh_rotation_x: state.editedMeshRotationX ?? 0,
+        mesh_rotation_z: state.editedMeshRotationZ ?? 0,
+    };
+
+    const confirmado = window.confirm(
+        `Aplicar rotation_y=${values.mesh_rotation_y.toFixed(1)}, `
+        + `rotation_x=${values.mesh_rotation_x.toFixed(1)}, `
+        + `rotation_z=${values.mesh_rotation_z.toFixed(1)}\n`
+        + `as ${faixa.total} fotos da faixa ${faixa.label}?\n\nEsta acao nao pode ser desfeita.`
+    );
+    if (!confirmado) return;
+
+    try {
+        const resultado = await batchUpdateRun(runId, values);
+        // Espelha o registro no estado local para a etiqueta da faixa aparecer
+        // sem refazer a busca das faixas.
+        faixa.applied = { ...faixa.applied, ...values };
+        const n = resultado.updated?.mesh_rotation_y?.photosUpdated ?? faixa.total;
+        showToast(`${n} fotos da faixa ${faixa.label} atualizadas`, 'success');
+        renderPanel(state);
+    } catch (err) {
+        console.error('Batch por faixa falhou:', err);
+        showToast(`Erro ao aplicar na faixa: ${err.message}`, 'error');
+    }
 }
 
 // ============================================================================

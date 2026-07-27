@@ -86,6 +86,27 @@ export function getIndexDb() {
     // vivem no schema.sql, que roda incondicionalmente acima (com IF NOT EXISTS),
     // entao ja existem aqui: recria-los era redundancia. O filtro por photo_id
     // em deleted_photos e servido pelo indice automatico da PRIMARY KEY.
+
+    // Migrate: faixa de coleta (ver capture_runs em schema.sql).
+    //
+    // A tabela em si ja veio do schema.sql com IF NOT EXISTS; o que falta num
+    // banco anterior sao as colunas de photos. As tres entram vazias: quem as
+    // preenche e `npm run derive-runs`, que le o identificador de sessao do
+    // original_name. Um banco com as colunas nulas continua funcionando — a
+    // interface trata "sem faixa" como o modo antigo.
+    const photoCols = indexDb.pragma('table_info(photos)');
+    if (!photoCols.some(c => c.name === 'run_id')) {
+      indexDb.exec('ALTER TABLE photos ADD COLUMN run_id TEXT REFERENCES capture_runs(id)');
+    }
+    if (!photoCols.some(c => c.name === 'run_position')) {
+      indexDb.exec('ALTER TABLE photos ADD COLUMN run_position INTEGER');
+    }
+    if (!photoCols.some(c => c.name === 'captured_at')) {
+      indexDb.exec('ALTER TABLE photos ADD COLUMN captured_at TEXT');
+    }
+    // Depois dos ALTER, nunca antes: num banco anterior as colunas so passam a
+    // existir nas linhas acima.
+    indexDb.exec('CREATE INDEX IF NOT EXISTS idx_photos_run ON photos(run_id, run_position)');
   })();
 
   return indexDb;

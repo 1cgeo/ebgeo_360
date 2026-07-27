@@ -182,6 +182,48 @@ export async function fetchAllReviewStats({ signal } = {}) {
 }
 
 /**
+ * Fetches the capture runs (faixas de coleta) of a project, with progress.
+ * @param {string} slug - Project slug
+ * @param {{ signal?: AbortSignal }} [options] - Opcoes de cancelamento
+ * @returns {Promise<Array>} Faixas ordenadas por ordinal
+ */
+export async function fetchProjectRuns(slug, { signal } = {}) {
+    const { signal: reqSignal, cleanup } = withTimeout(signal);
+    try {
+        const response = await fetch(`${BASE}/projects/${slug}/runs`, {
+            cache: 'no-cache',
+            signal: reqSignal,
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch runs for project ${slug} (HTTP ${response.status})`);
+        }
+        const data = await response.json();
+        return data.runs || [];
+    } finally {
+        cleanup();
+    }
+}
+
+/**
+ * Applies calibration defaults to every photo of one capture run.
+ * @param {string} runId - Run UUID
+ * @param {Object} values - Campos mesh_rotation_y/x/z a aplicar
+ * @returns {Promise<Object>} Server response with update counts
+ */
+export async function batchUpdateRun(runId, values) {
+    const response = await fetch(`${BASE}/runs/${runId}/batch-calibration`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+    });
+    if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(`Failed to batch update run ${runId} (HTTP ${response.status}): ${text}`);
+    }
+    return response.json();
+}
+
+/**
  * Fetches everything the calibration map mode draws for one project:
  * photos with position, review state and the three angles, plus the capture
  * track as arrays of coordinates.

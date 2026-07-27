@@ -7,7 +7,7 @@
 import {
     fetchProjects, fetchPhotoMetadata, getPhotoImageUrl,
     saveCalibration, saveMeshRotationX, saveMeshRotationZ,
-    setPhotoReviewed, fetchProjectPhotos, fetchAllReviewStats,
+    setPhotoReviewed, fetchProjectPhotos, fetchAllReviewStats, fetchProjectRuns,
     saveTargetVisibility, fetchNearbyPhotos, createTarget, deleteTargetConnection,
     deletePhoto,
 } from './api.js';
@@ -177,8 +177,18 @@ async function showProjectSelector() {
  */
 async function loadProjectContext(slug, signal) {
     try {
-        const data = await fetchProjectPhotos(slug, { signal });
-        setProjectContext(slug, data.photos, data.reviewStats);
+        // As faixas vao junto porque a navegacao Q/E depende delas: buscar
+        // depois faria a primeira troca de foto ainda usar a ordem antiga.
+        // Se as faixas falharem, o projeto ainda abre — a interface trata
+        // "sem faixa" como o comportamento anterior.
+        const [data, runs] = await Promise.all([
+            fetchProjectPhotos(slug, { signal }),
+            fetchProjectRuns(slug, { signal }).catch(err => {
+                if (err?.name !== 'AbortError') console.warn('Failed to load runs:', err);
+                return [];
+            }),
+        ]);
+        setProjectContext(slug, data.photos, data.reviewStats, runs);
     } catch (err) {
         if (err?.name === 'AbortError') return;
         console.error('Failed to load project context:', err);

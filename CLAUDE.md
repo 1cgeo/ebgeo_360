@@ -33,6 +33,8 @@ npm run dev            # Dev server with auto-restart (--watch)
 npm run migrate        # Import JSON metadata + JPG images into SQLite
 npm run generate-pmtiles  # Generate fotos.pmtiles + fotos_linha.pmtiles from index.db
 npm run import-tracks     # Populate project_tracks (capture track) from geojson/PMTiles
+npm run derive-runs       # Populate capture_runs (faixas de coleta) from original_name
+                          #   --slug <slug> para um projeto so, --dry-run para so relatar
 # Import photos that exist in fotos.geojson + images but have no metadata JSON:
 node scripts/import-geojson-photos.js --slug <slug> --geojson <fotos.geojson> --images <dir>
 npm run cleanup-wal    # Checkpoint/clean SQLite WAL files
@@ -114,6 +116,71 @@ next run sees them as already imported. Both this script and `migrate.js` retry
 reads 8 times with backoff and wait up to 30 min for a disconnected drive to come
 back.
 
+### Faixa de coleta = uma sessão de gravação
+
+`capture_runs` guarda as faixas de um projeto, e `photos.run_id`/`run_position`
+prendem cada foto à sua. Uma faixa é uma **corrida contínua do veículo** — não a
+`faixa_img` da fonte, que é outra coisa e outra granularidade (no AMAN: 143
+`faixa_img` contra 8 sessões).
+
+É a granularidade em que a calibração é constante, porque é a granularidade em
+que a montagem da câmera não muda. Medido no faxinal, o único projeto com
+calibração real vinda de quaternion: desvio de `mesh_rotation_y` de **0,60° dentro
+da faixa** contra **8,40° entre as médias das faixas** (amplitude 316,4° a 344,0°).
+Por isso "Aplicar ao Projeto" é grosso demais — um valor único erra ~20° nas
+faixas do outro extremo.
+
+**A fronteira vem do identificador de sessão gravado no `original_name`, não de
+um corte por intervalo de tempo.** As fotos são disparadas por distância (passo
+mediano 13,5 m), então um veículo parado num semáforo produz um intervalo
+temporal longo sem deslocamento nenhum: um corte por gap partiria a faixa no
+sinal vermelho, e o limiar teria de ser diferente para trânsito urbano e para
+área militar. Dois padrões cobrem o acervo inteiro, com zero nomes não
+reconhecidos em 90.433 fotos:
+
+- `MULTICAPTURA_<sessão>_<quadro>` → `session_key` = `mc:9468`
+- `PIC_<processamento>_<início da sessão>_output_<quadro>` → `ts:2026-05-05T16:46:57`
+
+São **duas datas** no nome PIC_: a primeira é o processamento, a segunda é o
+início da sessão. Pegar a errada agruparia por lote de exportação.
+
+`npm run derive-runs` popula tudo, é re-executável e preserva o
+`applied_rotation_*` de faixas que já existiam (reidentificadas pela
+`session_key`). Ele **solta `photos.run_id` antes de apagar as faixas** — o
+caminho inverso só quebra a chave estrangeira na segunda execução, quando
+`run_id` já não é NULL. Resultado atual: 401 faixas para 90.428 fotos.
+
+A ordem das faixas é cronológica quando **todas** têm `started_at`, e por tamanho
+decrescente caso contrário — critério do projeto inteiro, porque uma lista meio
+cronológica meio por tamanho não teria ordem nenhuma. Os 14 projetos MULTICAPTURA
+caem no tamanho: os ids (9468, 4809, 0913) não são cronológicos.
+
+`captured_at` (do `time_img` da fonte) ainda está vazio. Ele **não** serve para
+achar a fronteira — serve para ordenar DENTRO da faixa. Sem ele a ordem sai do
+número do quadro, que acerta o corpo da distribuição (passo p50 14,3 m / p90
+18,0 m em santana, contra vizinho real de 13,9 m) mas erra na cauda (p99 de
+192 m e saltos de 2,3 km no AMAN).
+
+### A navegação de revisão segue a faixa
+
+`sequence_number` é uma **BFS do grafo de navegação** (`migrate.js:354`), não a
+ordem de captura. Andar por ela trocava de faixa em **89,9%** das fotos
+consecutivas no santana (faxinal 75%, uruguaiana 60,5%) — o operador reajustava o
+mesmo parâmetro para frente e para trás o tempo todo.
+
+`getNextPhotoId` anda dentro da faixa por `run_position` e só passa para a
+próxima faixa com pendência quando a atual acaba. Medido no faxinal: **0% de
+troca de faixa em 300 passos**, contra 40% na ordem antiga. `getPrevPhotoId`
+deliberadamente **não** pula para a faixa anterior: voltar é um gesto de "revi
+algo errado agora há pouco", e saltar de faixa tiraria o operador do contexto sem
+ele pedir. Projeto sem faixas derivadas volta ao comportamento por
+`sequence_number`.
+
+`applied_rotation_*` em `capture_runs` é **registro, não herança**: o batch por
+faixa escreve direto em `photos`, que continua sendo a única verdade da
+calibração. A coluna existe para a interface poder dizer "faixa calibrada em
+337°".
+
 ### The capture track lives in the database
 
 `project_tracks` holds the same geometry as `fotos_linha.pmtiles`, but attributed
@@ -190,6 +257,9 @@ Two flags matter when encoding the line and are easy to lose:
 | `DELETE /api/v1/photos/:uuid` | Soft-delete a photo (tombstone in `deleted_photos`) |
 | `GET /api/v1/projects/:slug/photos` | List photos with review status |
 | `GET /api/v1/projects/:slug/map` | Map mode payload: every photo with position, review state and the 3 angles, plus the capture track |
+| `GET /api/v1/projects/:slug/runs` | Faixas de coleta com progresso de revisão (lista vazia se não derivado) |
+| `PUT /api/v1/runs/:runId/batch-calibration` | Aplica os 3 ângulos a todas as fotos de uma faixa |
+| `GET /api/v1/projects/review-stats` | Contadores de revisão de todos os projetos numa varredura |
 | `POST /api/v1/projects/:slug/reset-reviewed` | Reset all photos to unreviewed |
 | `PUT /api/v1/projects/:slug/batch-calibration` | Batch update calibration fields for all photos |
 

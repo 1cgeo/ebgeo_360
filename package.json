@@ -15,7 +15,8 @@
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "lint:calibration": "eslint --no-ignore -c eslint-calibration.config.mjs public/calibration/js/*.js",
-    "import-tracks": "node scripts/import-tracks.js"
+    "import-tracks": "node scripts/import-tracks.js",
+    "derive-runs": "node scripts/derive-runs.js"
   },
   "dependencies": {
     "@fastify/compress": "^8.3.1",

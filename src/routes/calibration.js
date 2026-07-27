@@ -28,8 +28,53 @@ import {
   isPhotoDeleted,
   softDeletePhoto,
   getProjectByPhotoId,
+  getProjectBySlug,
+  getRunsByProjectSlug,
+  getRunById,
+  batchUpdateRunMeshRotation,
+  updateRunApplied,
 } from '../db/queries.js';
 import { getIndexDb } from '../db/connection.js';
+
+/**
+ * Faixas validas de cada eixo, iguais as dos endpoints por foto.
+ * @constant
+ */
+const LIMITES_ROTACAO = {
+  mesh_rotation_y: [0, 360],
+  mesh_rotation_x: [-30, 30],
+  mesh_rotation_z: [-30, 30],
+};
+
+/**
+ * Valida o corpo de um batch de calibracao (projeto ou faixa).
+ *
+ * Extraido porque os dois endpoints de batch aplicam exatamente as mesmas
+ * regras: manter duas copias faria uma divergir da outra na primeira vez que um
+ * limite mudasse.
+ *
+ * @param {Object} body - Corpo da requisicao
+ * @returns {{error: string}|{values: Object}} Erro de validacao ou os campos
+ *   presentes, ja validados.
+ */
+function validarBatchRotacoes(body) {
+  const values = {};
+  for (const [campo, [min, max]] of Object.entries(LIMITES_ROTACAO)) {
+    const valor = body?.[campo];
+    if (valor === undefined) continue;
+    if (typeof valor !== 'number' || Number.isNaN(valor)) {
+      return { error: `${campo} must be a number` };
+    }
+    if (valor < min || valor > max) {
+      return { error: `${campo} must be between ${min} and ${max}` };
+    }
+    values[campo] = valor;
+  }
+  if (Object.keys(values).length === 0) {
+    return { error: 'Must provide at least one calibration field' };
+  }
+  return { values };
+}
 
 export default async function calibrationRoutes(fastify) {
   // PUT /api/v1/photos/:uuid/calibration — update mesh_rotation_y
@@ -180,11 +225,15 @@ export default async function calibrationRoutes(fastify) {
     const stats = getReviewStatsByProjectSlug(slug);
 
     return {
+      // runId/runPosition acompanham cada foto para o cliente montar a
+      // navegacao por faixa em memoria, sem uma requisicao por faixa.
       photos: photos.map(p => ({
         id: p.id,
         displayName: p.display_name,
         sequenceNumber: p.sequence_number,
         reviewed: Boolean(p.calibration_reviewed),
+        runId: p.run_id,
+        runPosition: p.run_position,
       })),
       reviewStats: {
         total: stats.total,
@@ -259,55 +308,15 @@ export default async function calibrationRoutes(fastify) {
   // PUT /api/v1/projects/:slug/batch-calibration — update calibration fields for all photos
   fastify.put('/api/v1/projects/:slug/batch-calibration', async (request, reply) => {
     const { slug } = request.params;
+
+    const validacao = validarBatchRotacoes(request.body);
+    if (validacao.error) {
+      reply.code(400);
+      return { error: validacao.error };
+    }
     const {
       mesh_rotation_y, mesh_rotation_x, mesh_rotation_z,
-    } = request.body || {};
-
-    // Must provide at least one field
-    if (
-      mesh_rotation_y === undefined &&
-      mesh_rotation_x === undefined &&
-      mesh_rotation_z === undefined
-    ) {
-      reply.code(400);
-      return { error: 'Must provide at least one calibration field' };
-    }
-
-    // Validate mesh_rotation_y if provided
-    if (mesh_rotation_y !== undefined) {
-      if (typeof mesh_rotation_y !== 'number' || Number.isNaN(mesh_rotation_y)) {
-        reply.code(400);
-        return { error: 'mesh_rotation_y must be a number' };
-      }
-      if (mesh_rotation_y < 0 || mesh_rotation_y > 360) {
-        reply.code(400);
-        return { error: 'mesh_rotation_y must be between 0 and 360' };
-      }
-    }
-
-    // Validate mesh_rotation_x if provided
-    if (mesh_rotation_x !== undefined) {
-      if (typeof mesh_rotation_x !== 'number' || Number.isNaN(mesh_rotation_x)) {
-        reply.code(400);
-        return { error: 'mesh_rotation_x must be a number' };
-      }
-      if (mesh_rotation_x < -30 || mesh_rotation_x > 30) {
-        reply.code(400);
-        return { error: 'mesh_rotation_x must be between -30 and 30' };
-      }
-    }
-
-    // Validate mesh_rotation_z if provided
-    if (mesh_rotation_z !== undefined) {
-      if (typeof mesh_rotation_z !== 'number' || Number.isNaN(mesh_rotation_z)) {
-        reply.code(400);
-        return { error: 'mesh_rotation_z must be a number' };
-      }
-      if (mesh_rotation_z < -30 || mesh_rotation_z > 30) {
-        reply.code(400);
-        return { error: 'mesh_rotation_z must be between -30 and 30' };
-      }
-    }
+    } = validacao.values;
 
     // Check project has photos
     const photos = getPhotosByProjectSlug(slug);
@@ -340,6 +349,79 @@ export default async function calibrationRoutes(fastify) {
     })();
 
     return { ok: true, updated };
+  });
+
+  // GET /api/v1/projects/:slug/runs — faixas de coleta do projeto, com progresso
+  //
+  // Uma faixa e uma SESSAO DE GRAVACAO: uma corrida continua do veiculo. E a
+  // granularidade em que a calibracao e constante — no faxinal, desvio de 0,60
+  // grau dentro da faixa contra 8,40 entre as medias das faixas.
+  //
+  // Devolve lista vazia (nao 404) quando o projeto existe mas nunca passou pelo
+  // `npm run derive-runs`: a interface trata "sem faixa" como o modo antigo, e
+  // um 404 aqui faria o painel parecer quebrado num banco so nao derivado.
+  fastify.get('/api/v1/projects/:slug/runs', async (request, reply) => {
+    const { slug } = request.params;
+
+    if (!getProjectBySlug(slug)) {
+      reply.code(404);
+      return { error: 'Project not found' };
+    }
+
+    const runs = getRunsByProjectSlug(slug).map(r => ({
+      id: r.id,
+      label: r.label,
+      ordinal: r.ordinal,
+      startedAt: r.started_at,
+      total: r.total,
+      reviewed: r.reviewed,
+      applied: {
+        mesh_rotation_y: r.applied_rotation_y,
+        mesh_rotation_x: r.applied_rotation_x,
+        mesh_rotation_z: r.applied_rotation_z,
+      },
+    }));
+
+    return { runs };
+  });
+
+  // PUT /api/v1/runs/:runId/batch-calibration — aplica um default a uma faixa
+  //
+  // Escreve direto em `photos`, como o batch por projeto. `applied_rotation_*`
+  // em capture_runs e so REGISTRO, para a interface poder dizer "faixa
+  // calibrada em 337 graus" — nao ha heranca, e a verdade da calibracao
+  // continua sendo unicamente a coluna da foto.
+  fastify.put('/api/v1/runs/:runId/batch-calibration', async (request, reply) => {
+    const { runId } = request.params;
+
+    const validacao = validarBatchRotacoes(request.body);
+    if (validacao.error) {
+      reply.code(400);
+      return { error: validacao.error };
+    }
+    const values = validacao.values;
+
+    const run = getRunById(runId);
+    if (!run) {
+      reply.code(404);
+      return { error: 'Capture run not found' };
+    }
+
+    const updated = {};
+    getIndexDb().transaction(() => {
+      for (const [campo, valor] of Object.entries(values)) {
+        const axis = campo.slice(-1); // mesh_rotation_y -> 'y'
+        const result = batchUpdateRunMeshRotation(axis, runId, valor);
+        updated[campo] = { value: valor, photosUpdated: result.changes };
+      }
+      updateRunApplied(runId, {
+        y: values.mesh_rotation_y ?? null,
+        x: values.mesh_rotation_x ?? null,
+        z: values.mesh_rotation_z ?? null,
+      });
+    })();
+
+    return { ok: true, runId, label: run.label, updated };
   });
 
   // PUT /api/v1/targets/:sourceId/:targetId/visibility — hide/show a target

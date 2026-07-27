@@ -36,6 +36,16 @@ CREATE TABLE IF NOT EXISTS photos (
     full_size_bytes         INTEGER,
     preview_size_bytes      INTEGER,
     calibration_reviewed    INTEGER DEFAULT 0,
+    -- Faixa de coleta (sessao de gravacao) a que a foto pertence, e sua posicao
+    -- dentro dela. Ver capture_runs. Bancos anteriores recebem estas colunas
+    -- pelo bloco de migracoes do connection.js.
+    run_id                  TEXT REFERENCES capture_runs(id),
+    run_position            INTEGER,
+    -- Hora de captura vinda do time_img da fonte. E o que da ordem confiavel
+    -- DENTRO da faixa: ordenar pelo numero do quadro do nome funciona bem no
+    -- corpo da distribuicao (passo p50 14,3 m / p90 18,0 m em santana) mas
+    -- quebra na cauda (p99 de 192 m e saltos de 2,3 km no AMAN).
+    captured_at             TEXT,
     UNIQUE(project_id, sequence_number)
 );
 
@@ -95,7 +105,54 @@ CREATE TABLE IF NOT EXISTS project_tracks (
 
 CREATE INDEX IF NOT EXISTS idx_project_tracks_project ON project_tracks(project_id);
 
+-- Faixa de coleta = uma SESSAO DE GRAVACAO: uma corrida continua do veiculo,
+-- do momento em que o operador iniciou a captura ate parar.
+--
+-- E a granularidade em que a calibracao e constante, porque e a granularidade
+-- em que a montagem da camera nao muda. Medido no faxinal, o unico projeto com
+-- calibracao real vinda de quaternion: o desvio de mesh_rotation_y DENTRO da
+-- faixa e 0,60 grau, o desvio das MEDIAS entre faixas e 8,40 (amplitude 316,4 a
+-- 344,0). Por isso "aplicar ao projeto" e grosso demais: um valor unico erra
+-- ~20 graus nas faixas do outro extremo.
+--
+-- A fronteira vem do identificador de sessao que o proprio equipamento gravou
+-- no nome do arquivo, NAO de um corte por intervalo de tempo. As fotos sao
+-- disparadas por distancia (passo mediano 13,5 m), entao um veiculo parado num
+-- semaforo produz um intervalo longo sem deslocamento nenhum, e um corte
+-- temporal partiria a faixa ao meio no sinal vermelho.
+--
+-- `session_key` e namespaced por origem para nao colidir em projetos que mistu-
+-- ram os dois padroes de nome (blumenau, santiago, tubarao):
+--   'mc:9468'                 -- MULTICAPTURA_9468_005109
+--   'ts:2026-05-05T16:46:57'  -- PIC_20260427_090836_26_05_05_16_46_57_output_5
+CREATE TABLE IF NOT EXISTS capture_runs (
+    id                  TEXT PRIMARY KEY,
+    project_id          TEXT NOT NULL REFERENCES projects(id),
+    session_key         TEXT NOT NULL,
+    label               TEXT NOT NULL,
+    -- Inicio da sessao. So os nomes PIC_ carregam a hora; nos MULTICAPTURA fica
+    -- NULL ate o time_img da fonte ser importado.
+    started_at          TEXT,
+    -- Posicao da faixa na lista do projeto, 1..N. Cronologica quando TODAS as
+    -- faixas do projeto tem started_at; caso contrario por tamanho decrescente,
+    -- porque os ids do MULTICAPTURA (9468, 4809, 0913) nao sao cronologicos.
+    ordinal             INTEGER NOT NULL,
+    photo_count         INTEGER NOT NULL DEFAULT 0,
+    -- Registro do ultimo default aplicado, para a interface poder dizer "faixa
+    -- calibrada em 337 graus". NAO e heranca: o batch escreve direto em photos,
+    -- que continua sendo a unica verdade de calibracao.
+    applied_rotation_y  REAL,
+    applied_rotation_x  REAL,
+    applied_rotation_z  REAL,
+    UNIQUE(project_id, session_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_capture_runs_project ON capture_runs(project_id, ordinal);
+
 CREATE INDEX IF NOT EXISTS idx_photos_project ON photos(project_id);
+-- idx_photos_run (run_id, run_position) NAO fica aqui: schema.sql roda ANTES do
+-- bloco de migracoes do connection.js, e num banco existente as colunas ainda
+-- nao existiriam neste ponto. O indice e criado la, depois dos ALTER TABLE.
 CREATE INDEX IF NOT EXISTS idx_photos_original ON photos(original_name);
 CREATE INDEX IF NOT EXISTS idx_targets_source ON targets(source_id);
 -- Indexa o ramo target_id do DELETE em soft-delete (evita full table scan no OR)

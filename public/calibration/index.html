@@ -1126,6 +1126,89 @@
         }
 
         /* ================================================================
+           FAIXAS DE COLETA — uma sessao de gravacao por linha
+           ================================================================ */
+        .cal-panel__run-list {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            max-height: 220px;
+            overflow-y: auto;
+            margin-bottom: 6px;
+        }
+
+        .cal-panel__run-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            border: 1px solid transparent;
+        }
+
+        .cal-panel__run-item:hover { background: #313244; }
+
+        .cal-panel__run-item--current {
+            background: rgba(137, 180, 250, 0.15);
+            border-color: rgba(137, 180, 250, 0.35);
+        }
+
+        .cal-panel__run-ord {
+            min-width: 20px;
+            text-align: right;
+            color: #6c7086;
+            flex-shrink: 0;
+        }
+
+        .cal-panel__run-label {
+            color: #cdd6f4;
+            font-variant-numeric: tabular-nums;
+            flex-shrink: 0;
+        }
+
+        .cal-panel__run-progress {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex: 1;
+            min-width: 0;
+            justify-content: flex-end;
+        }
+
+        .cal-panel__run-bar {
+            flex: 1;
+            min-width: 24px;
+            height: 3px;
+            background: #45475a;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .cal-panel__run-fill {
+            display: block;
+            height: 100%;
+            background: #a6e3a1;
+        }
+
+        .cal-panel__run-count {
+            color: #6c7086;
+            font-variant-numeric: tabular-nums;
+            flex-shrink: 0;
+        }
+
+        /* Faixa concluida: o rotulo verde deixa o operador varrer a lista e ver
+           de relance o que ainda falta, sem ler contador por contador. */
+        .cal-panel__run-item--done .cal-panel__run-label { color: #a6e3a1; }
+
+        .cal-panel__run-applied {
+            color: #89b4fa;
+            font-variant-numeric: tabular-nums;
+            flex-shrink: 0;
+        }
+
+        /* ================================================================
            REVIEW WORKFLOW — Photo list
            ================================================================ */
         .cal-panel__photo-list {

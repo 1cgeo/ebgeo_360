@@ -134,13 +134,59 @@ function stmts() {
       'UPDATE photos SET calibration_reviewed = ? WHERE id = ?'
     ),
 
+    // run_id/run_position vao junto de proposito: com eles o cliente monta a
+    // navegacao por faixa inteira em memoria, sem uma requisicao por faixa.
     photosByProjectSlug: db.prepare(`
-      SELECT ph.id, ph.display_name, ph.sequence_number, ph.calibration_reviewed
+      SELECT ph.id, ph.display_name, ph.sequence_number, ph.calibration_reviewed,
+             ph.run_id, ph.run_position
       FROM photos ph
       JOIN projects p ON p.id = ph.project_id
       WHERE p.slug = ?
         AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)
       ORDER BY ph.sequence_number ASC
+    `),
+
+    // ---- Faixas de coleta (capture_runs) ----
+    // Progresso por faixa numa unica varredura. O LEFT JOIN mantem faixas cujas
+    // fotos foram todas excluidas por soft-delete, que apareceriam como
+    // buraco na numeracao se sumissem.
+    runsByProjectSlug: db.prepare(`
+      SELECT cr.id, cr.session_key, cr.label, cr.started_at, cr.ordinal,
+             cr.applied_rotation_y, cr.applied_rotation_x, cr.applied_rotation_z,
+             COUNT(ph.id) AS total,
+             COALESCE(SUM(CASE WHEN ph.calibration_reviewed = 1 THEN 1 ELSE 0 END), 0) AS reviewed
+      FROM capture_runs cr
+      JOIN projects p ON p.id = cr.project_id
+      LEFT JOIN photos ph ON ph.run_id = cr.id
+        AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)
+      WHERE p.slug = ?
+      GROUP BY cr.id
+      ORDER BY cr.ordinal ASC
+    `),
+
+    runById: db.prepare('SELECT * FROM capture_runs WHERE id = ?'),
+
+    batchUpdateRunMeshRotationY: db.prepare(`
+      UPDATE photos SET mesh_rotation_y = ?
+      WHERE run_id = ? AND id NOT IN (SELECT photo_id FROM deleted_photos)
+    `),
+    batchUpdateRunMeshRotationX: db.prepare(`
+      UPDATE photos SET mesh_rotation_x = ?
+      WHERE run_id = ? AND id NOT IN (SELECT photo_id FROM deleted_photos)
+    `),
+    batchUpdateRunMeshRotationZ: db.prepare(`
+      UPDATE photos SET mesh_rotation_z = ?
+      WHERE run_id = ? AND id NOT IN (SELECT photo_id FROM deleted_photos)
+    `),
+
+    // COALESCE preserva o registro dos eixos que este batch nao tocou: aplicar
+    // so o roll nao pode apagar a memoria do heading aplicado antes.
+    updateRunApplied: db.prepare(`
+      UPDATE capture_runs SET
+        applied_rotation_y = COALESCE(?, applied_rotation_y),
+        applied_rotation_x = COALESCE(?, applied_rotation_x),
+        applied_rotation_z = COALESCE(?, applied_rotation_z)
+      WHERE id = ?
     `),
 
     reviewStatsByProjectSlug: db.prepare(`
@@ -440,6 +486,53 @@ export function getPhotosByProjectSlug(slug) {
  */
 export function getReviewStatsByProjectSlug(slug) {
   return stmts().reviewStatsByProjectSlug.get(slug);
+}
+
+/**
+ * Gets the capture runs (faixas de coleta) of a project, with review progress.
+ * @param {string} slug - Project slug
+ * @returns {Array<Object>} Runs ordered by ordinal
+ */
+export function getRunsByProjectSlug(slug) {
+  return stmts().runsByProjectSlug.all(slug);
+}
+
+/**
+ * Gets a capture run by id.
+ * @param {string} runId - Run UUID
+ * @returns {Object|undefined}
+ */
+export function getRunById(runId) {
+  return stmts().runById.get(runId);
+}
+
+/**
+ * Applies a mesh rotation to every photo of a capture run.
+ * @param {'y'|'x'|'z'} axis - Which rotation axis
+ * @param {string} runId - Run UUID
+ * @param {number} value - Rotation in degrees
+ * @returns {Object} Run result with changes count
+ */
+export function batchUpdateRunMeshRotation(axis, runId, value) {
+  const byAxis = {
+    y: stmts().batchUpdateRunMeshRotationY,
+    x: stmts().batchUpdateRunMeshRotationX,
+    z: stmts().batchUpdateRunMeshRotationZ,
+  };
+  const stmt = byAxis[axis];
+  if (!stmt) throw new Error(`Unknown rotation axis: ${axis}`);
+  return stmt.run(value, runId);
+}
+
+/**
+ * Records the defaults last applied to a run (display only — the calibration
+ * itself lives in `photos`). Pass null for an axis to leave its record intact.
+ * @param {string} runId - Run UUID
+ * @param {{y?: number, x?: number, z?: number}} values - Applied rotations
+ * @returns {Object} Run result with changes count
+ */
+export function updateRunApplied(runId, { y = null, x = null, z = null } = {}) {
+  return stmts().updateRunApplied.run(y, x, z, runId);
 }
 
 /**
