@@ -35,6 +35,8 @@ npm run generate-pmtiles  # Generate fotos.pmtiles + fotos_linha.pmtiles from in
 npm run import-tracks     # Populate project_tracks (capture track) from geojson/PMTiles
 npm run derive-runs       # Populate capture_runs (faixas de coleta) from original_name
                           #   --slug <slug> para um projeto so, --dry-run para so relatar
+npm run import-captured-at -- --sources "<dir>[,<dir>]"  # photos.captured_at do time_img da fonte
+                          #   --slug <slug>, --dry-run; rodar derive-runs depois
 # Import photos that exist in fotos.geojson + images but have no metadata JSON:
 node scripts/import-geojson-photos.js --slug <slug> --geojson <fotos.geojson> --images <dir>
 npm run cleanup-wal    # Checkpoint/clean SQLite WAL files
@@ -139,10 +141,19 @@ sinal vermelho, e o limiar teria de ser diferente para trânsito urbano e para
 reconhecidos em 90.433 fotos:
 
 - `MULTICAPTURA_<sessão>_<quadro>` → `session_key` = `mc:9468`
-- `PIC_<processamento>_<início da sessão>_output_<quadro>` → `ts:2026-05-05T16:46:57`
+- `PIC_<início da captura>_<costura>_output_<quadro>` → `ts:2026-04-27T09:08:36`
 
-São **duas datas** no nome PIC_: a primeira é o processamento, a segunda é o
-início da sessão. Pegar a errada agruparia por lote de exportação.
+São **duas datas** no nome PIC_, e a **primeira** é o início da captura; a
+segunda é a costura do lote. Isto já esteve invertido no código. O EXIF das
+imagens do faxinal decidiu, em 5.672 fotos: `primeira data + quadro × 4 s` cai a
+**2 s** da hora real, com 100% dentro de 5 s, enquanto a segunda data erra de
+**8 a 9 dias**. Uma faixa gravada como `2026-05-05T14:47:14` foi capturada em
+`2026-04-26T13:37:35`.
+
+As duas são 1 para 1 (45 sessões por qualquer uma delas no faxinal), então o
+AGRUPAMENTO saía certo mesmo com a data errada, e só o `started_at`, o rótulo e,
+no saicã, a ordem das faixas é que saíam furados. Um agrupamento correto não
+prova que a data está certa.
 
 `npm run derive-runs` popula tudo, é re-executável e preserva o
 `applied_rotation_*` de faixas que já existiam (reidentificadas pela
@@ -152,14 +163,46 @@ caminho inverso só quebra a chave estrangeira na segunda execução, quando
 
 A ordem das faixas é cronológica quando **todas** têm `started_at`, e por tamanho
 decrescente caso contrário — critério do projeto inteiro, porque uma lista meio
-cronológica meio por tamanho não teria ordem nenhuma. Os 14 projetos MULTICAPTURA
-caem no tamanho: os ids (9468, 4809, 0913) não são cronológicos.
+cronológica meio por tamanho não teria ordem nenhuma. O id do MULTICAPTURA (9468,
+4809, 0913) é opaco e não carrega data, então a faixa cujo NOME não traz hora
+herda o `started_at` da foto datada mais antiga dela mesma. Basta **uma** foto
+datada por faixa, e não a faixa inteira. Isso tirou 12 projetos da ordem por
+tamanho: hoje 22 são cronológicos e 6 não. Faltam `3pef` e `santiago` por uma
+única faixa cada; `aman` por 16 de 24; `blumenau` e `tubarao` por 5; `dcmun` não
+tem fonte de hora nenhuma.
 
-`captured_at` (do `time_img` da fonte) ainda está vazio. Ele **não** serve para
-achar a fronteira — serve para ordenar DENTRO da faixa. Sem ele a ordem sai do
-número do quadro, que acerta o corpo da distribuição (passo p50 14,3 m / p90
-18,0 m em santana, contra vizinho real de 13,9 m) mas erra na cauda (p99 de
-192 m e saltos de 2,3 km no AMAN).
+`captured_at` vem de `npm run import-captured-at`, por três fontes, nesta ordem
+de precedência: o `time_img` dos `fotos.geojson`, a coluna `time`/`time_img` dos
+CSV do levantamento, e `--from-name`, que deduz do próprio nome nos arquivos
+PIC_. Os JSON por foto **não** têm hora (só id, img, lon, lat, ele, heading).
+
+Estado atual: **88.006 das 98.685 fotos vivas** (89,2%), de 2022-08-18 a
+2026-05-02. Dessas, 65.791 vieram de fonte externa e 22.215 do nome. `ciatalaia`
+e `cigmal` só chegam a 100% combinando geojson e vários CSV, e o `cigmal` não
+tem geojson nenhum.
+
+Ficam **10.679 sem hora, todas MULTICAPTURA**, porque só o padrão PIC_ carrega
+hora no nome: `aman` 8.160, `dcmun` 1.235, `3pef` 1.146, `tubarao` 114,
+`blumenau` 19 e `santiago` 5. São as mesmas 29 faixas que seguem sem
+`started_at`. Para o `3pef` a hora existe no EXIF de
+`FILTRADAS_ATLAS` (uma faixa, `mc:5573`), ainda não importada.
+
+**O `captured_at` não melhora a ordem DENTRO da faixa, e isso foi medido.** Em
+quatro projetos com cobertura total (santana, alegrete, uruguaiana e 1pef,
+46.266 fotos) reordenar por hora move de 0,00% a 0,01% das fotos e deixa a
+distribuição de passo idêntica até a casa decimal. A razão está no dado cru: o
+número do quadro já é um contador de tempo (`MULTICAPTURA_0913_000037` →
+1742330126, `_000041` → 1742330130, com os mesmos saltos). No faxinal, contra a
+hora do EXIF, a ordem por quadro deu **0 inversões em 5.625 pares** consecutivos.
+A cauda gorda do passo (p99 de 109 m no 1pef) é gap real de trajeto, que
+reordenar não conserta. O que o `captured_at` compra é o `started_at` acima e a
+data real da captura, que não existia em lugar nenhum do banco.
+
+As duas horas usam o mesmo formato local `AAAA-MM-DDTHH:MM:SS`, sem fuso: o nome
+PIC_ traz hora local e o importador converte o epoch da fonte para local (UTC-3,
+constante desde que o Brasil acabou com o horário de verão em 2019). Fossem
+formatos diferentes, a comparação de string que ordena as faixas misturaria
+escalas.
 
 ### A navegação de revisão segue a faixa
 

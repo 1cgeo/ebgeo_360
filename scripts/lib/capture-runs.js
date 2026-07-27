@@ -26,20 +26,29 @@ const RE_MULTICAPTURA = /^MULTICAPTURA_(\d+)_(\d+)$/;
 /**
  * `PIC_20260427_090836_26_05_05_16_46_57_output_005`
  *
- * Sao DUAS datas. A primeira (`20260427_090836`) e o processamento; a segunda
- * (`26_05_05_16_46_57`, aa_mm_dd_hh_mm_ss) e o inicio da sessao. Verificado no
- * faxinal: as 50 sessoes tem uma unica data de processamento cada, e a segunda
- * data e constante dentro do grupo — 2026-05-05, das 14:47:14 as 19:24:13.
+ * Sao DUAS datas, e a PRIMEIRA (`20260427_090836`) e o inicio da captura. A
+ * segunda (`26_05_05_16_46_57`) e o processamento, isto e, a hora em que o lote
+ * foi costurado.
+ *
+ * Isto ja esteve invertido aqui. O EXIF das imagens do faxinal decidiu, em
+ * 5.672 fotos: `primeira data + quadro * 4 s` cai a 2 s da hora real, com 100%
+ * dentro de 5 s; a segunda data erra de 8 a 9 DIAS. Uma faixa gravada como
+ * 2026-05-05T14:47:14 foi capturada em 2026-04-26T13:37:35.
+ *
+ * As duas sao 1 para 1 (45 sessoes por qualquer uma das duas no faxinal), entao
+ * o AGRUPAMENTO saia certo mesmo com a data errada. O que saia errado era o
+ * `startedAt`, o rotulo e, no saica, a ordem das faixas.
  */
-const RE_PIC = /^PIC_\d{8}_\d{6}_(\d{2})_(\d{2})_(\d{2})_(\d{2})_(\d{2})_(\d{2})_output_(\d+)$/;
+const RE_PIC = /^PIC_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}_output_(\d+)$/;
 
 /**
- * O seculo assumido ao expandir o ano de dois digitos dos nomes PIC_.
+ * Intervalo do timelapse, em segundos.
  *
- * O acervo vai de 2025 a 2026. Um `26` e 2026, nao 1926; nao ha data anterior a
- * 2000 no material, entao a expansao e incondicional.
+ * Fonte primaria: o `pro.prj` que a propria camera grava traz
+ * `interval="4000" type="timelapse"`, unanime nos 163 arquivos das tres missoes
+ * Insta360 (51 no faxinal, 41 no saica, 71 no santiago).
  */
-const SECULO = '20';
+const INTERVALO_TIMELAPSE_S = 4;
 
 /**
  * Extrai a sessao de gravacao e o numero do quadro de um nome de origem.
@@ -54,20 +63,40 @@ export function parseCaptureRun(originalName) {
   const multi = RE_MULTICAPTURA.exec(originalName);
   if (multi) {
     // Sem hora: o id do MULTICAPTURA e opaco (9468, 4809, 0913) e nao carrega
-    // data. Fica NULL ate o time_img da fonte ser importado.
+    // data. Quem preenche e `groupPhotosIntoRuns`, a partir do `capturedAt` que
+    // o `import-captured-at` traz da fonte.
     return { sessionKey: `mc:${multi[1]}`, startedAt: null, frame: Number(multi[2]) };
   }
 
   const pic = RE_PIC.exec(originalName);
   if (pic) {
-    const [, aa, mm, dd, hh, mi, ss] = pic;
-    const startedAt = `${SECULO}${aa}-${mm}-${dd}T${hh}:${mi}:${ss}`;
+    const [, aaaa, mm, dd, hh, mi, ss] = pic;
+    const startedAt = `${aaaa}-${mm}-${dd}T${hh}:${mi}:${ss}`;
     // O prefixo `ts:` evita colisao com `mc:` nos projetos que misturam os dois
     // padroes de nome (blumenau, santiago, tubarao).
     return { sessionKey: `ts:${startedAt}`, startedAt, frame: Number(pic[7]) };
   }
 
   return null;
+}
+
+/**
+ * Hora de captura de uma foto, deduzida so do nome.
+ *
+ * Vale para o padrao PIC_, onde o nome traz o inicio da sessao e o numero do
+ * quadro, e a camera dispara em cadencia fixa. Medido contra o EXIF de 5.672
+ * fotos do faxinal: 100% dentro de 5 s, mediana de 2 s.
+ *
+ * O MULTICAPTURA nao tem hora no nome e devolve null: la o id da sessao e opaco.
+ *
+ * @param {string} originalName - Nome do arquivo de origem
+ * @returns {string|null} `AAAA-MM-DDTHH:MM:SS` local, ou null
+ */
+export function captureTimeFromName(originalName) {
+  const parsed = parseCaptureRun(originalName);
+  if (!parsed?.startedAt) return null;
+  const t = new Date(`${parsed.startedAt}Z`).getTime() + parsed.frame * INTERVALO_TIMELAPSE_S * 1000;
+  return new Date(t).toISOString().slice(0, 19);
 }
 
 /**
@@ -92,14 +121,28 @@ export function runLabel(sessionKey) {
  * A ordem das faixas (`ordinal`) e cronologica quando TODAS tem `startedAt`, e
  * por tamanho decrescente caso contrario. O criterio e por projeto, e nao por
  * faixa, porque uma lista meio cronologica meio por tamanho nao teria ordem
- * nenhuma. Nos 14 projetos MULTICAPTURA nunca ha hora — e os ids (9468, 4809,
- * 0913) NAO sao cronologicos, entao ordena-los daria uma sequencia arbitraria
- * com aparencia de significado.
+ * nenhuma.
+ *
+ * Faixa cujo NOME nao carrega hora (o id do MULTICAPTURA e opaco: 9468, 4809,
+ * 0913) herda o `startedAt` da foto datada mais antiga da propria faixa. E o que
+ * tira 12 projetos da ordem por tamanho: sem isso eles ficavam com uma lista
+ * ordenada por numero de fotos, porque os ids NAO sao cronologicos e ordena-los
+ * daria uma sequencia arbitraria com aparencia de significado. Basta UMA foto
+ * datada por faixa, e nao a faixa inteira.
  *
  * A ordem DENTRO da faixa sai de `capturedAt` quando todas as fotos da faixa o
- * tem, e do numero do quadro caso contrario. O quadro acerta o corpo da
- * distribuicao (passo p50 14,3 m / p90 18,0 m em santana) mas erra na cauda
- * (p99 de 192 m no AMAN), que e o que o time_img vem consertar.
+ * tem, e do numero do quadro caso contrario. Na pratica as duas coincidem: o
+ * numero do quadro ja e um contador de tempo (`MULTICAPTURA_0913_000037` ->
+ * 1742330126, `_000041` -> 1742330130, com os mesmos saltos). Medido em quatro
+ * projetos com cobertura total de hora (46.266 fotos), reordenar por `capturedAt`
+ * move de 0,00% a 0,01% das fotos e deixa a distribuicao de passo identica.
+ * O `capturedAt` continua na ordenacao por ser a fonte mais direta, nao porque
+ * conserte alguma coisa.
+ *
+ * As duas horas usam o mesmo formato local `AAAA-MM-DDTHH:MM:SS`, sem fuso: o
+ * nome PIC_ traz hora local e o `import-captured-at` converte o epoch da fonte
+ * para local antes de gravar. Fossem formatos diferentes, a comparacao de
+ * string abaixo misturaria escalas.
  *
  * @param {Array<{id: string, originalName: string, capturedAt?: string|null}>} photos
  * @returns {{runs: Array<Object>, unmatched: Array<string>}}
@@ -135,10 +178,17 @@ export function groupPhotosIntoRuns(photos) {
       // quadros colidem — sem isso o run_position mudaria a cada derivacao.
       return a.frame - b.frame || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
     });
+    // O MENOR `capturedAt` da faixa, e nao o da primeira foto ordenada: assim o
+    // inicio nao depende do criterio de ordenacao interna nem de a faixa ter
+    // hora em todas as fotos.
+    const herdado = faixa.itens.reduce(
+      (menor, i) => (i.capturedAt && (!menor || i.capturedAt < menor) ? i.capturedAt : menor),
+      null,
+    );
     return {
       sessionKey: faixa.sessionKey,
       label: runLabel(faixa.sessionKey),
-      startedAt: faixa.startedAt,
+      startedAt: faixa.startedAt ?? herdado,
       photoCount: ordenadas.length,
       photos: ordenadas.map(i => i.id),
     };
