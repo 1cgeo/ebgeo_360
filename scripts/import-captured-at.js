@@ -74,6 +74,43 @@ if (!fontes.length && !doNome) {
  */
 const FUSO_HORAS = -3;
 
+/**
+ * Fuso por projeto, onde ele NAO e o de Brasilia.
+ *
+ * O Brasil tem quatro fusos e eles seguem fronteira de estado, nao meridiano,
+ * entao a lista e explicita em vez de derivada da longitude. Conferido pela
+ * coordenada media de cada projeto: so `1pef` (lat +3,37) e `3pef` (lat +4,37)
+ * ficam ao norte do equador, em Roraima, que e UTC-4. Os outros 26 estao no Sul
+ * ou no Sudeste.
+ */
+const FUSO_POR_PROJETO = {
+  '1pef': -4,      // Roraima
+  '3pef': -4,      // Roraima
+};
+
+/**
+ * Correcao empirica do epoch das fontes externas, em horas.
+ *
+ * O `time_img` do geojson e o `time` dos csv NAO sao epoch UTC, apesar do
+ * formato. Sem esta correcao o levantamento aparece indo ate as 21h e 22h, e o
+ * chefe confirmou que nao houve coleta a essa hora.
+ *
+ * O valor saiu de medicao, nao de suposicao. Deixando o desvio de relogio como
+ * parametro livre no ajuste solar, tres projetos independentes convergiram em
+ * -3,0 h EXATOS, e o residuo do ajuste desabou:
+ *   alegrete            32,61 -> 2,61
+ *   santana_livramento  24,36 -> 3,04
+ *   uruguaiana          21,99 -> 2,52
+ * Corrigido, o dia de trabalho vai de 07h as 18h e a fracao de fotos com o sol
+ * abaixo do horizonte cai de 21%-26% para 0%.
+ *
+ * O faxinal e o saica servem de controle: a hora deles vem do NOME do arquivo,
+ * nunca passou por esta conversao, e a mesma busca da desvio ZERO neles.
+ *
+ * NAO se aplica a hora deduzida do nome (--from-name), que ja e local.
+ */
+const DESVIO_FONTE_HORAS = -3;
+
 /** Menor e maior epoch aceitos: 2015-01-01 e 2035-01-01. Fora disso e lixo. */
 const EPOCH_MIN = 1420070400;
 const EPOCH_MAX = 2051222400;
@@ -84,8 +121,10 @@ const EPOCH_MAX = 2051222400;
  * @param {number} epoch - Segundos desde 1970-01-01 UTC
  * @returns {string} Hora local sem fuso, no mesmo formato do `startedAt`
  */
-function paraHoraLocal(epoch) {
-  return new Date((epoch + FUSO_HORAS * 3600) * 1000).toISOString().slice(0, 19);
+function paraHoraLocal(epoch, slug) {
+  const fuso = FUSO_POR_PROJETO[slug] ?? FUSO_HORAS;
+  return new Date((epoch + (fuso + DESVIO_FONTE_HORAS) * 3600) * 1000)
+    .toISOString().slice(0, 19);
 }
 
 /**
@@ -393,7 +432,7 @@ if (doNome) {
  */
 function horaDe(nome) {
   const epoch = resolvido.get(nome);
-  if (epoch !== undefined) return paraHoraLocal(epoch);
+  if (epoch !== undefined) return paraHoraLocal(epoch, doBanco.get(nome)?.slug);
   return doNomeMapa.get(nome) ?? null;
 }
 
