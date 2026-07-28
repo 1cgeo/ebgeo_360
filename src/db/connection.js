@@ -45,6 +45,9 @@ export function getIndexDb() {
     if (!cols.some(c => c.name === 'calibration_reviewed')) {
       indexDb.exec('ALTER TABLE photos ADD COLUMN calibration_reviewed INTEGER DEFAULT 0');
     }
+    if (!cols.some(c => c.name === 'calibration_source')) {
+      indexDb.exec('ALTER TABLE photos ADD COLUMN calibration_source TEXT');
+    }
     if (!cols.some(c => c.name === 'mesh_rotation_x')) {
       indexDb.exec('ALTER TABLE photos ADD COLUMN mesh_rotation_x REAL DEFAULT 0');
     }

@@ -401,6 +401,30 @@ export function setProjectContext(slug, photos, reviewStats, runs = []) {
 }
 
 /**
+ * Marca a origem do angulo no estado local, sem reconsultar a API.
+ *
+ * Toda escrita de angulo grava 'manual' no banco (queries.js), entao o cliente
+ * espelha isso na hora. Sem espelhar, a etiqueta so mudaria ao recarregar o
+ * projeto, e o revisor veria "sol" numa foto que ele acabou de corrigir.
+ *
+ * @param {string|null} fonte - 'sol', 'imu', 'manual' ou null
+ * @param {string[]} [ids] - Fotos a marcar. Sem isto, so a foto atual.
+ */
+export function setCalibrationSource(fonte, ids = null) {
+    const alvos = ids ?? [state.currentPhotoId];
+    for (const id of alvos) {
+        const photo = photoById.get(id);
+        if (photo) photo.calibrationSource = fonte;
+    }
+    if (!ids || alvos.includes(state.currentPhotoId)) {
+        if (state.currentMetadata?.camera) {
+            state.currentMetadata.camera.calibration_source = fonte;
+        }
+    }
+    notify();
+}
+
+/**
  * Updates the reviewed status for the current photo in the local state.
  * @param {boolean} reviewed
  */

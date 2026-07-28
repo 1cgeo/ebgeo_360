@@ -114,6 +114,15 @@ export function initViewer(container, options = {}) {
     canvasEl.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('resize', onResize);
 
+    // A grade vive na cena, e dispose() destroi a cena a cada troca de foto.
+    // gridVisible, porem, e estado de modulo e sobrevive de proposito, para a
+    // preferencia do usuario nao se perder. Sem recriar a geometria aqui, a
+    // caixa continuava marcada e a grade sumia, e so voltava apertando G duas
+    // vezes.
+    if (gridVisible) {
+        createGridGeometry();
+    }
+
     // Start render loop
     animate();
 

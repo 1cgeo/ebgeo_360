@@ -53,7 +53,7 @@ function stmts() {
              mesh_rotation_y, mesh_rotation_x, mesh_rotation_z,
              distance_scale, marker_scale, floor_level,
              full_size_bytes, preview_size_bytes,
-             calibration_reviewed
+             calibration_reviewed, calibration_source, captured_at
       FROM photos
       WHERE id = ?
     `),
@@ -88,8 +88,10 @@ function stmts() {
     `),
 
     // ---- Calibration (writes) ----
+    // calibration_source vira 'manual' em toda escrita de angulo: se a mao do
+    // revisor tocou, a origem automatica (sol/imu) deixou de valer.
     updateMeshRotationY: db.prepare(
-      'UPDATE photos SET mesh_rotation_y = ? WHERE id = ?'
+      `UPDATE photos SET mesh_rotation_y = ?, calibration_source = 'manual' WHERE id = ?`
     ),
 
     updateTargetVisibility: db.prepare(
@@ -138,7 +140,7 @@ function stmts() {
     // navegacao por faixa inteira em memoria, sem uma requisicao por faixa.
     photosByProjectSlug: db.prepare(`
       SELECT ph.id, ph.display_name, ph.sequence_number, ph.calibration_reviewed,
-             ph.run_id, ph.run_position
+             ph.run_id, ph.run_position, ph.calibration_source, ph.captured_at
       FROM photos ph
       JOIN projects p ON p.id = ph.project_id
       WHERE p.slug = ?
@@ -167,15 +169,15 @@ function stmts() {
     runById: db.prepare('SELECT * FROM capture_runs WHERE id = ?'),
 
     batchUpdateRunMeshRotationY: db.prepare(`
-      UPDATE photos SET mesh_rotation_y = ?
+      UPDATE photos SET mesh_rotation_y = ?, calibration_source = 'manual'
       WHERE run_id = ? AND id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
     batchUpdateRunMeshRotationX: db.prepare(`
-      UPDATE photos SET mesh_rotation_x = ?
+      UPDATE photos SET mesh_rotation_x = ?, calibration_source = 'manual'
       WHERE run_id = ? AND id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
     batchUpdateRunMeshRotationZ: db.prepare(`
-      UPDATE photos SET mesh_rotation_z = ?
+      UPDATE photos SET mesh_rotation_z = ?, calibration_source = 'manual'
       WHERE run_id = ? AND id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
 
@@ -241,28 +243,28 @@ function stmts() {
 
     // ---- Batch calibration (writes) ----
     batchUpdateMeshRotationY: db.prepare(`
-      UPDATE photos SET mesh_rotation_y = ?
+      UPDATE photos SET mesh_rotation_y = ?, calibration_source = 'manual'
       WHERE project_id = (SELECT id FROM projects WHERE slug = ?)
         AND id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
 
     // ---- Mesh rotation X/Z ----
     updateMeshRotationX: db.prepare(
-      'UPDATE photos SET mesh_rotation_x = ? WHERE id = ?'
+      `UPDATE photos SET mesh_rotation_x = ?, calibration_source = 'manual' WHERE id = ?`
     ),
 
     updateMeshRotationZ: db.prepare(
-      'UPDATE photos SET mesh_rotation_z = ? WHERE id = ?'
+      `UPDATE photos SET mesh_rotation_z = ?, calibration_source = 'manual' WHERE id = ?`
     ),
 
     batchUpdateMeshRotationX: db.prepare(`
-      UPDATE photos SET mesh_rotation_x = ?
+      UPDATE photos SET mesh_rotation_x = ?, calibration_source = 'manual'
       WHERE project_id = (SELECT id FROM projects WHERE slug = ?)
         AND id NOT IN (SELECT photo_id FROM deleted_photos)
     `),
 
     batchUpdateMeshRotationZ: db.prepare(`
-      UPDATE photos SET mesh_rotation_z = ?
+      UPDATE photos SET mesh_rotation_z = ?, calibration_source = 'manual'
       WHERE project_id = (SELECT id FROM projects WHERE slug = ?)
         AND id NOT IN (SELECT photo_id FROM deleted_photos)
     `),

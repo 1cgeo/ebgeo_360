@@ -89,7 +89,7 @@ tests/
 
 ### index.db (Central metadata)
 - **projects** — slug, name, location, center coordinates, entry photo ID, photo count
-- **photos** — coordinates, heading, mesh_rotation_y/x/z, floor_level, calibration_reviewed, sequence number (plus the inert camera_height/distance_scale/marker_scale)
+- **photos** — coordinates, heading, mesh_rotation_y/x/z, floor_level, calibration_reviewed, calibration_source, captured_at, sequence number (plus the inert camera_height/distance_scale/marker_scale)
 - **photos_rtree** — R-tree spatial index for geographic queries
 - **targets** — Navigation graph (source→target with distance, bearing, hidden, is_original; plus the inert override_*)
 - **deleted_photos** — soft-delete tombstones
@@ -266,7 +266,7 @@ Two flags matter when encoding the line and are easy to lose:
 
 ### Schema Migrations
 `connection.js` applies migrations on startup for existing databases:
-- Adds `calibration_reviewed`, `mesh_rotation_x`, `mesh_rotation_z`, `distance_scale`, `marker_scale` columns to `photos`
+- Adds `calibration_reviewed`, `calibration_source`, `mesh_rotation_x`, `mesh_rotation_z`, `distance_scale`, `marker_scale` columns to `photos`
 - Renames `override_heading`/`override_pitch` → `override_bearing`/`override_distance` in `targets`
 - Clamps old `override_pitch < 0.5` values to `5m` default
 - Adds `hidden` column to `targets` (default 0)
@@ -316,7 +316,8 @@ Two flags matter when encoding the line and are easy to lose:
     "heading": 180.0, "height": 2.5,
     "mesh_rotation_y": 180.0, "mesh_rotation_x": 0.0, "mesh_rotation_z": 0.0,
     "distance_scale": 1.0, "marker_scale": 1.0, "floor_level": 1,
-    "calibration_reviewed": false
+    "calibration_reviewed": false,
+    "calibration_source": "sol", "captured_at": "2025-10-07T09:04:19"
   },
   "projectSlug": "alegrete",
   "captureDate": "2024-01-15",
@@ -425,6 +426,29 @@ IMAGE, not the marker:
 Two more per-target values are edited, and they are graph decisions rather than
 calibration: `hidden` (0/1, this way is blocked by a wall) and the existence of
 the connection itself. `calibration_reviewed` (0/1) tracks the review workflow.
+
+### De onde veio o ângulo: `calibration_source`
+
+Diz o que produziu os três ângulos daquela foto, e a interface o desenha no
+cabeçalho e em cada linha da lista.
+
+| valor | significado |
+|---|---|
+| `sol` | o Sol foi detectado NESTA foto e entrou no ajuste |
+| `imu` | sem sol utilizável, refinada pela rajada do giroscópio |
+| `manual` | o revisor escreveu o ângulo, por foto, faixa ou projeto |
+| nulo | nada foi medido nela: o ângulo veio do bloco da faixa |
+
+**Toda escrita de ângulo pela API grava `manual`**, nos nove comandos de
+`queries.js` (três eixos, vezes foto, faixa e projeto). Mão humana derruba a
+origem automática, e o valor `manual` também protege a foto: a calibração
+solar do vault a pula, mesmo sem `calibration_reviewed`.
+
+Nulo NÃO é falha. Em 2026-07-28 ele cobria 54,4% do acervo (53.647 de 98.690),
+contra 41,1% de `sol` e 4,6% de `imu`. É a foto que mais merece o olho na
+revisão, porque nada nela passou por conferência contra o mundo. Por isso a etiqueta de
+"sem medida" aparece só no cabeçalho da foto atual, e não na lista, onde ela
+cairia na maioria das linhas.
 
 ### Columns that no longer affect anything
 

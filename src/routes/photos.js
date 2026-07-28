@@ -89,6 +89,9 @@ export default async function photoRoutes(fastify) {
       includeHidden ? 'h' : 'v',
       photo.mesh_rotation_y, photo.mesh_rotation_x, photo.mesh_rotation_z,
       photo.calibration_reviewed,
+      // calibration_source entra porque o painel o desenha; captured_at nao,
+      // por ser imutavel depois da importacao.
+      photo.calibration_source,
       ...targets.map(t => [
         t.target_id, t.distance_m, t.bearing_deg, t.is_next, t.hidden,
       ].join(',')),
@@ -121,6 +124,9 @@ export default async function photoRoutes(fastify) {
         marker_scale: photo.marker_scale,
         floor_level: photo.floor_level,
         calibration_reviewed: Boolean(photo.calibration_reviewed),
+        // 'sol', 'imu' ou null (sem medida sobre esta foto). Ver schema.sql.
+        calibration_source: photo.calibration_source ?? null,
+        captured_at: photo.captured_at ?? null,
       },
       projectSlug: project?.slug ?? null,
       captureDate: project?.capture_date ?? null,

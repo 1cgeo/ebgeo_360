@@ -234,6 +234,9 @@ export default async function calibrationRoutes(fastify) {
         reviewed: Boolean(p.calibration_reviewed),
         runId: p.run_id,
         runPosition: p.run_position,
+        // 'sol', 'imu' ou null (sem medida sobre a foto). Ver schema.sql.
+        calibrationSource: p.calibration_source ?? null,
+        capturedAt: p.captured_at ?? null,
       })),
       reviewStats: {
         total: stats.total,

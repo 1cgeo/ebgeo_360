@@ -14,7 +14,8 @@ import {
 import {
     state, isDirty, loadPhoto, discardChanges, markSaved, onChange,
     selectTarget, deselectTarget,
-    setProjectContext, setCalibrationReviewed, getNextPhotoId, getPrevPhotoId,
+    setProjectContext, setCalibrationReviewed, setCalibrationSource,
+    getNextPhotoId, getPrevPhotoId,
     setNearbyPhotos, isTargetHidden, refreshTargets,
     setMeshRotationX, setMeshRotationZ,
     setTargetHidden as stateSetTargetHidden,
@@ -398,6 +399,11 @@ function initializeSubsystems() {
         onOpenProjectMap: toggleProjectMap,
     });
 
+    // Uma fonte de verdade para a grade: o viewer. O painel guardava a sua
+    // propria copia, e as duas divergiam ao trocar de foto (caixa marcada,
+    // grade ausente). Aqui a copia do painel e realinhada com o viewer.
+    setSphericalGridToggleState(isGridVisible());
+
     // Initialize preview viewer (shows target photo when selected)
     initPreviewViewer(viewerContainer, {
         onNavigate: (photoId) => navigateToPhoto(photoId),
@@ -616,6 +622,9 @@ async function handleSave() {
 
     try {
         const promises = [];
+        // So a escrita de ANGULO marca a origem como 'manual' no banco
+        // (queries.js). Salvar visibilidade de alvo nao mexe na calibracao.
+        let mexeuAngulo = false;
 
         // Save mesh_rotation_y if changed
         if (
@@ -625,6 +634,7 @@ async function handleSave() {
             promises.push(
                 saveCalibration(photoId, state.editedMeshRotationY)
             );
+            mexeuAngulo = true;
         }
 
         // Save mesh_rotation_x if changed
@@ -635,6 +645,7 @@ async function handleSave() {
             promises.push(
                 saveMeshRotationX(photoId, state.editedMeshRotationX)
             );
+            mexeuAngulo = true;
         }
 
         // Save mesh_rotation_z if changed
@@ -645,6 +656,7 @@ async function handleSave() {
             promises.push(
                 saveMeshRotationZ(photoId, state.editedMeshRotationZ)
             );
+            mexeuAngulo = true;
         }
 
         // camera_height, distance_scale, marker_scale e os overrides de alvo
@@ -696,6 +708,11 @@ async function handleSave() {
         // markSaved() corromperia o estado dirty da nova foto.
         if (state.currentPhotoId === photoId) {
             markSaved();
+        }
+        // Espelha no cliente o que o banco acabou de gravar, senao a etiqueta
+        // continuaria dizendo "sol" numa foto que o revisor corrigiu a mao.
+        if (mexeuAngulo) {
+            setCalibrationSource('manual', [photoId]);
         }
         showToast(`${results.length} alteracao(oes) salva(s)`, 'success');
         return true;

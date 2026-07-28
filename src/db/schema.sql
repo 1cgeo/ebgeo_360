@@ -36,6 +36,16 @@ CREATE TABLE IF NOT EXISTS photos (
     full_size_bytes         INTEGER,
     preview_size_bytes      INTEGER,
     calibration_reviewed    INTEGER DEFAULT 0,
+    -- Como o angulo desta foto foi obtido. NULL quando nao houve medida SOBRE
+    -- ela: o angulo veio do bloco da faixa ou de interpolacao entre vizinhas.
+    --   'sol'    o Sol foi detectado NESTA foto e entrou no ajuste
+    --   'imu'    sem sol utilizavel, refinada pela rajada do giroscopio
+    --   'manual' o revisor escreveu o angulo, por foto, faixa ou projeto
+    -- 'manual' sobrescreve os outros dois: toda escrita de angulo pela API o
+    -- grava (queries.js), porque mao humana derruba a origem automatica.
+    -- A distincao importa na revisao: foto sem medida propria e a que mais
+    -- merece o olho, porque nada nela foi conferido contra o mundo.
+    calibration_source      TEXT,
     -- Faixa de coleta (sessao de gravacao) a que a foto pertence, e sua posicao
     -- dentro dela. Ver capture_runs. Bancos anteriores recebem estas colunas
     -- pelo bloco de migracoes do connection.js.

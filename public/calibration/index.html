@@ -1209,6 +1209,92 @@
         }
 
         /* ================================================================
+           ORIGEM DA CALIBRACAO e HORA DE CAPTURA
+           Ver calibration_source no schema.sql. "sem medida" nao e falha:
+           e foto cujo angulo veio do bloco da faixa, sem nada medido nela.
+           ================================================================ */
+        .cal-panel__photo-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 3px;
+            font-size: 11px;
+            color: #9aa4b0;
+        }
+
+        .cal-panel__fonte {
+            flex: none;
+            padding: 0 5px;
+            border-radius: 3px;
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            line-height: 15px;
+            white-space: nowrap;
+        }
+
+        .cal-panel__fonte--sol     { background: #6b5300; color: #ffd83b; }
+        .cal-panel__fonte--imu     { background: #14405c; color: #63c7ff; }
+        .cal-panel__fonte--manual  { background: #1c5230; color: #6ee79b; }
+        .cal-panel__fonte--nenhuma { background: #33383f; color: #8b939c; }
+
+        /* ================================================================
+           REVIEW WORKFLOW — Faixas colapsaveis
+           A faixa e a unidade real da calibracao: o angulo e praticamente
+           constante dentro dela, entao rever uma foto vale pela faixa.
+           ================================================================ */
+        .cal-panel__faixa {
+            border-bottom: 1px solid #2a2f36;
+        }
+
+        .cal-panel__faixa-cab {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 8px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            color: #c9d1d9;
+            background: #21262d;
+            list-style: none;
+            user-select: none;
+        }
+
+        .cal-panel__faixa-cab::-webkit-details-marker { display: none; }
+
+        .cal-panel__faixa-cab::before {
+            content: '\25B8';
+            flex: none;
+            color: #7d868f;
+            transition: transform 0.12s;
+        }
+
+        .cal-panel__faixa[open] > .cal-panel__faixa-cab::before {
+            transform: rotate(90deg);
+        }
+
+        .cal-panel__faixa-cab:hover { background: #2b3138; }
+
+        .cal-panel__faixa-nome {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .cal-panel__faixa-num { flex: none; color: #8b939c; font-weight: 400; }
+        .cal-panel__faixa-sol { flex: none; color: #ffd83b; font-weight: 400; }
+
+        .cal-panel__faixa-fotos {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            padding: 2px 0 4px;
+        }
+
+        /* ================================================================
            REVIEW WORKFLOW — Photo list
            ================================================================ */
         .cal-panel__photo-list {

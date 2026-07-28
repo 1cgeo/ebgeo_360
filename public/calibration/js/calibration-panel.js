@@ -10,7 +10,7 @@ import {
     selectTarget, deselectTarget,
     setTargetHidden, isTargetHidden,
     getCurrentPhotoIndex, resetAllReviewedState, getProjectPhoto,
-    getCurrentRunId, getRunEntryPhotoId,
+    getCurrentRunId, getRunEntryPhotoId, setCalibrationSource,
 } from './state.js';
 import { batchUpdateProject, resetProjectReviewed, batchUpdateRun } from './api.js';
 
@@ -386,6 +386,14 @@ function syncPhotoListHighlight(s) {
             const status = item.querySelector('.cal-panel__photo-status');
             if (status) status.innerHTML = reviewed ? '&#10003;' : '&#9675;';
         }
+        // A origem muda no lugar quando o revisor salva (vira 'manual'), e a
+        // lista nao e reconstruida nessa hora. Trocada so quando difere.
+        const fonte = photo.calibrationSource || '';
+        if (item.dataset.fonte !== fonte) {
+            item.dataset.fonte = fonte;
+            const badge = item.querySelector('.cal-panel__fonte');
+            if (badge) badge.outerHTML = renderFonteBadge(photo.calibrationSource, true);
+        }
     };
 
     if (highlightedPhotoId !== s.currentPhotoId) {
@@ -401,7 +409,16 @@ function syncPhotoListHighlight(s) {
     // notificacao de estado.
     if (s.currentPhotoId && s.currentPhotoId !== lastScrolledPhotoId) {
         const currentItem = photosEl.querySelector('.cal-panel__photo-item--current');
-        if (currentItem) currentItem.scrollIntoView({ block: 'nearest' });
+        // A lista e agrupada por faixa e so a faixa da foto atual nasce aberta.
+        // Como ela NAO e reconstruida ao navegar (a assinatura ignora a foto
+        // atual, de proposito), a abertura tem de ser feita aqui: sem isto, ao
+        // entrar numa faixa nova o item existe mas fica dentro de um <details>
+        // fechado, e o scrollIntoView nao mostra nada.
+        if (currentItem) {
+            const faixa = currentItem.closest('.cal-panel__faixa');
+            if (faixa && !faixa.open) faixa.open = true;
+            currentItem.scrollIntoView({ block: 'nearest' });
+        }
         lastScrolledPhotoId = s.currentPhotoId;
     }
 }
@@ -484,6 +501,10 @@ function renderPanel(s) {
                 <button id="btn-open-json" class="cal-panel__btn cal-panel__btn--icon" title="Abrir JSON da foto">{ }</button>
                 <button id="btn-delete-photo" class="cal-panel__btn cal-panel__btn--icon cal-panel__btn--danger" title="Excluir foto">&times;</button>
             </h3>
+            <div class="cal-panel__photo-meta">
+                <span class="cal-panel__photo-when" title="Hora de captura (captured_at)">${formatarQuando(camera.captured_at)}</span>
+                ${renderFonteBadge(camera.calibration_source)}
+            </div>
         </div>
 
         <div class="cal-panel__section cal-panel__section--grid">
@@ -770,26 +791,89 @@ function renderTargetItem(target, s) {
     `;
 }
 
+// De onde veio o angulo desta foto. Ver calibration_source no schema.sql.
+// `null` NAO e falha: significa que nada foi medido SOBRE esta foto, e o angulo
+// veio do bloco da faixa. E justamente a que mais merece o olho na revisao.
+const FONTES = {
+    sol: { texto: 'sol', classe: 'sol', dica: 'O Sol foi detectado nesta foto e entrou no ajuste' },
+    imu: { texto: 'IMU', classe: 'imu', dica: 'Refinada pela rajada do giroscopio, sem sol utilizavel' },
+    manual: { texto: 'manual', classe: 'manual', dica: 'Angulo escrito na revisao' },
+};
+
+/**
+ * @param {string|null} fonte - Valor de calibration_source
+ * @param {boolean} [naLista] - Na lista de fotos a etiqueta de "sem medida" e
+ *   omitida: ela cairia em 46 mil das 91 mil fotos do acervo, virando ruido, e
+ *   a largura dela empurrava o numero de sequencia para fora do painel. No
+ *   cabecalho da foto atual ela continua explicita, que e onde a ausencia de
+ *   medida e informacao util para o revisor.
+ */
+function renderFonteBadge(fonte, naLista = false) {
+    const f = FONTES[fonte];
+    if (!f) {
+        return naLista ? '' : '<span class="cal-panel__fonte cal-panel__fonte--nenhuma"'
+            + ' title="Nada foi medido nesta foto: o angulo veio do bloco da faixa">sem medida</span>';
+    }
+    return `<span class="cal-panel__fonte cal-panel__fonte--${f.classe}" title="${f.dica}">${f.texto}</span>`;
+}
+
+/** `2025-10-07T09:04:19` vira `07/10/2025 09:04:19`. */
+function formatarQuando(iso) {
+    if (!iso) return 'sem hora de captura';
+    const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/.exec(iso);
+    if (!m) return iso;
+    return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}${m[6] ? ':' + m[6] : ''}`;
+}
+
 function renderPhotoList(s) {
     const photos = s.projectPhotos;
     if (!photos.length) return '';
 
+    // Agrupado por faixa de coleta, porque a faixa e a unidade real da
+    // calibracao: o angulo e praticamente constante dentro dela (variacao
+    // abaixo de 1,1 grau no acervo), entao rever uma foto vale pela faixa.
+    // Projeto sem `npm run derive-runs` cai no grupo unico "Sem faixa".
+    const rotulos = new Map((s.runs || []).map(r => [r.id, r]));
+    const grupos = new Map();
+    for (const p of photos) {
+        const k = p.runId || '__sem_faixa__';
+        let g = grupos.get(k);
+        if (!g) { g = []; grupos.set(k, g); }
+        g.push(p);
+    }
+    const runAtual = photos.find(p => p.id === s.currentPhotoId)?.runId || '__sem_faixa__';
+
+    const item = (p) => `
+        <div class="cal-panel__photo-item ${p.id === s.currentPhotoId ? 'cal-panel__photo-item--current' : ''} ${p.reviewed ? 'cal-panel__photo-item--reviewed' : ''}"
+             data-photo-nav-id="${p.id}" data-fonte="${p.calibrationSource || ''}">
+            <span class="cal-panel__photo-status">${p.reviewed ? '&#10003;' : '&#9675;'}</span>
+            <span class="cal-panel__photo-name">${p.displayName}</span>
+            ${renderFonteBadge(p.calibrationSource, true)}
+            <span class="cal-panel__photo-seq">#${p.sequenceNumber}</span>
+        </div>`;
+
+    const secoes = [...grupos.entries()].map(([k, lst]) => {
+        const r = rotulos.get(k);
+        const nome = r ? (r.label || `Faixa ${r.ordinal ?? ''}`.trim()) : 'Sem faixa';
+        const revisadas = lst.filter(p => p.reviewed).length;
+        const comSol = lst.filter(p => p.calibrationSource === 'sol').length;
+        // A faixa da foto atual abre sozinha; as outras ficam fechadas, senao
+        // um projeto de 17 mil fotos joga tudo no DOM de uma vez.
+        return `
+        <details class="cal-panel__faixa" data-run-id="${k}" ${k === runAtual ? 'open' : ''}>
+            <summary class="cal-panel__faixa-cab">
+                <span class="cal-panel__faixa-nome">${nome}</span>
+                <span class="cal-panel__faixa-num">${revisadas}/${lst.length}</span>
+                <span class="cal-panel__faixa-sol" title="Fotos com medida do Sol nesta faixa">${comSol ? `&#9788; ${comSol}` : ''}</span>
+            </summary>
+            <div class="cal-panel__faixa-fotos">${lst.map(item).join('')}</div>
+        </details>`;
+    }).join('');
+
     return `
         <div class="cal-panel__section">
             <h3 class="cal-panel__title">Fotos do Projeto</h3>
-            <div class="cal-panel__photo-list" id="photo-list">
-                ${photos.map(p => {
-                    const isCurrent = p.id === s.currentPhotoId;
-                    return `
-                    <div class="cal-panel__photo-item ${isCurrent ? 'cal-panel__photo-item--current' : ''} ${p.reviewed ? 'cal-panel__photo-item--reviewed' : ''}"
-                         data-photo-nav-id="${p.id}">
-                        <span class="cal-panel__photo-status">${p.reviewed ? '&#10003;' : '&#9675;'}</span>
-                        <span class="cal-panel__photo-name">${p.displayName}</span>
-                        <span class="cal-panel__photo-seq">#${p.sequenceNumber}</span>
-                    </div>
-                    `;
-                }).join('')}
-            </div>
+            <div class="cal-panel__photo-list" id="photo-list">${secoes}</div>
         </div>
     `;
 }
@@ -1179,6 +1263,9 @@ async function handleApplyToRun() {
         // Espelha o registro no estado local para a etiqueta da faixa aparecer
         // sem refazer a busca das faixas.
         faixa.applied = { ...faixa.applied, ...values };
+        // O batch grava 'manual' nas fotos da faixa (queries.js). Espelhado.
+        setCalibrationSource('manual',
+            state.projectPhotos.filter(p => p.runId === runId).map(p => p.id));
         const n = resultado.updated?.mesh_rotation_y?.photosUpdated ?? faixa.total;
         showToast(`${n} fotos da faixa ${faixa.label} atualizadas`, 'success');
         renderPanel(state);
@@ -1217,6 +1304,9 @@ async function handleBatchUpdate(values) {
         for (const [key, info] of Object.entries(result.updated || {})) {
             counts.push(`${key}: ${info.photosUpdated} fotos`);
         }
+        // O batch grava 'manual' em todas as fotos do projeto (queries.js).
+        // Espelhado aqui para as etiquetas nao ficarem mentindo ate recarregar.
+        setCalibrationSource('manual', state.projectPhotos.map(p => p.id));
         showToast(`Batch atualizado: ${counts.join(', ')}`, 'success');
     } catch (err) {
         console.error('Batch update failed:', err);
