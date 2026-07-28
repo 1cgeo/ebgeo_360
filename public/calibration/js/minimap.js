@@ -81,6 +81,15 @@ export function initMinimap(container, options = {}) {
 
     // Camera marker (custom HTML element)
     cameraMarkerEl = createCameraMarkerEl();
+    // O cone cacheado pertence ao marcador ANTERIOR. Zerar aqui, e nao so no
+    // disposeMinimap, porque o minimapa pode ser re-inicializado sem descarte:
+    // entrando por /calibration/ e escolhendo um projeto, initMinimap roda de
+    // novo, e o cache antigo apontava para um marcador que nunca entra no mapa.
+    // O sintoma era o triangulo com `transform` VAZIO, parado, enquanto o
+    // operador girava a tela.
+    coneEl = null;
+    lastConeHeading = NaN;
+    lastConeFov = NaN;
 }
 
 // ============================================================================

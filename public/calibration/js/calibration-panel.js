@@ -313,9 +313,18 @@ function applyTargetedUpdates(s, targets, dirty) {
         const el = document.getElementById(id);
         if (el) el.innerHTML = text;
     };
-    setText('btn-batch-mesh', `rotation_y &rarr; ${(s.editedMeshRotationY ?? 180).toFixed(1)}&deg;`);
-    setText('btn-batch-rotx', `rotation_x &rarr; ${(s.editedMeshRotationX ?? 0).toFixed(1)}&deg;`);
-    setText('btn-batch-rotz', `rotation_z &rarr; ${(s.editedMeshRotationZ ?? 0).toFixed(1)}&deg;`);
+    const rotY = `rotation_y &rarr; ${(s.editedMeshRotationY ?? 180).toFixed(1)}&deg;`;
+    const rotX = `rotation_x &rarr; ${(s.editedMeshRotationX ?? 0).toFixed(1)}&deg;`;
+    const rotZ = `rotation_z &rarr; ${(s.editedMeshRotationZ ?? 0).toFixed(1)}&deg;`;
+    setText('btn-batch-mesh', rotY);
+    setText('btn-batch-rotx', rotX);
+    setText('btn-batch-rotz', rotZ);
+    // Os botoes da FAIXA mostram o mesmo valor corrente, e a assinatura da secao
+    // de faixas nao inclui os angulos editados: sem isto o rotulo congelaria no
+    // valor que a faixa tinha quando a secao foi desenhada.
+    setText('btn-run-y', rotY);
+    setText('btn-run-x', rotX);
+    setText('btn-run-z', rotZ);
 
     // --- Salvar/Descartar (estado disabled) ---
     const saveBtn = document.getElementById('btn-save');
@@ -394,6 +403,11 @@ function syncPhotoListHighlight(s) {
             const badge = item.querySelector('.cal-panel__fonte');
             if (badge) badge.outerHTML = renderFonteBadge(photo.calibrationSource, true);
         }
+        // O contador do cabecalho da faixa (`3/46`) nasce no desenho da lista, e
+        // a lista NAO e redesenhada ao marcar revisada (de proposito: sao 17.590
+        // itens no maior projeto). Sem atualizar aqui ele fica congelado em
+        // 0/46 enquanto o operador revisa a faixa inteira.
+        atualizaContadorDaFaixa(photo.runId);
     };
 
     if (highlightedPhotoId !== s.currentPhotoId) {
@@ -710,15 +724,28 @@ function renderRunsSection(s) {
         `;
     }).join('');
 
-    // O botao aplica os TRES angulos correntes de uma vez. Separar por eixo,
-    // como no batch de projeto, encheria a secao de botoes para um gesto que na
-    // pratica e sempre "esta foto esta certa, vale para a corrida inteira".
+    // Por EIXO e tudo, igual ao batch de projeto. A versao anterior so aplicava
+    // os tres de uma vez, o que forcava a levar junto um angulo que estava bom.
+    // Na revisao real o gesto comum e "so o roll desta faixa esta torto".
     const faixaCorrente = s.runs.find(r => r.id === runAtual);
     const aplicar = faixaCorrente ? `
-        <button id="btn-apply-run" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost"
-                title="Aplica os tres angulos atuais as ${faixaCorrente.total} fotos da faixa ${faixaCorrente.label}">
-            Aplicar a faixa ${faixaCorrente.label} (${faixaCorrente.total} fotos)
-        </button>
+        <p class="cal-panel__hint" style="margin: 8px 0 6px">
+            Aplica as ${faixaCorrente.total} fotos da faixa ${faixaCorrente.label}.
+        </p>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button id="btn-run-y" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
+                rotation_y &rarr; ${(s.editedMeshRotationY ?? 180).toFixed(1)}&deg;
+            </button>
+            <button id="btn-run-x" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
+                rotation_x &rarr; ${(s.editedMeshRotationX ?? 0).toFixed(1)}&deg;
+            </button>
+            <button id="btn-run-z" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
+                rotation_z &rarr; ${(s.editedMeshRotationZ ?? 0).toFixed(1)}&deg;
+            </button>
+            <button id="btn-run-all" class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost">
+                Todos
+            </button>
+        </div>
     ` : '';
 
     return renderCollapsibleSection('runs', 'Faixas de Coleta',
@@ -808,6 +835,26 @@ const FONTES = {
  *   cabecalho da foto atual ela continua explicita, que e onde a ausencia de
  *   medida e informacao util para o revisor.
  */
+/**
+ * Reescreve `revisadas/total` no cabecalho de uma faixa, sem redesenhar a lista.
+ *
+ * Reconta as fotos daquela faixa, nao do projeto: a maior faixa tem ~1.300
+ * fotos, entao o custo e desprezivel perto de reconstruir 17.590 itens de DOM.
+ *
+ * @param {string|null} runId - Faixa a atualizar. Sem ela, o grupo "Sem faixa".
+ */
+function atualizaContadorDaFaixa(runId) {
+    if (!photosEl) return;
+    const chave = runId || '__sem_faixa__';
+    const bloco = photosEl.querySelector(`.cal-panel__faixa[data-run-id="${CSS.escape(chave)}"]`);
+    if (!bloco) return;
+    const alvo = bloco.querySelector('.cal-panel__faixa-num');
+    if (!alvo) return;
+    const daFaixa = state.projectPhotos.filter(p => (p.runId || '__sem_faixa__') === chave);
+    const texto = `${daFaixa.filter(p => p.reviewed).length}/${daFaixa.length}`;
+    if (alvo.textContent !== texto) alvo.textContent = texto;
+}
+
 function renderFonteBadge(fonte, naLista = false) {
     const f = FONTES[fonte];
     if (!f) {
@@ -1222,7 +1269,22 @@ function attachEvents() {
         if (destino) onNavigateToPhoto(destino);
     });
 
-    document.getElementById('btn-apply-run')?.addEventListener('click', handleApplyToRun);
+    document.getElementById('btn-run-y')?.addEventListener('click', () => {
+        handleApplyToRun({ mesh_rotation_y: state.editedMeshRotationY ?? 180 });
+    });
+    document.getElementById('btn-run-x')?.addEventListener('click', () => {
+        handleApplyToRun({ mesh_rotation_x: state.editedMeshRotationX ?? 0 });
+    });
+    document.getElementById('btn-run-z')?.addEventListener('click', () => {
+        handleApplyToRun({ mesh_rotation_z: state.editedMeshRotationZ ?? 0 });
+    });
+    document.getElementById('btn-run-all')?.addEventListener('click', () => {
+        handleApplyToRun({
+            mesh_rotation_y: state.editedMeshRotationY ?? 180,
+            mesh_rotation_x: state.editedMeshRotationX ?? 0,
+            mesh_rotation_z: state.editedMeshRotationZ ?? 0,
+        });
+    });
 
     // A navegacao pela lista de fotos e delegada em `photosEl` uma unica vez em
     // initPanel: o container sobrevive a reconstrucao do corpo, e re-anexar o
@@ -1236,7 +1298,11 @@ function attachEvents() {
  * tela ate ficar certa e entao dizer "vale para a corrida inteira", sem ter de
  * salvar antes.
  */
-async function handleApplyToRun() {
+/**
+ * Aplica um ou mais eixos a faixa da foto aberta.
+ * @param {Object} values - Subconjunto de mesh_rotation_y/x/z, como no batch de projeto
+ */
+async function handleApplyToRun(values) {
     const runId = getCurrentRunId();
     const faixa = state.runs.find(r => r.id === runId);
     if (!faixa) {
@@ -1244,16 +1310,11 @@ async function handleApplyToRun() {
         return;
     }
 
-    const values = {
-        mesh_rotation_y: state.editedMeshRotationY ?? 180,
-        mesh_rotation_x: state.editedMeshRotationX ?? 0,
-        mesh_rotation_z: state.editedMeshRotationZ ?? 0,
-    };
-
+    const campos = Object.entries(values)
+        .map(([k, v]) => `${k.replace('mesh_', '')}=${v.toFixed(1)}`)
+        .join(', ');
     const confirmado = window.confirm(
-        `Aplicar rotation_y=${values.mesh_rotation_y.toFixed(1)}, `
-        + `rotation_x=${values.mesh_rotation_x.toFixed(1)}, `
-        + `rotation_z=${values.mesh_rotation_z.toFixed(1)}\n`
+        `Aplicar ${campos}\n`
         + `as ${faixa.total} fotos da faixa ${faixa.label}?\n\nEsta acao nao pode ser desfeita.`
     );
     if (!confirmado) return;
@@ -1266,8 +1327,9 @@ async function handleApplyToRun() {
         // O batch grava 'manual' nas fotos da faixa (queries.js). Espelhado.
         setCalibrationSource('manual',
             state.projectPhotos.filter(p => p.runId === runId).map(p => p.id));
-        const n = resultado.updated?.mesh_rotation_y?.photosUpdated ?? faixa.total;
-        showToast(`${n} fotos da faixa ${faixa.label} atualizadas`, 'success');
+        const primeiro = Object.values(resultado.updated || {})[0];
+        const n = primeiro?.photosUpdated ?? faixa.total;
+        showToast(`${n} fotos da faixa ${faixa.label} atualizadas (${campos})`, 'success');
         renderPanel(state);
     } catch (err) {
         console.error('Batch por faixa falhou:', err);
