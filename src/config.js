@@ -27,6 +27,28 @@ const config = {
     return resolve(this.dataDir, 'thumbnails');
   },
 
+  // Base publica que corresponde ao /api/v1 deste servico, sem barra final.
+  //
+  // SO O SERVICO PRECISA DISSO, e so quando ele mesmo escreve uma URL: hoje, a
+  // dos tiles dentro do TileJSON. Todo o resto do endereco quem escreve e o
+  // cliente, que ja conhece o endereco publico.
+  //
+  // POR QUE NAO DA PARA DEDUZIR. Atras de um proxy que monta o servico num
+  // prefixo, o caminho publico morre na reescrita. Com
+  // `location /ebgeo_360/ { proxy_pass .../api/v1/; }`, o pedido que chega aqui
+  // e `/api/v1/tiles/fotos.json`, e o `/ebgeo_360` nao viaja em cabecalho
+  // nenhum. Esquema e host sobrevivem (`x-forwarded-proto`, `Host`), o prefixo
+  // nao. Sem esta chave o TileJSON publicava `https://host/api/v1/tiles/...`,
+  // que em producao e 404, e o MapLibre trata 404 de tile como tile vazio: o
+  // mapa fica sem ponto e o console fica limpo.
+  //
+  // Vazio deduz do pedido, que e o certo para o desenvolvimento local e para
+  // quem publica o servico na raiz.
+  // Ex.: PUBLIC_API_BASE_URL=https://ebgeo.1cgeo.eb.mil.br/ebgeo_360
+  get publicApiBaseUrl() {
+    return (process.env.PUBLIC_API_BASE_URL || '').replace(/\/+$/, '');
+  },
+
   // Logging
   logLevel: process.env.LOG_LEVEL || 'info',
 

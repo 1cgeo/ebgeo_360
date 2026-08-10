@@ -23,6 +23,7 @@
 
 import geojsonvt from 'geojson-vt';
 import vtpbf from 'vt-pbf';
+import config from '../config.js';
 import { getPhotosInBbox, getAllTracks, getBboxDoAcervo } from '../db/queries.js';
 import {
   setMetadataCacheHeaders,
@@ -76,10 +77,15 @@ export default async function tileRoutes(fastify) {
       tilejson: '3.0.0',
       name: CAMADA,
       scheme: 'xyz',
-      // URL ABSOLUTA, montada a partir do pedido. O MapLibre resolve URL
-      // relativa contra o documento, e nao contra o TileJSON, entao uma relativa
-      // aqui quebraria assim que o EBGeo e o 360 ficassem em hosts diferentes.
-      tiles: [`${baseDaApi(request)}/api/v1/tiles/fotos/{z}/{x}/{y}.pbf`],
+      // URL ABSOLUTA. O MapLibre resolve URL relativa contra o documento, e nao
+      // contra o TileJSON, entao uma relativa aqui quebraria assim que o EBGeo e
+      // o 360 ficassem em hosts diferentes, ou o EBGeo saisse da raiz.
+      //
+      // E O UNICO ENDERECO QUE O SERVICO ESCREVE. Todos os outros (foto, planta,
+      // andares, tracado) quem monta e o cliente, a partir de uma base que ele
+      // ja conhece. Este nasce aqui porque o MapLibre le o TileJSON e so entao
+      // pede o tile, num segundo salto cujo endereco ele nao escolhe.
+      tiles: [`${baseDaApi(request)}/tiles/fotos/{z}/{x}/{y}.pbf`],
       minzoom: ZOOM_MIN,
       maxzoom: ZOOM_MAX,
       ...(caixa ? { bounds: [caixa.oeste, caixa.sul, caixa.leste, caixa.norte] } : {}),
@@ -213,7 +219,14 @@ export default async function tileRoutes(fastify) {
 }
 
 /**
- * Monta a base publica da API a partir do pedido, honrando o proxy reverso.
+ * Devolve a base publica que corresponde ao /api/v1 deste servico.
+ *
+ * A CONFIGURACAO VENCE A DEDUCAO, porque a deducao nao alcanca o prefixo. Num
+ * proxy que monta o servico em `/ebgeo_360/` e reescreve para `/api/v1/`, o
+ * pedido chega aqui sem qualquer vestigio do prefixo publico. Quem sabe o
+ * endereco publico e quem publicou, entao ele declara em `PUBLIC_API_BASE_URL`
+ * (ver src/config.js). Sem a chave, deduz-se do pedido, que continua correto
+ * para o desenvolvimento local e para o servico publicado na raiz.
  *
  * A PORTA PADRAO SAI FORA, e isso e o conserto de um defeito de producao, nao
  * cosmetica. O nginx da frente repassa `$host:$server_port`, entao o `Host` que
@@ -227,13 +240,15 @@ export default async function tileRoutes(fastify) {
  * ela e mesmo a porta publica.
  *
  * @param {Object} request - Fastify request
- * @returns {string} Base sem barra final, ex.: "http://127.0.0.1:8081"
+ * @returns {string} Base sem barra final, ex.: "http://127.0.0.1:8081/api/v1"
  */
 function baseDaApi(request) {
+  if (config.publicApiBaseUrl) return config.publicApiBaseUrl;
+
   const esquema = primeiroValor(request.headers['x-forwarded-proto']) || request.protocol;
   const host = primeiroValor(request.headers['x-forwarded-host'])
     || primeiroValor(request.headers.host);
-  return `${esquema}://${semPortaPadrao(host)}`;
+  return `${esquema}://${semPortaPadrao(host)}/api/v1`;
 }
 
 /**
