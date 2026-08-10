@@ -68,6 +68,21 @@ const FOLGA = 80;
 
 export default async function tileRoutes(fastify) {
   // GET /api/v1/tiles/fotos.json — TileJSON da camada de pontos
+  //
+  // O EBGEO NAO LE ESTE DOCUMENTO. Ele declara os tiles direto na fonte do
+  // MapLibre (`tiles: [...]` em vez de `url:`), e a razao esta na LIMITACAO
+  // abaixo. O TileJSON fica de pe para consumidor externo (QGIS e afins).
+  //
+  // LIMITACAO: a URL que este documento publica sai da deducao do pedido, e a
+  // deducao nao alcanca PREFIXO. Atras de um proxy que monta o servico num
+  // caminho (`location /ebgeo_360/ { proxy_pass .../api/v1/; }`), o pedido chega
+  // aqui como `/api/v1/tiles/fotos.json`, ja sem o prefixo: esquema e host
+  // viajam em cabecalho, o pedaco do caminho nao viaja em lugar nenhum. Entao a
+  // URL publicada aponta para a raiz do host e da 404 do lado de fora.
+  //
+  // Nao ha conserto sem configuracao, porque a informacao que falta nao esta no
+  // pedido. Quem consome daqui e esta atras de um proxy assim precisa montar a
+  // URL do tile por conta propria, como o EBGeo faz.
   fastify.get('/api/v1/tiles/fotos.json', async (request, reply) => {
     const caixa = getBboxDoAcervo();
 
