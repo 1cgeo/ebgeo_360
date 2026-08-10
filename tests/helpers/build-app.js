@@ -13,6 +13,7 @@ import healthRoutes from '../../src/routes/health.js';
 import projectRoutes from '../../src/routes/projects.js';
 import photoRoutes from '../../src/routes/photos.js';
 import calibrationRoutes from '../../src/routes/calibration.js';
+import tileRoutes from '../../src/routes/tiles.js';
 
 /**
  * Creates a Fastify app with all routes registered (no listener).
@@ -25,6 +26,7 @@ export async function buildApp() {
   await app.register(projectRoutes);
   await app.register(photoRoutes);
   await app.register(calibrationRoutes);
+  await app.register(tileRoutes);
 
   return app;
 }

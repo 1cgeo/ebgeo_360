@@ -214,13 +214,48 @@ export default async function tileRoutes(fastify) {
 
 /**
  * Monta a base publica da API a partir do pedido, honrando o proxy reverso.
+ *
+ * A PORTA PADRAO SAI FORA, e isso e o conserto de um defeito de producao, nao
+ * cosmetica. O nginx da frente repassa `$host:$server_port`, entao o `Host` que
+ * chega aqui carrega a porta 80 da escuta INTERNA, enquanto o
+ * `x-forwarded-proto` diz https. Juntar os dois emitia
+ * `https://ebgeo.1cgeo.eb.mil.br:80/...`: o navegador abria TLS contra a porta
+ * 80, o nginx respondia em texto claro e o MapLibre so via
+ * "AJAXError: Failed to fetch (0)". Porta 80 e 443 nunca precisam aparecer numa
+ * URL publica, entao descarta-las conserta o caso sem depender de adivinhar
+ * qual proxy esta na frente. Porta fora do padrao continua na URL, porque ai
+ * ela e mesmo a porta publica.
+ *
  * @param {Object} request - Fastify request
  * @returns {string} Base sem barra final, ex.: "http://127.0.0.1:8081"
  */
 function baseDaApi(request) {
-  const esquema = request.headers['x-forwarded-proto'] || request.protocol;
-  const host = request.headers['x-forwarded-host'] || request.headers.host;
-  return `${esquema}://${host}`;
+  const esquema = primeiroValor(request.headers['x-forwarded-proto']) || request.protocol;
+  const host = primeiroValor(request.headers['x-forwarded-host'])
+    || primeiroValor(request.headers.host);
+  return `${esquema}://${semPortaPadrao(host)}`;
+}
+
+/**
+ * Toma o primeiro item de um cabecalho que dois proxies em serie empilharam.
+ *
+ * `x-forwarded-proto: https, http` significa que o CLIENTE falou https e o
+ * salto interno seguinte falou http. Quem vale para montar URL publica e o
+ * primeiro.
+ * @param {string|undefined} cabecalho - Valor cru do cabecalho
+ * @returns {string} Primeiro valor, sem espaco em volta
+ */
+function primeiroValor(cabecalho) {
+  return String(cabecalho || '').split(',')[0].trim();
+}
+
+/**
+ * Remove a porta 80 ou 443 do host, preservando host IPv6 entre colchetes.
+ * @param {string} host - Host, com ou sem porta
+ * @returns {string} Host sem a porta padrao
+ */
+function semPortaPadrao(host) {
+  return host.replace(/:(80|443)$/, '');
 }
 
 /**
