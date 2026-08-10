@@ -32,7 +32,19 @@ CREATE TABLE IF NOT EXISTS photos (
     mesh_rotation_z         REAL DEFAULT 0,
     distance_scale          REAL DEFAULT 1.0,
     marker_scale            REAL DEFAULT 1.0,
+    -- Andar da foto. O nivel e um INTEIRO ORDENAVEL, porque o seletor da
+    -- interface empilha os andares de cima para baixo; o rotulo e o que a tela
+    -- mostra. Nivel 0 e o chao (externo, patio, campo), 1..N sobem.
+    --
+    -- O andar e propriedade da FOTO, nao do projeto: o Beira-Rio tem 6 andares
+    -- MAIS duas areas externas no mesmo levantamento, entao uma marca no
+    -- projeto nao descreveria o dado.
+    --
+    -- Quem decide se um projeto TEM andares e a existencia de linhas em
+    -- project_floors, nunca este valor. Por isso os 28 projetos anteriores, com
+    -- floor_level=1 em 98.690 fotos, seguem intactos e sem seletor na tela.
     floor_level             INTEGER DEFAULT 1,
+    floor_label             TEXT,
     full_size_bytes         INTEGER,
     preview_size_bytes      INTEGER,
     calibration_reviewed    INTEGER DEFAULT 0,
@@ -114,6 +126,27 @@ CREATE TABLE IF NOT EXISTS project_tracks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_project_tracks_project ON project_tracks(project_id);
+
+-- Andares de um projeto, um por linha, com a planta baixa daquele nivel.
+--
+-- A EXISTENCIA de linhas aqui e o que declara que o projeto tem andares. E a
+-- unica coisa que a interface consulta para decidir se desenha o seletor, o que
+-- deixa os projetos externos anteriores sem nenhum efeito colateral.
+--
+-- `plan_coords` e um JSON [[[lon,lat],...],...]: uma lista de LineStrings, no
+-- mesmo padrao de project_tracks.coords. Vale NULL para o nivel que existe mas
+-- nao tem planta desenhada, que e o caso do nivel 0 (externo) do Beira-Rio.
+--
+-- SQLite nao tem tipo geometrico, e o consumo e sempre "devolva a planta
+-- inteira deste andar" — nunca uma consulta espacial sobre os vertices —, entao
+-- um blob JSON serve e evita uma tabela de vertices.
+CREATE TABLE IF NOT EXISTS project_floors (
+    project_id  TEXT NOT NULL REFERENCES projects(id),
+    level       INTEGER NOT NULL,
+    label       TEXT NOT NULL,
+    plan_coords TEXT,
+    PRIMARY KEY (project_id, level)
+);
 
 -- Faixa de coleta = uma SESSAO DE GRAVACAO: uma corrida continua do veiculo,
 -- do momento em que o operador iniciou a captura ate parar.

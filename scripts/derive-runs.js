@@ -71,11 +71,19 @@ if (!projetos.length) {
 // nenhum da interface, e conta-las inflaria o photo_count da faixa e a barra
 // de progresso da revisao.
 const fotosDoProjeto = db.prepare(`
-  SELECT ph.id, ph.original_name, ph.captured_at
+  SELECT ph.id, ph.original_name, ph.captured_at, ph.floor_level, ph.floor_label
   FROM photos ph
   WHERE ph.project_id = ?
     AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)
 `);
+
+// Projeto COM andares declarados agrupa por andar, nao pelo nome do arquivo.
+// A pergunta e feita ao banco, e nao a uma opcao de linha de comando, para o
+// criterio nao depender de alguem lembrar da flag: a existencia de
+// project_floors ja e a declaracao de que o projeto tem andares.
+const andaresDoProjeto = db.prepare(
+  'SELECT level, label FROM project_floors WHERE project_id = ?'
+);
 
 const faixaExistente = db.prepare(
   'SELECT id, applied_rotation_y, applied_rotation_x, applied_rotation_z FROM capture_runs WHERE project_id = ? AND session_key = ?'
@@ -97,13 +105,23 @@ const vincularFoto = db.prepare(
 const relatorio = [];
 
 const derivarProjeto = db.transaction((projeto) => {
+  // O rotulo da faixa sai de project_floors, e nao do floor_label da foto: um
+  // nivel pode reunir fotos com nomes diferentes (o nivel 0 do Beira-Rio tem
+  // "Campo" e "Externo"), e a faixa e do ANDAR, nao de uma das partes dele.
+  const rotuloDoNivel = new Map(
+    andaresDoProjeto.all(projeto.id).map(a => [a.level, a.label])
+  );
+  const byFloor = rotuloDoNivel.size > 0;
+
   const fotos = fotosDoProjeto.all(projeto.id).map(r => ({
     id: r.id,
     originalName: r.original_name,
     capturedAt: r.captured_at,
+    floorLevel: r.floor_level,
+    floorLabel: rotuloDoNivel.get(r.floor_level) ?? r.floor_label,
   }));
 
-  const { runs, unmatched } = groupPhotosIntoRuns(fotos);
+  const { runs, unmatched } = groupPhotosIntoRuns(fotos, { byFloor });
 
   // Preserva o registro do default aplicado atravessando a reconstrucao: a
   // faixa e reidentificada pela session_key, que e estavel entre execucoes.
@@ -142,7 +160,9 @@ const derivarProjeto = db.transaction((projeto) => {
     projeto: projeto.slug,
     fotos: fotos.length,
     faixas: runs.length,
-    ordem: runs.length && runs.every(r => r.startedAt) ? 'cronologica' : 'tamanho',
+    ordem: byFloor
+      ? 'andar'
+      : (runs.length && runs.every(r => r.startedAt) ? 'cronologica' : 'tamanho'),
     menor: tamanhos[0] ?? 0,
     mediana: tamanhos[Math.floor(tamanhos.length / 2)] ?? 0,
     maior: tamanhos[tamanhos.length - 1] ?? 0,

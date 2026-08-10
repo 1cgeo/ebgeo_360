@@ -42,6 +42,21 @@ const RE_MULTICAPTURA = /^MULTICAPTURA_(\d+)_(\d+)$/;
 const RE_PIC = /^PIC_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}_output_(\d+)$/;
 
 /**
+ * `PIC_20260520_104137_20260521163900` — DISPARO UNICO, sem `_output_`.
+ *
+ * A primeira data e a hora do disparo; a segunda, com 14 digitos, e a costura
+ * do lote. Cada nome desses tem uma pasta propria em `dados_brutos`, com as 6
+ * imagens de lente daquele unico disparo.
+ *
+ * Este padrao chegou com o levantamento a pe do Beira-Rio, 266 fotos, e e o
+ * primeiro que nao descreve corrida de veiculo nenhuma. Agrupar por ele da uma
+ * faixa POR FOTO, que nao serve para nada. Por isso ele agrupa pela COSTURA, e
+ * por isso existe o modo `byFloor` la embaixo, que e o que um levantamento
+ * indoor realmente quer.
+ */
+const RE_PIC_SINGLE = /^PIC_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_(\d{14})$/;
+
+/**
  * Intervalo do timelapse, em segundos.
  *
  * Fonte primaria: o `pro.prj` que a propria camera grava traz
@@ -77,6 +92,25 @@ export function parseCaptureRun(originalName) {
     return { sessionKey: `ts:${startedAt}`, startedAt, frame: Number(pic[7]) };
   }
 
+  const single = RE_PIC_SINGLE.exec(originalName);
+  if (single) {
+    const [, aaaa, mm, dd, hh, mi, ss, costura] = single;
+    const shotAt = `${aaaa}-${mm}-${dd}T${hh}:${mi}:${ss}`;
+    return {
+      sessionKey: `ss:${costura}`,
+      // Null como no MULTICAPTURA, de proposito: `startedAt` aqui e a hora
+      // DESTA foto, nao do inicio da costura, e a faixa herda o menor
+      // `capturedAt` das suas fotos. Devolver a hora do disparo faria o inicio
+      // da faixa depender de qual foto o loop viu primeiro.
+      startedAt: null,
+      // O instante do disparo em segundos serve de numero de quadro: e
+      // monotonico, entao a ordenacao dentro da faixa sai cronologica mesmo sem
+      // `captured_at` no banco.
+      frame: Math.floor(Date.parse(`${shotAt}Z`) / 1000),
+      shotAt,
+    };
+  }
+
   return null;
 }
 
@@ -94,6 +128,8 @@ export function parseCaptureRun(originalName) {
  */
 export function captureTimeFromName(originalName) {
   const parsed = parseCaptureRun(originalName);
+  // Disparo unico: a hora do disparo E o proprio nome, sem cadencia a somar.
+  if (parsed?.shotAt) return parsed.shotAt;
   if (!parsed?.startedAt) return null;
   const t = new Date(`${parsed.startedAt}Z`).getTime() + parsed.frame * INTERVALO_TIMELAPSE_S * 1000;
   return new Date(t).toISOString().slice(0, 19);
@@ -112,6 +148,12 @@ export function runLabel(sessionKey) {
     return sessionKey.slice(3).split('T')[1] ?? sessionKey.slice(3);
   }
   if (sessionKey.startsWith('mc:')) return sessionKey.slice(3);
+  if (sessionKey.startsWith('ss:')) {
+    // `20260521163900` -> `21/05 16:39`. O ano fica de fora pelo mesmo motivo
+    // que a data fica de fora no `ts:`: o rotulo precisa caber na lista.
+    const c = sessionKey.slice(3);
+    return `${c.slice(6, 8)}/${c.slice(4, 6)} ${c.slice(8, 10)}:${c.slice(10, 12)}`;
+  }
   return sessionKey;
 }
 
@@ -144,28 +186,57 @@ export function runLabel(sessionKey) {
  * para local antes de gravar. Fossem formatos diferentes, a comparacao de
  * string abaixo misturaria escalas.
  *
- * @param {Array<{id: string, originalName: string, capturedAt?: string|null}>} photos
+ * NUM LEVANTAMENTO INDOOR A FAIXA E O ANDAR (`options.byFloor`). Ali nao existe
+ * corrida continua para agrupar: o operador anda e dispara foto a foto, cada
+ * uma com pasta propria na fonte. Mas a razao de ser da faixa continua valendo,
+ * e ate melhor — o andar E a granularidade em que a montagem da camera e o piso
+ * nao mudam, entao e nele que a calibracao em lote faz sentido e que a
+ * navegacao de revisao nao fica pulando de contexto.
+ *
+ * @param {Array<{id: string, originalName: string, capturedAt?: string|null,
+ *                floorLevel?: number|null, floorLabel?: string|null}>} photos
+ * @param {Object} [options] - Opcoes
+ * @param {boolean} [options.byFloor=false] - Agrupar por andar, nao pelo nome
  * @returns {{runs: Array<Object>, unmatched: Array<string>}}
  *   `runs`: faixas com `sessionKey`, `label`, `startedAt`, `ordinal`,
  *   `photoCount` e `photos` (ids em ordem de captura).
  *   `unmatched`: ids das fotos cujo nome nao casou com padrao algum.
  */
-export function groupPhotosIntoRuns(photos) {
+export function groupPhotosIntoRuns(photos, options = {}) {
+  const byFloor = options.byFloor === true;
   const porSessao = new Map();
   const unmatched = [];
 
   for (const foto of photos) {
     const parsed = parseCaptureRun(foto.originalName);
-    if (!parsed) {
+
+    // No modo por andar, o nome ainda e lido — so que para ORDENAR dentro da
+    // faixa, nao para formar a faixa. Nome irreconhecivel nao descarta a foto
+    // aqui: ela tem andar, entao tem faixa. Ela so perde o criterio fino de
+    // ordem, e cai no desempate por id.
+    const chave = byFloor ? `fl:${foto.floorLevel ?? 0}` : parsed?.sessionKey;
+    if (chave == null) {
       unmatched.push(foto.id);
       continue;
     }
-    let faixa = porSessao.get(parsed.sessionKey);
+
+    let faixa = porSessao.get(chave);
     if (!faixa) {
-      faixa = { sessionKey: parsed.sessionKey, startedAt: parsed.startedAt, itens: [] };
-      porSessao.set(parsed.sessionKey, faixa);
+      faixa = {
+        sessionKey: chave,
+        // O andar nao tem hora propria: herda o menor `capturedAt` das fotos.
+        startedAt: byFloor ? null : parsed.startedAt,
+        level: byFloor ? (foto.floorLevel ?? 0) : null,
+        floorLabel: byFloor ? (foto.floorLabel ?? null) : null,
+        itens: [],
+      };
+      porSessao.set(chave, faixa);
     }
-    faixa.itens.push({ id: foto.id, frame: parsed.frame, capturedAt: foto.capturedAt ?? null });
+    faixa.itens.push({
+      id: foto.id,
+      frame: parsed?.frame ?? 0,
+      capturedAt: foto.capturedAt ?? null,
+    });
   }
 
   const runs = [...porSessao.values()].map(faixa => {
@@ -187,21 +258,30 @@ export function groupPhotosIntoRuns(photos) {
     );
     return {
       sessionKey: faixa.sessionKey,
-      label: runLabel(faixa.sessionKey),
+      label: faixa.floorLabel ?? runLabel(faixa.sessionKey),
       startedAt: faixa.startedAt ?? herdado,
+      level: faixa.level,
       photoCount: ordenadas.length,
       photos: ordenadas.map(i => i.id),
     };
   });
 
-  const todasComHora = runs.length > 0 && runs.every(r => r.startedAt);
-  runs.sort((a, b) => {
-    if (todasComHora) return a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0;
-    // Tamanho decrescente, com a chave como desempate para ser deterministico
-    // entre execucoes quando duas faixas tem o mesmo numero de fotos.
-    return b.photoCount - a.photoCount
-      || (a.sessionKey < b.sessionKey ? -1 : a.sessionKey > b.sessionKey ? 1 : 0);
-  });
+  if (byFloor) {
+    // Do chao para cima, e nao por hora nem por tamanho. A revisao sobe o
+    // predio andar a andar, e essa e a unica ordem que o operador consegue
+    // prever. Ordenar 7 andares por numero de fotos daria uma lista com
+    // aparencia de significado e nenhum.
+    runs.sort((a, b) => a.level - b.level);
+  } else {
+    const todasComHora = runs.length > 0 && runs.every(r => r.startedAt);
+    runs.sort((a, b) => {
+      if (todasComHora) return a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0;
+      // Tamanho decrescente, com a chave como desempate para ser deterministico
+      // entre execucoes quando duas faixas tem o mesmo numero de fotos.
+      return b.photoCount - a.photoCount
+        || (a.sessionKey < b.sessionKey ? -1 : a.sessionKey > b.sessionKey ? 1 : 0);
+    });
+  }
   runs.forEach((r, i) => { r.ordinal = i + 1; });
 
   return { runs, unmatched };

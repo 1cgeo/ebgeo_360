@@ -3,7 +3,7 @@
  * @description Project listing endpoints — replaces config.streetViewMarkers.
  */
 
-import { getAllProjects, getProjectBySlug } from '../db/queries.js';
+import { getAllProjects, getProjectBySlug, getFloorsByProjectSlug } from '../db/queries.js';
 import { setMetadataCacheHeaders } from '../middleware/cache.js';
 
 /**
@@ -43,6 +43,64 @@ export default async function projectRoutes(fastify) {
     setMetadataCacheHeaders(reply);
     return { project: formatProject(row) };
   });
+
+  // GET /api/v1/projects/:slug/floors — andares do projeto, de cima para baixo.
+  //
+  // LISTA VAZIA E RESPOSTA VALIDA, nao erro: ela significa "projeto sem
+  // andares", que e o caso dos 28 projetos externos do acervo. O cliente usa o
+  // vazio para NAO desenhar o seletor. Devolver 404 aqui obrigaria todo
+  // consumidor a tratar um erro que nao e erro.
+  //
+  // A planta vai em GeoJSON, e nao no JSON cru do banco, porque o unico
+  // consumidor e uma camada de linha do MapLibre.
+  fastify.get('/api/v1/projects/:slug/floors', async (request, reply) => {
+    const { slug } = request.params;
+
+    if (!getProjectBySlug(slug)) {
+      reply.code(404);
+      return { error: 'Project not found' };
+    }
+
+    setMetadataCacheHeaders(reply);
+    return { floors: getFloorsByProjectSlug(slug).map(formatFloor) };
+  });
+}
+
+/**
+ * Shapes one floor row for the API, turning the stored line list into GeoJSON.
+ * @param {Object} row - Row from getFloorsByProjectSlug
+ * @returns {Object} Floor payload
+ */
+function formatFloor(row) {
+  let plan = null;
+
+  if (row.plan_coords) {
+    let lines = null;
+    try {
+      lines = JSON.parse(row.plan_coords);
+    } catch {
+      // Planta ilegivel e um andar SEM planta, nunca uma rota quebrada: o
+      // seletor e a navegacao seguem valendo sem o desenho de fundo.
+      lines = null;
+    }
+    if (Array.isArray(lines) && lines.length > 0) {
+      plan = {
+        type: 'FeatureCollection',
+        features: lines.map(coordinates => ({
+          type: 'Feature',
+          properties: { level: row.level },
+          geometry: { type: 'LineString', coordinates },
+        })),
+      };
+    }
+  }
+
+  return {
+    level: row.level,
+    label: row.label,
+    photoCount: row.photo_count,
+    plan,
+  };
 }
 
 function formatProject(row) {

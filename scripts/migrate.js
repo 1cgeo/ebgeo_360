@@ -21,6 +21,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 import { resolveMeshRotation, quaternionToHeading } from './lib/orientation.js';
+import { parseFloor, defaultFloorLabel } from './lib/floors.js';
 
 
 // ============================================================
@@ -71,6 +72,22 @@ function parseArgs() {
 // ============================================================
 
 const PROJECTS = [
+  // === Lote 2026-08: Beira-Rio, o primeiro projeto COM ANDARES ===
+  //
+  // 350 fotos em 6 andares mais duas areas externas, com metadados e imagens na
+  // MESMA pasta (--metadata e --images apontam para ela). Ver
+  // docs/migracao-beira-rio.md e docs/qa-lote-beira-rio.md.
+  //
+  // RODAR COM --skip-targets. A fase 5 liga por proximidade em planta, e aqui
+  // 91 das 350 fotos tem foto de OUTRO andar a menos de 5 m, a mais proxima a
+  // 0,7 m: ela ligaria o terreo ao quinto andar. O grafo entregue tem 894
+  // ligacoes feitas a mao, escadas incluidas.
+  //
+  // A foto de entrada e cabeca de cadeia `next` com 11 passos, no andar 1,
+  // DENTRO do componente principal (330 de 350) e com heading medido. Cabeca de
+  // cadeia fora do componente principal foi a armadilha do lote do faxinal.
+  { name: 'Beira-Rio', slug: 'beira_rio', description: 'Imagens panorâmicas do Estádio Beira-Rio', capture_date: '2026-05-20', location: 'Porto Alegre, RS', lat: -30.065515, lon: -51.236004, entryPhoto: 'PIC_20260520_104137_20260521163900' },
+
   // === Lote 2026-07 (fonte D:\dados_ebgeo) ===
   // AMAN: substituição do projeto antigo (5.312 fotos) pelo lote streetviewaman
   // (11.756). Rodar com --metadata apontando para a pasta PREPARADA — os JSONs
@@ -234,6 +251,9 @@ function readAllMetadata(metadataDir) {
       photos.set(name, {
         originalName: name,
         camera: data.camera,
+        // O andar vive na RAIZ do json, nao dentro de `camera`. Guardado cru
+        // aqui e traduzido na Fase 6, para o parser continuar sendo so leitura.
+        locate: data.locate ?? null,
         targets: (data.targets || []).map(t => {
           // Normalize target img: strip .jpg if present
           let img = t.img || t.id;
@@ -259,7 +279,63 @@ function readAllMetadata(metadataDir) {
   }
 
   console.log(`  ${count} metadata files loaded.`);
+  fillMissingLocate(metadataDir, photos);
   return photos;
+}
+
+/**
+ * Fills `locate` from `fotos.geojson` for photos whose JSON lacks it.
+ *
+ * The field team writes the floor in TWO places, and they do not always agree
+ * on coverage: in the Beira-Rio lot, 348 of 350 JSONs carry `locate` while the
+ * geojson carries `local` for all 350. The two photos re-delivered after the
+ * first QA round came back without the field.
+ *
+ * Falling back rather than failing is deliberate — the value exists, it is just
+ * in the other file — but it is REPORTED, because a JSON without `locate` is a
+ * defect at the source and silence would let it spread through future lots.
+ *
+ * @param {string} metadataDir - Directory holding the JSONs (and maybe fotos.geojson)
+ * @param {Map<string, Object>} photos - originalName -> metadata, mutated in place
+ */
+function fillMissingLocate(metadataDir, photos) {
+  const missing = [...photos.values()].filter(p => p.locate == null);
+  if (missing.length === 0) return;
+
+  const geojsonPath = join(metadataDir, 'fotos.geojson');
+  if (!existsSync(geojsonPath)) return;
+
+  let byName;
+  try {
+    const fc = JSON.parse(readFileSync(geojsonPath, 'utf-8'));
+    byName = new Map(
+      (fc.features || [])
+        .map(f => [f.properties?.nome_img, f.properties?.local])
+        .filter(([name, local]) => name && local)
+    );
+  } catch (err) {
+    console.warn(`  Warning: could not read fotos.geojson for locate fallback: ${err.message}`);
+    return;
+  }
+
+  let filled = 0;
+  for (const p of missing) {
+    const local = byName.get(p.originalName);
+    if (local) {
+      p.locate = local;
+      filled++;
+    }
+  }
+
+  if (filled > 0) {
+    console.warn(
+      `  Warning: ${filled} photo(s) had no "locate" in the JSON; ` +
+      'took it from fotos.geojson. Report to the survey team.'
+    );
+    for (const p of missing.slice(0, 10)) {
+      if (p.locate) console.warn(`    ${p.originalName} -> ${p.locate}`);
+    }
+  }
 }
 
 // ============================================================
@@ -733,8 +809,13 @@ function populateMetadata(opts, photos, projects, sequences, projectUUIDs, photo
   `);
 
   const insertPhoto = indexDb.prepare(`
-    INSERT OR REPLACE INTO photos (id, project_id, original_name, display_name, sequence_number, lat, lon, ele, heading, camera_height, mesh_rotation_y, mesh_rotation_x, mesh_rotation_z, distance_scale, floor_level, full_size_bytes, preview_size_bytes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO photos (id, project_id, original_name, display_name, sequence_number, lat, lon, ele, heading, camera_height, mesh_rotation_y, mesh_rotation_x, mesh_rotation_z, distance_scale, floor_level, floor_label, full_size_bytes, preview_size_bytes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const insertFloor = indexDb.prepare(`
+    INSERT OR REPLACE INTO project_floors (project_id, level, label, plan_coords)
+    VALUES (?, ?, ?, COALESCE((SELECT plan_coords FROM project_floors WHERE project_id = ? AND level = ?), NULL))
   `);
 
   const insertRowid = indexDb.prepare(`INSERT OR REPLACE INTO photos_rowid (photo_id) VALUES (?)`);
@@ -759,6 +840,16 @@ function populateMetadata(opts, photos, projects, sequences, projectUUIDs, photo
         p.lat, p.lon, entryPhotoId, seq.length, dbFilename
       );
 
+      // Andares vistos neste projeto: level -> Set de rotulos. Uma linha de
+      // project_floors por andar ocupado sai daqui, e a EXISTENCIA dessas
+      // linhas e o que faz a interface desenhar o seletor.
+      //
+      // E um CONJUNTO de rotulos, e nao um rotulo, porque um nivel pode ter
+      // mais de um nome: no Beira-Rio o nivel 0 e "Campo" em 8 fotos e
+      // "Externo" em 86. Ficar com o primeiro que aparecesse daria ao andar um
+      // nome tirado da ordem de leitura dos arquivos.
+      const floorsSeen = new Map();
+
       // Insert photos
       for (let i = 0; i < seq.length; i++) {
         const originalName = seq[i];
@@ -772,11 +863,25 @@ function populateMetadata(opts, photos, projects, sequences, projectUUIDs, photo
         const rotation = resolveMeshRotation(cam);
         const heading = cam.heading ?? quaternionToHeading(cam.orientation);
 
+        // O andar vem do `locate` da raiz do json. Sem ele, o projeto e externo
+        // e cai no comportamento historico (nivel 1, rotulo nulo, sem seletor).
+        // Um `locate` fora do vocabulario ESTOURA em parseFloor, de proposito:
+        // ver scripts/lib/floors.js.
+        let floorLevel = cam.floor_level ?? 1;
+        let floorLabel = null;
+        if (meta.locate != null) {
+          const floor = parseFloor(meta.locate);
+          floorLevel = floor.level;
+          floorLabel = floor.label;
+          if (!floorsSeen.has(floorLevel)) floorsSeen.set(floorLevel, new Set());
+          floorsSeen.get(floorLevel).add(floorLabel);
+        }
+
         insertPhoto.run(
           uuid, projectId, originalName, displayName, i + 1,
           cam.lat, cam.lon, cam.ele, heading, cam.cameraHeight ?? cam.height ?? null,
           rotation.mesh_rotation_y, rotation.mesh_rotation_x, rotation.mesh_rotation_z,
-          cam.distance_scale ?? 1.0, cam.floor_level ?? 1,
+          cam.distance_scale ?? 1.0, floorLevel, floorLabel,
           null, null // sizes filled during image processing
         );
 
@@ -784,6 +889,21 @@ function populateMetadata(opts, photos, projects, sequences, projectUUIDs, photo
         const rowidResult = insertRowid.run(uuid);
         const rowidId = rowidResult.lastInsertRowid;
         insertRtree.run(rowidId, cam.lon, cam.lon, cam.lat, cam.lat);
+      }
+
+      // A planta de cada nivel entra depois, por import-floor-plans.js. O
+      // INSERT preserva a que ja estiver la, para o script poder rodar antes.
+      //
+      // Nivel com mais de um nome cai no rotulo generico do nivel: o andar e
+      // um so, e escolher "Campo" ou "Externo" para o conjunto seria promover
+      // uma das partes a nome do todo. As fotos guardam o nome fino em
+      // photos.floor_label.
+      for (const [level, labels] of [...floorsSeen].sort((a, b) => a[0] - b[0])) {
+        const label = labels.size === 1 ? [...labels][0] : defaultFloorLabel(level);
+        insertFloor.run(projectId, level, label, projectId, level);
+      }
+      if (floorsSeen.size > 0) {
+        console.log(`  ${p.slug}: ${floorsSeen.size} andares (${[...floorsSeen.keys()].sort((a, b) => a - b).join(', ')})`);
       }
     }
   });

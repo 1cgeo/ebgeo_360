@@ -184,16 +184,80 @@ export function quaternionToMeshRotation(quaternion, options = {}) {
  * @returns {number[][]} Row-major 3x3 rotation matrix
  */
 export function eulerZXYToMatrix(xDeg, yDeg, zDeg) {
+  const { Rx, Ry, Rz } = axisMatrices(xDeg, yDeg, zDeg);
+  return multiply(multiply(Rz, Rx), Ry);
+}
+
+/**
+ * Builds a rotation matrix from Euler angles in 'YXZ' order (Ry*Rx*Rz).
+ * Exposed for testing the YXZ -> ZXY conversion below.
+ *
+ * @param {number} xDeg - Rotation about X in degrees
+ * @param {number} yDeg - Rotation about Y in degrees
+ * @param {number} zDeg - Rotation about Z in degrees
+ * @returns {number[][]} Row-major 3x3 rotation matrix
+ */
+export function eulerYXZToMatrix(xDeg, yDeg, zDeg) {
+  const { Rx, Ry, Rz } = axisMatrices(xDeg, yDeg, zDeg);
+  return multiply(multiply(Ry, Rx), Rz);
+}
+
+/**
+ * The three per-axis rotation matrices for one angle triple, in radians.
+ *
+ * @param {number} xDeg - Rotation about X in degrees
+ * @param {number} yDeg - Rotation about Y in degrees
+ * @param {number} zDeg - Rotation about Z in degrees
+ * @returns {{Rx: number[][], Ry: number[][], Rz: number[][]}}
+ */
+function axisMatrices(xDeg, yDeg, zDeg) {
   const x = xDeg / RAD_TO_DEG, y = yDeg / RAD_TO_DEG, z = zDeg / RAD_TO_DEG;
   const cx = Math.cos(x), sx = Math.sin(x);
   const cy = Math.cos(y), sy = Math.sin(y);
   const cz = Math.cos(z), sz = Math.sin(z);
 
-  const Rx = [[1, 0, 0], [0, cx, -sx], [0, sx, cx]];
-  const Ry = [[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]];
-  const Rz = [[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]];
+  return {
+    Rx: [[1, 0, 0], [0, cx, -sx], [0, sx, cx]],
+    Ry: [[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]],
+    Rz: [[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]]
+  };
+}
 
-  return multiply(multiply(Rz, Rx), Ry);
+/**
+ * Re-expresses one angle triple from Three.js Euler order 'YXZ' into 'ZXY',
+ * preserving the ROTATION ITSELF. The two orders compose the same three axis
+ * matrices in different sequence (Ry*Rx*Rz against Rz*Rx*Ry), and matrix
+ * multiplication does not commute, so copying the numbers across conventions
+ * silently applies a different rotation.
+ *
+ * Where this comes from: the indoor calibration tool that produced the
+ * Beira-Rio corrections builds its sphere with `rotation.order = 'YXZ'`, while
+ * both viewers here use 'ZXY'. The operator tuned tilt values from -30 to 26
+ * degrees against the YXZ sphere. At that magnitude the discrepancy is visible,
+ * not a rounding detail.
+ *
+ * The route is deliberately matrix-based rather than a closed-form angle
+ * formula: building the YXZ matrix and re-extracting it as ZXY reuses the same
+ * `matrixToEulerZXY` the renderer's convention is defined by, so the two can
+ * never drift apart.
+ *
+ * The Y OUTPUT IS DISCARDED BY THE CALLER when the source Y is the vendor's
+ * uncalibrated constant — see migrate.js. Y is returned anyway because the
+ * conversion is only meaningful for the full triple.
+ *
+ * @param {number} xDeg - Rotation about X in degrees, in YXZ order
+ * @param {number} yDeg - Rotation about Y in degrees, in YXZ order
+ * @param {number} zDeg - Rotation about Z in degrees, in YXZ order
+ * @returns {{mesh_rotation_x: number, mesh_rotation_y: number, mesh_rotation_z: number}}
+ *          The same rotation, expressed in ZXY order, in degrees
+ */
+export function eulerYXZToZXY(xDeg, yDeg, zDeg) {
+  const euler = matrixToEulerZXY(eulerYXZToMatrix(xDeg, yDeg, zDeg));
+  return {
+    mesh_rotation_x: euler.x * RAD_TO_DEG,
+    mesh_rotation_y: euler.y * RAD_TO_DEG,
+    mesh_rotation_z: euler.z * RAD_TO_DEG
+  };
 }
 
 /**
@@ -256,6 +320,12 @@ export function matrixToQuaternion(m) {
  * @returns {{mesh_rotation_x: number, mesh_rotation_y: number, mesh_rotation_z: number, source: string}}
  */
 export function resolveMeshRotation(camera, options = {}) {
+  // Antes do ramo explicito, de proposito: um lote da ferramenta indoor traz
+  // mesh_rotation_y E textureRotationX/Z, e o ramo explicito sozinho leria o Y
+  // e DESCARTARIA a inclinacao calibrada, sem aviso.
+  const fromTexture = textureRotationToMeshRotation(camera);
+  if (fromTexture) return fromTexture;
+
   const hasExplicit =
     camera?.mesh_rotation_y != null ||
     camera?.mesh_rotation_x != null ||
@@ -276,6 +346,120 @@ export function resolveMeshRotation(camera, options = {}) {
   }
 
   return { mesh_rotation_y: 180, mesh_rotation_x: 0, mesh_rotation_z: 0, source: 'default' };
+}
+
+/**
+ * Yaw used when the metadata declares none.
+ *
+ * Both spheres are built the same way — `SphereGeometry(...).scale(-1,1,1)` —
+ * so with no rotation the image centre (U=0.5) lands on -X in world space, and
+ * 180 brings it to +X, where the camera looks at lon=0. That is this viewer's
+ * historical default (see `applyTexture` in street_view_viewer.js).
+ *
+ * It is only a FALLBACK. When the metadata carries `mesh_rotation_y`, that
+ * value wins — see below for why the levelling cannot decide this.
+ */
+const NEUTRO_Y_PADRAO = 180;
+
+/**
+ * Transposes the orientation an operator calibrated in the INDOOR tool, whose
+ * metadata names the angles `textureRotationX` / `textureRotation` /
+ * `textureRotationZ` and applies them with Three.js Euler order 'YXZ'.
+ *
+ * THE TWO ANGLE SETS IN THAT METADATA ANSWER DIFFERENT QUESTIONS, and mixing
+ * them up is the whole difficulty.
+ *
+ * - `textureRotationX` / `textureRotationZ` are the OPERATOR'S work, in the
+ *   TOOL'S convention. They level the horizon, and nothing else.
+ * - `mesh_rotation_y` is the vendor's YAW, already in THIS viewer's convention.
+ *   The tool never applies it — it applies `textureRotation`, which is 0 on
+ *   every photo — because that field was never for the tool.
+ *
+ * What the operator did was rotate the sphere until the IMAGE HORIZON fell on
+ * the horizontal ring of the tool's reference grid (`createGlobeGrid`, with
+ * `equator.rotation.x = PI/2`). That is:
+ *
+ *     R_tool * n = y          (n = normal of the image horizon)
+ *
+ * WHICH LEAVES THE YAW UNDETERMINED. Every rotation of the form `Ry(t)*R_tool`
+ * levels exactly as well, because only a spin about the vertical fixes the
+ * vertical. Levelling is one constraint; yaw is a free parameter it cannot
+ * touch. So the yaw HAS to come from outside, and `mesh_rotation_y` is where it
+ * comes from.
+ *
+ * The composition is therefore
+ *
+ *     R_here = Ry(mesh_rotation_y) * R_tool
+ *
+ * with the yaw multiplying ON THE LEFT. Multiplying on the right does not
+ * preserve the levelling at all: measured on the lot's own values, the horizon
+ * comes out 30 degrees off for (15, 1) and 68 degrees off for (26, 23).
+ *
+ * The implementation is one line, because
+ *
+ *     Ry(b) * Ry(ty) * Rx(tx) * Rz(tz) = Ry(ty + b) * Rx(tx) * Rz(tz)
+ *
+ * so the base is added to the tool's own Y BEFORE the change of order.
+ *
+ * DO NOT EXPECT THE TILT ANGLES TO SURVIVE AS TYPED. The ZXY decomposition
+ * splits the same physical rotation differently depending on the yaw: with a
+ * base of 60, `(15, 1)` comes out as `x=8,31  y=60,79  z=-12,57`. The numbers
+ * moving is not a bug; the horizon staying level is the invariant.
+ *
+ * THREE TRAPS LIVE HERE, AND ALL THREE ARE SILENT.
+ *
+ * 1. The tilt is not where `resolveMeshRotation` looks. That lot carries
+ *    `mesh_rotation_y` but NO `mesh_rotation_x`/`_z`: the hand tuning sits only
+ *    in the `textureRotation*` keys. Reading the explicit block alone imports
+ *    the yaw and drops 43 distinct pitch and 43 distinct roll values as zero.
+ *
+ * 2. The order. That tool composes Ry*Rx*Rz; both viewers here compose
+ *    Rz*Rx*Ry. Copying the numbers across applies a different rotation.
+ *
+ * 3. The Y that the change of order produces IS NOT AN ARTEFACT — it must be
+ *    kept. Even with the tool's yaw at 0, re-expressing a pure tilt in ZXY
+ *    yields a non-zero y. Dropping it as a leftover throws away part of the
+ *    rotation.
+ *
+ * THE BASE IS TAKEN FROM THE METADATA, BUT DO NOT MISTAKE THAT FOR A
+ * CALIBRATION. In the Beira-Rio lot `mesh_rotation_y` is 60 on all 350 photos,
+ * and a constant cannot describe a rig that was set down facing a different way
+ * at every shot. Checked on the rendered panoramas, 60 lands one photo right
+ * and the next one about 220 degrees out.
+ *
+ * That lot simply does not carry a per-photo yaw. The one control the operator
+ * could have used for it, `textureRotation`, is 0 on all 350; `initialYaw` has
+ * no relation to the world (circular R of 0,137 against `heading`); `heading`
+ * itself is the bearing to the next photo, not a compass reading of the image;
+ * and `pro.prj` records only gravity. Reading the field is still right — a lot
+ * that DOES measure the yaw will put it here — but for this one every photo
+ * needs the yaw set by hand, or the tool's own output files, which record where
+ * the operator saw each target in the image.
+ *
+ * @param {Object} camera - The `camera` block of a photo's metadata JSON
+ * @returns {{mesh_rotation_x: number, mesh_rotation_y: number, mesh_rotation_z: number, source: string}|null}
+ *          Angles in degrees, or null when this is not an indoor-tool photo
+ */
+export function textureRotationToMeshRotation(camera) {
+  if (camera?.textureRotationX == null && camera?.textureRotationZ == null) {
+    return null;
+  }
+
+  // A base entra no Y DA FERRAMENTA, antes da troca de ordem. E o que faz o
+  // yaw multiplicar pela esquerda sem precisar montar matriz aqui.
+  const base = camera.mesh_rotation_y ?? NEUTRO_Y_PADRAO;
+  const r = eulerYXZToZXY(
+    camera.textureRotationX ?? 0,
+    (camera.textureRotation ?? 0) + base,
+    camera.textureRotationZ ?? 0
+  );
+
+  return {
+    mesh_rotation_x: r.mesh_rotation_x,
+    mesh_rotation_y: (r.mesh_rotation_y % 360 + 360) % 360,
+    mesh_rotation_z: r.mesh_rotation_z,
+    source: 'texture-rotation'
+  };
 }
 
 /**

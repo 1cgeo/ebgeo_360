@@ -23,6 +23,9 @@ export const state = {
     originalTargetHidden: new Map(),   // targetId -> boolean
     editedTargetHidden: new Map(),     // targetId -> boolean
     nearbyPhotos: [],                  // nearby unconnected photos from API
+    // Andares do projeto, de cima para baixo. Vazio significa projeto SEM
+    // andar declarado, e nesse caso a interface nao mostra seletor nenhum.
+    floors: [],
     selectedTargetId: null,
     // Review workflow
     currentProjectSlug: null,
@@ -326,6 +329,17 @@ export function isTargetHidden(targetId) {
  */
 export function setNearbyPhotos(photos) {
     state.nearbyPhotos = photos;
+    notify();
+}
+
+/**
+ * Sets the floors of the current project, top to bottom.
+ * Nao se limpa na troca de FOTO, so na troca de projeto: o andar e propriedade
+ * do projeto, e recarregar a lista a cada foto piscaria o seletor.
+ * @param {Array} floors - Floor rows from the API
+ */
+export function setFloors(floors) {
+    state.floors = Array.isArray(floors) ? floors : [];
     notify();
 }
 

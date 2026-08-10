@@ -51,7 +51,7 @@ function stmts() {
       SELECT id, project_id, original_name, display_name, sequence_number,
              lat, lon, ele, heading, camera_height,
              mesh_rotation_y, mesh_rotation_x, mesh_rotation_z,
-             distance_scale, marker_scale, floor_level,
+             distance_scale, marker_scale, floor_level, floor_label,
              full_size_bytes, preview_size_bytes,
              calibration_reviewed, calibration_source, captured_at
       FROM photos
@@ -68,7 +68,10 @@ function stmts() {
     targetsBySourceId: db.prepare(`
       SELECT t.target_id, t.distance_m, t.bearing_deg, t.is_next, t.is_original,
              t.override_bearing, t.override_distance, t.override_height, t.hidden,
-             ph.lat, ph.lon, ph.ele, ph.display_name
+             ph.lat, ph.lon, ph.ele, ph.display_name,
+             -- O andar do ALVO e o que deixa a interface reconhecer a escada:
+             -- um alvo de nivel diferente do da foto atual troca o seletor.
+             ph.floor_level, ph.floor_label
       FROM targets t
       JOIN photos ph ON ph.id = t.target_id
       WHERE t.source_id = ?
@@ -79,7 +82,10 @@ function stmts() {
     visibleTargetsBySourceId: db.prepare(`
       SELECT t.target_id, t.distance_m, t.bearing_deg, t.is_next, t.is_original,
              t.override_bearing, t.override_distance, t.override_height,
-             ph.lat, ph.lon, ph.ele, ph.display_name
+             ph.lat, ph.lon, ph.ele, ph.display_name,
+             -- O andar do ALVO e o que deixa a interface reconhecer a escada:
+             -- um alvo de nivel diferente do da foto atual troca o seletor.
+             ph.floor_level, ph.floor_label
       FROM targets t
       JOIN photos ph ON ph.id = t.target_id
       WHERE t.source_id = ? AND t.hidden = 0
@@ -117,8 +123,18 @@ function stmts() {
     // (rtree como laco externo), garantindo que o indice espacial restrinja o
     // conjunto pela bbox primeiro, em vez de varrer todas as fotos do projeto.
     // Os anti-joins (target/deleted) e o filtro de projeto sao aplicados depois.
+    //
+    // O FILTRO DE ANDAR nao e cosmetico. O rtree e 2D, e num levantamento
+    // indoor as fotos se empilham na vertical: no Beira-Rio, 91 das 350 tem
+    // foto de OUTRO andar a menos de 5 m em planta, a mais proxima a 0,7 m,
+    // contra um passo de 8 a 13 m dentro do proprio andar. Sem o filtro, a
+    // lista de "fotos proximas" da calibracao oferece o quinto andar para quem
+    // esta no terreo, e a conexao criada dali atravessa o predio.
+    //
+    // O filtro so vale onde ha andar: `? IS NULL` deixa a consulta identica a
+    // anterior para os 28 projetos externos, que nao tem project_floors.
     nearbyPhotos: db.prepare(`
-      SELECT ph.id, ph.display_name, ph.lat, ph.lon, ph.ele
+      SELECT ph.id, ph.display_name, ph.lat, ph.lon, ph.ele, ph.floor_level, ph.floor_label
       FROM photos_rtree rt
       CROSS JOIN photos_rowid pr ON pr.rowid_id = rt.rowid_id
       CROSS JOIN photos ph ON ph.id = pr.photo_id
@@ -128,7 +144,30 @@ function stmts() {
         AND ph.id != ?
         AND ph.id NOT IN (SELECT target_id FROM targets WHERE source_id = ?)
         AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)
+        AND (? IS NULL OR ph.floor_level = ?)
       ORDER BY ph.sequence_number
+    `),
+
+    // ---- Andares ----
+    // A EXISTENCIA de linha aqui e o que declara que o projeto tem andares.
+    // Nenhuma linha, nenhum seletor na interface.
+    floorsByProjectSlug: db.prepare(`
+      SELECT f.level, f.label, f.plan_coords,
+             (SELECT COUNT(*) FROM photos ph
+               WHERE ph.project_id = f.project_id
+                 AND ph.floor_level = f.level
+                 AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)) AS photo_count
+      FROM project_floors f
+      JOIN projects p ON p.id = f.project_id
+      WHERE p.slug = ?
+      ORDER BY f.level DESC
+    `),
+
+    floorLevelOfPhoto: db.prepare(`
+      SELECT ph.floor_level
+      FROM photos ph
+      JOIN project_floors f ON f.project_id = ph.project_id AND f.level = ph.floor_level
+      WHERE ph.id = ?
     `),
 
     // ---- Calibration review ----
@@ -140,7 +179,8 @@ function stmts() {
     // navegacao por faixa inteira em memoria, sem uma requisicao por faixa.
     photosByProjectSlug: db.prepare(`
       SELECT ph.id, ph.display_name, ph.sequence_number, ph.calibration_reviewed,
-             ph.run_id, ph.run_position, ph.calibration_source, ph.captured_at
+             ph.run_id, ph.run_position, ph.calibration_source, ph.captured_at,
+             ph.floor_level, ph.floor_label
       FROM photos ph
       JOIN projects p ON p.id = ph.project_id
       WHERE p.slug = ?
@@ -223,7 +263,7 @@ function stmts() {
     mapPhotosByProjectSlug: db.prepare(`
       SELECT ph.id, ph.display_name, ph.sequence_number, ph.lon, ph.lat,
              ph.heading, ph.mesh_rotation_y, ph.mesh_rotation_x, ph.mesh_rotation_z,
-             ph.calibration_reviewed
+             ph.calibration_reviewed, ph.floor_level, ph.floor_label
       FROM photos ph
       JOIN projects p ON p.id = ph.project_id
       WHERE p.slug = ?
@@ -453,11 +493,35 @@ export function getTargetByPair(sourceId, targetId) {
  * @param {number} maxLon - Maximum longitude
  * @param {number} minLat - Minimum latitude
  * @param {number} maxLat - Maximum latitude
+ * @param {number|null} [floorOverride] - `undefined` mantem o andar da origem,
+ *   `null` busca em TODOS os andares, numero fixa um nivel.
  * @returns {Array} Array of nearby photo rows
  */
-export function getNearbyPhotos(sourceId, minLon, maxLon, minLat, maxLat) {
-  // Ordem dos binds segue a query: bbox (4) primeiro, depois sourceId (3x).
-  return stmts().nearbyPhotos.all(minLon, maxLon, minLat, maxLat, sourceId, sourceId, sourceId);
+export function getNearbyPhotos(sourceId, minLon, maxLon, minLat, maxLat, floorOverride) {
+  // O andar sai do BANCO, nunca do cliente: a consulta abaixo devolve o nivel
+  // da foto de origem SO quando o projeto tem andares declarados, entao um
+  // projeto externo passa NULL e recai na consulta antiga, sem ramo separado.
+  const proprio = stmts().floorLevelOfPhoto.get(sourceId)?.floor_level ?? null;
+  // O padrao (sem `floorOverride`) continua sendo o andar da origem, porque o
+  // rtree e 2D e as fotos se empilham. Mas o filtro NAO pode ser absoluto: 84
+  // das 894 ligacoes do Beira-Rio cruzam nivel, e sao justamente as escadas e
+  // os vomitorios. Sem uma saida explicita, a interface nao consegue criar a
+  // ligacao entre o campo e a arquibancada.
+  const floor = floorOverride === undefined ? proprio : floorOverride;
+  // Ordem dos binds segue a query: bbox (4), sourceId (3x), andar (2x).
+  return stmts().nearbyPhotos.all(
+    minLon, maxLon, minLat, maxLat, sourceId, sourceId, sourceId, floor, floor
+  );
+}
+
+/**
+ * Lists the floors of a project, top to bottom, with the plan of each.
+ * An empty array means the project has no floors and the UI shows no selector.
+ * @param {string} slug - Project slug
+ * @returns {Array} Floor rows: level, label, plan_coords (JSON string), photo_count
+ */
+export function getFloorsByProjectSlug(slug) {
+  return stmts().floorsByProjectSlug.all(slug);
 }
 
 // ---- Calibration review functions ----

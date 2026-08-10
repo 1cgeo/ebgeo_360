@@ -39,6 +39,15 @@ let fotoAtualId = null;         // a foto aberta no viewer 360
 let onOpenPhotoCallback = null;
 let onCloseCallback = null;
 
+// Andar em exibicao, ou null para "projeto sem andares / todos".
+//
+// Num levantamento indoor o mapa SEM este filtro e ilegivel: no Beira-Rio os 6
+// andares ocupam a mesma pegada, e 91 das 350 fotos tem foto de outro andar a
+// menos de 5 m em planta. Os pontos empilham e o operador nao sabe qual clicou.
+let andarAtual = null;
+// [{ level, label, count }], de cima para baixo, derivado das proprias fotos.
+let andares = [];
+
 // Cores: verde = revisada, ambar = pendente, azul = onde o operador esta.
 const COR_REVISADA = '#a6e3a1';
 const COR_PENDENTE = '#f9e2af';
@@ -231,12 +240,25 @@ const vazio = () => ({ type: 'FeatureCollection', features: [] });
  */
 const colecaoDeFotos = () => ({
     type: 'FeatureCollection',
-    features: fotos.map(f => ({
+    features: fotosVisiveis().map(f => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [f.lon, f.lat] },
         properties: { id: f.id, reviewed: f.reviewed },
     })),
 });
+
+/**
+ * As fotos que o mapa desenha agora: todas, ou so as do andar escolhido.
+ *
+ * O filtro roda AQUI, ao montar a colecao, e nao num `filter` de camada do
+ * MapLibre, porque o mesmo recorte precisa valer para o zoom automatico e para
+ * o contador da legenda. Duas verdades sobre "o que esta na tela" divergiriam
+ * na primeira troca de andar.
+ */
+function fotosVisiveis() {
+    if (andarAtual === null) return fotos;
+    return fotos.filter(f => f.floor === andarAtual);
+}
 
 // ============================================================================
 // ABRIR / FECHAR
@@ -316,6 +338,8 @@ export function disposeProjectMap() {
     porId = new Map();
     selecionadaId = null;
     fotoAtualId = null;
+    andarAtual = null;
+    andares = [];
 }
 
 // ============================================================================
@@ -325,6 +349,12 @@ export function disposeProjectMap() {
 function aplicarDados(dados) {
     fotos = dados.photos || [];
     porId = new Map(fotos.map(f => [f.id, f]));
+    andares = derivarAndares(fotos);
+    // Abre no andar da foto aberta no 360, quando ha andar. Comecar no terreo
+    // tiraria o operador do contexto que ele acabou de deixar.
+    andarAtual = andares.length > 0
+        ? (porId.get(fotoAtualId)?.floor ?? andares[andares.length - 1].level)
+        : null;
 
     map.getSource('pmap-photos').setData(colecaoDeFotos());
 
@@ -341,6 +371,53 @@ function aplicarDados(dados) {
     map.fitBounds([[oeste, sul], [leste, norte]], { padding: 60, duration: 0 });
 
     atualizarLegenda(dados.reviewStats);
+}
+
+/**
+ * Os andares presentes nas fotos, de cima para baixo.
+ *
+ * Derivado das fotos e nao de uma chamada a /floors: o payload do mapa ja traz
+ * o andar de cada foto, e uma segunda fonte poderia listar um andar que o mapa
+ * nao desenha.
+ *
+ * @param {Array<Object>} lista - Fotos do payload do mapa
+ * @returns {Array<{level: number, label: string, count: number}>}
+ */
+function derivarAndares(lista) {
+    const porNivel = new Map();
+    for (const f of lista) {
+        if (f.floor == null) continue;
+        porNivel.set(f.floor, (porNivel.get(f.floor) ?? 0) + 1);
+    }
+    // Um nivel so nao e um predio: nao vale desenhar seletor para ele.
+    if (porNivel.size < 2) return [];
+    return [...porNivel.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .map(([level, count]) => ({ level, label: rotuloDeAndar(level), count }));
+}
+
+/** Rotulo curto do andar, para caber no botao do seletor. */
+function rotuloDeAndar(level) {
+    if (level === 0) return 'Ext';
+    if (level < 0) return `S${-level}`;
+    return String(level);
+}
+
+/**
+ * Troca o andar em exibicao e redesenha.
+ * @param {number} level - Nivel a mostrar
+ */
+function trocarAndar(level) {
+    if (level === andarAtual) return;
+    andarAtual = level;
+    map.getSource('pmap-photos').setData(colecaoDeFotos());
+    // O destaque da foto atual pode ter saido de cena junto com o andar.
+    marcarAtual(fotoAtualId);
+    if (selecionadaId && porId.get(selecionadaId)?.floor !== level) {
+        selecionadaId = null;
+    }
+    renderCard();
+    atualizarLegenda(null);
 }
 
 /**
@@ -445,12 +522,23 @@ function atualizarLegenda(stats) {
         el.className = 'pmap__legend';
         containerEl.appendChild(el);
     }
-    const total = stats?.total ?? fotos.length;
-    const revisadas = stats?.reviewed ?? fotos.filter(f => f.reviewed).length;
+    // Com andar em exibicao, o contador mede o ANDAR, nao o projeto. O mapa
+    // mostra um andar so, e um total do projeto ao lado de 45 pontos na tela
+    // seria uma segunda verdade sobre o que se esta vendo.
+    const visiveis = fotosVisiveis();
+    const filtrando = andarAtual !== null && andares.length > 0;
+    const total = filtrando ? visiveis.length : (stats?.total ?? fotos.length);
+    const revisadas = filtrando
+        ? visiveis.filter(f => f.reviewed).length
+        : (stats?.reviewed ?? fotos.filter(f => f.reviewed).length);
     const pct = total > 0 ? Math.round((revisadas / total) * 100) : 0;
+    const escopo = filtrando
+        ? ` no ${andares.find(a => a.level === andarAtual)?.label ?? andarAtual}`
+        : '';
+
     el.innerHTML = `
         <button class="pmap__legend-close" title="Sair do mapa [M]">&larr; Voltar &agrave; foto</button>
-        <div class="pmap__legend-stat">${revisadas}/${total} revisadas (${pct}%)</div>
+        <div class="pmap__legend-stat">${revisadas}/${total} revisadas${escopo} (${pct}%)</div>
         <div class="pmap__legend-keys">
             <span><i style="background:${COR_REVISADA}"></i>revisada</span>
             <span><i style="background:${COR_PENDENTE}"></i>pendente</span>
@@ -459,6 +547,38 @@ function atualizarLegenda(stats) {
         </div>
     `;
     el.querySelector('.pmap__legend-close').addEventListener('click', closeProjectMap);
+
+    renderSeletorDeAndar();
+}
+
+/** Barra vertical de andares, do mais alto para o terreo. */
+function renderSeletorDeAndar() {
+    let el = containerEl.querySelector('.pmap__floors');
+
+    if (andares.length === 0) {
+        // Projeto sem andares nao ganha seletor. Se um projeto anterior o
+        // criou, ele sai daqui, em vez de ficar na tela com os andares do
+        // levantamento errado.
+        if (el) el.remove();
+        return;
+    }
+
+    if (!el) {
+        el = document.createElement('div');
+        el.className = 'pmap__floors';
+        containerEl.appendChild(el);
+        // Delegacao: os botoes sao reescritos a cada render, e um listener por
+        // botao vazaria um a cada troca de andar.
+        el.addEventListener('click', (ev) => {
+            const alvo = ev.target.closest('.pmap__floor');
+            if (alvo) trocarAndar(Number(alvo.dataset.level));
+        });
+    }
+
+    el.innerHTML = andares.map(a => `
+        <button class="pmap__floor${a.level === andarAtual ? ' pmap__floor--on' : ''}"
+                data-level="${a.level}" title="${a.count} fotos">${a.label}</button>
+    `).join('');
 }
 
 function mostrarErro(msg) {

@@ -8,6 +8,7 @@ import {
     fetchProjects, fetchPhotoMetadata, getPhotoImageUrl,
     saveCalibration, saveMeshRotationX, saveMeshRotationZ,
     setPhotoReviewed, fetchProjectPhotos, fetchAllReviewStats, fetchProjectRuns,
+    fetchProjectFloors,
     saveTargetVisibility, fetchNearbyPhotos, createTarget, deleteTargetConnection,
     deletePhoto,
 } from './api.js';
@@ -16,7 +17,7 @@ import {
     selectTarget, deselectTarget,
     setProjectContext, setCalibrationReviewed, setCalibrationSource,
     getNextPhotoId, getPrevPhotoId,
-    setNearbyPhotos, isTargetHidden, refreshTargets,
+    setNearbyPhotos, setFloors, isTargetHidden, refreshTargets,
     setMeshRotationX, setMeshRotationZ,
     setTargetHidden as stateSetTargetHidden,
 } from './state.js';
@@ -36,7 +37,7 @@ import {
     initMinimap, updateCamera, setViewDirection, updateTargets, setSelectedTarget,
     updateNearbyPhotos, disposeMinimap,
 } from './minimap.js';
-import { initPanel, showToast, setSphericalGridToggleState, clearNearbyPreview, getNearbyPreviewState } from './calibration-panel.js';
+import { initPanel, showToast, setSphericalGridToggleState, clearNearbyPreview, getNearbyPreviewState, getNearbyFloorScope } from './calibration-panel.js';
 import {
     initPreviewViewer, showPreview, hidePreview, showAddButton,
     showRearView, updateRearViewRotation, showTargetActions, updateHideButtonState,
@@ -182,14 +183,21 @@ async function loadProjectContext(slug, signal) {
         // depois faria a primeira troca de foto ainda usar a ordem antiga.
         // Se as faixas falharem, o projeto ainda abre — a interface trata
         // "sem faixa" como o comportamento anterior.
-        const [data, runs] = await Promise.all([
+        const [data, runs, floors] = await Promise.all([
             fetchProjectPhotos(slug, { signal }),
             fetchProjectRuns(slug, { signal }).catch(err => {
                 if (err?.name !== 'AbortError') console.warn('Failed to load runs:', err);
                 return [];
             }),
+            // Lista vazia = projeto sem andar declarado, e ai a interface nao
+            // mostra seletor. Falhar aqui nao pode impedir o projeto de abrir.
+            fetchProjectFloors(slug, { signal }).catch(err => {
+                if (err?.name !== 'AbortError') console.warn('Failed to load floors:', err);
+                return [];
+            }),
         ]);
         setProjectContext(slug, data.photos, data.reviewStats, runs);
+        setFloors(floors);
     } catch (err) {
         if (err?.name === 'AbortError') return;
         console.error('Failed to load project context:', err);
@@ -308,8 +316,12 @@ async function startCalibration(photoId) {
         updateCamera(metadata.camera);
         updateTargets(metadata.targets);
 
-        // Fetch nearby unconnected photos (non-blocking)
-        fetchNearbyPhotos(photoId, 100, { signal: controller.signal }).then(data => {
+        // Fetch nearby unconnected photos (non-blocking). O escopo de andar
+        // vem do painel: ausente = andar da foto, que e o padrao seguro.
+        fetchNearbyPhotos(photoId, 100, {
+            signal: controller.signal,
+            floor: getNearbyFloorScope() ?? undefined,
+        }).then(data => {
             // Ignora resultado se a foto ja mudou.
             if (myGen !== loadGeneration) return;
             const photos = data.photos || [];
@@ -394,6 +406,7 @@ function initializeSubsystems() {
         onAddTarget: handleAddTarget,
         onDeleteTarget: handleDeleteTarget,
         onNearbyPreviewToggle: handleNearbyPreviewToggle,
+        onNearbyFloorScope: handleNearbyFloorScope,
         onNearbySelect: handleNearbySelect,
         onDeletePhoto: handleDeletePhoto,
         onOpenProjectMap: toggleProjectMap,
@@ -954,6 +967,30 @@ function handleNearbyPreviewToggle(enabled) {
         showAddButton(false);
         hidePreview();
     }
+}
+
+/**
+ * Rebusca as fotos proximas quando o operador troca o escopo de andar.
+ *
+ * Sem isto o seletor mudaria de valor sem mudar a lista, que e a pior forma de
+ * um controle falhar: ele parece ter funcionado.
+ *
+ * @param {null|'all'|number} escopo - `null` = andar da foto atual
+ */
+function handleNearbyFloorScope(escopo) {
+    const photoId = state.currentPhotoId;
+    if (!photoId) return;
+    fetchNearbyPhotos(photoId, 100, { floor: escopo ?? undefined }).then(data => {
+        // A foto pode ter mudado enquanto a consulta corria.
+        if (state.currentPhotoId !== photoId) return;
+        const photos = data.photos || [];
+        setNearbyPhotos(photos);
+        updateNearbyPhotos(photos);
+        navSetNearbyPhotos(photos);
+    }).catch(err => {
+        console.warn('Failed to reload nearby photos:', err);
+        showToast('Nao consegui buscar as fotos proximas nesse andar', 'error');
+    });
 }
 
 /**

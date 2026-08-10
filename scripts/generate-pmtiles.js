@@ -131,7 +131,7 @@ console.log('[1/2] Generating points GeoJSON...');
 // tippecanoe le NDJSON nativamente.
 const photosStmt = db.prepare(`
   SELECT p.id, p.original_name, p.display_name, p.lat, p.lon,
-         p.heading, p.ele, p.sequence_number, p.floor_level,
+         p.heading, p.ele, p.sequence_number, p.floor_level, p.floor_label,
          pr.slug AS project_slug
   FROM photos p
   JOIN projects pr ON pr.id = p.project_id
@@ -160,7 +160,11 @@ try {
         heading: p.heading,
         ele: p.ele,
         seq: p.sequence_number,
+        // O filtro de andar do minimapa e do mapa principal roda sobre este
+        // atributo, direto no MapLibre. Sem ele, os 6 andares do Beira-Rio
+        // desenham empilhados no mesmo ponto.
         floor_level: p.floor_level,
+        floor_label: p.floor_label,
       },
     };
     stream.write(`${JSON.stringify(feature)}\n`);

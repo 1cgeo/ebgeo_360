@@ -205,6 +205,31 @@ export async function fetchProjectRuns(slug, { signal } = {}) {
 }
 
 /**
+ * Fetches the floors of a project, top to bottom.
+ * Lista vazia significa projeto SEM andar declarado, e a interface nao mostra
+ * seletor nenhum: e assim que os 28 projetos externos seguem intactos.
+ * @param {string} slug - Project slug
+ * @param {{ signal?: AbortSignal }} [options] - Opcoes de cancelamento
+ * @returns {Promise<Array>} Andares com level, label e photo_count
+ */
+export async function fetchProjectFloors(slug, { signal } = {}) {
+    const { signal: reqSignal, cleanup } = withTimeout(signal);
+    try {
+        const response = await fetch(`${BASE}/projects/${slug}/floors`, {
+            cache: 'no-cache',
+            signal: reqSignal,
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch floors for project ${slug} (HTTP ${response.status})`);
+        }
+        const data = await response.json();
+        return data.floors || [];
+    } finally {
+        cleanup();
+    }
+}
+
+/**
  * Applies calibration defaults to every photo of one capture run.
  * @param {string} runId - Run UUID
  * @param {Object} values - Campos mesh_rotation_y/x/z a aplicar
@@ -348,13 +373,17 @@ export async function saveTargetVisibility(sourceId, targetId, hidden) {
  * Fetches nearby unconnected photos for a given photo.
  * @param {string} photoId - Photo UUID
  * @param {number} [radius=100] - Search radius in meters
- * @param {{ signal?: AbortSignal }} [options] - Opcoes de cancelamento
+ * @param {{ signal?: AbortSignal, floor?: string|number }} [options] - Opcoes.
+ *   `floor` ausente mantem o andar da foto de origem, que e o padrao seguro.
+ *   `'all'` busca em todos os andares, para ligar escada e vomitorio.
  * @returns {Promise<{photos: Array}>} Nearby photos with distance and bearing
  */
-export async function fetchNearbyPhotos(photoId, radius = 100, { signal } = {}) {
+export async function fetchNearbyPhotos(photoId, radius = 100, { signal, floor } = {}) {
     const { signal: reqSignal, cleanup } = withTimeout(signal);
+    const qFloor = floor === undefined || floor === null
+        ? '' : `&floor=${encodeURIComponent(floor)}`;
     try {
-        const response = await fetch(`${BASE}/photos/${photoId}/nearby?radius=${radius}`, {
+        const response = await fetch(`${BASE}/photos/${photoId}/nearby?radius=${radius}${qFloor}`, {
             cache: 'no-cache',
             signal: reqSignal,
         });

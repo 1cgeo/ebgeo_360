@@ -107,9 +107,19 @@ export function getIndexDb() {
     if (!photoCols.some(c => c.name === 'captured_at')) {
       indexDb.exec('ALTER TABLE photos ADD COLUMN captured_at TEXT');
     }
+    // Migrate: rotulo do andar (ver floor_label em schema.sql). O floor_level
+    // ja existia; o rotulo e novo. Entra NULO, e so a migracao de um projeto
+    // com andares o preenche — num projeto externo ele fica nulo para sempre,
+    // que e o correto: nao ha andar para nomear.
+    if (!photoCols.some(c => c.name === 'floor_label')) {
+      indexDb.exec('ALTER TABLE photos ADD COLUMN floor_label TEXT');
+    }
     // Depois dos ALTER, nunca antes: num banco anterior as colunas so passam a
     // existir nas linhas acima.
     indexDb.exec('CREATE INDEX IF NOT EXISTS idx_photos_run ON photos(run_id, run_position)');
+    // Consulta espacial por andar (nearbyPhotos). Sem ele o filtro de andar
+    // vira varredura no conjunto que o rtree devolveu.
+    indexDb.exec('CREATE INDEX IF NOT EXISTS idx_photos_floor ON photos(project_id, floor_level)');
   })();
 
   return indexDb;

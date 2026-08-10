@@ -35,6 +35,11 @@ const COLLAPSED_STORAGE_KEY = 'cal-panel-collapsed';
 
 // Nearby preview mode
 let nearbyPreviewEnabled = false;
+// Escopo de andar da busca de fotos proximas. `null` = andar da foto atual, que
+// e o padrao seguro; `'all'` = todos, para criar ligacao de escada e de
+// vomitorio. Vive no painel e nao no estado central porque e preferencia de
+// BUSCA do operador, e nao propriedade da foto.
+let nearbyFloorScope = null;
 let previewingNearbyId = null;
 
 // Ultima foto cujo item foi rolado para a vista — evita scrollIntoView (e o
@@ -73,6 +78,7 @@ let onSphericalGridToggleCallback = null;
 let onAddTargetCallback = null;
 let onDeleteTargetCallback = null;
 let onNearbyPreviewToggleCallback = null;
+let onNearbyFloorScopeCallback = null;
 let onNearbySelectCallback = null;
 let onDeletePhotoCallback = null;
 
@@ -162,6 +168,7 @@ export function initPanel(container, options = {}) {
     onAddTargetCallback = options.onAddTarget || null;
     onDeleteTargetCallback = options.onDeleteTarget || null;
     onNearbyPreviewToggleCallback = options.onNearbyPreviewToggle || null;
+    onNearbyFloorScopeCallback = options.onNearbyFloorScope || null;
     onNearbySelectCallback = options.onNearbySelect || null;
     onDeletePhotoCallback = options.onDeletePhoto || null;
     onOpenProjectMapCallback = options.onOpenProjectMap || null;
@@ -252,6 +259,7 @@ function buildStructureSignature(s, targets, selectedTarget) {
         selectedTarget ? (isTargetHidden(selectedTarget.id) ? 1 : 0) : 0,
         selectedTarget ? (selectedTarget.is_original === false ? 1 : 0) : 0,
         nearbyPreviewEnabled ? 1 : 0,
+        String(nearbyFloorScope),
         previewingNearbyId || '',
         collapsedSig,
         runsSig,
@@ -927,7 +935,10 @@ function renderPhotoList(s) {
 
 function renderNearbyPhotos(s) {
     const nearby = s.nearbyPhotos;
-    if (!nearby || !nearby.length) return '';
+    // O seletor tem de aparecer MESMO com a lista vazia: e justamente quando o
+    // andar atual nao tem vizinha livre que o operador precisa abrir o escopo.
+    const temAndares = s.floors && s.floors.length > 0;
+    if ((!nearby || !nearby.length) && !temAndares) return '';
 
     const previewToggleBtn = `
         <button id="btn-nearby-preview-toggle" class="cal-panel__btn cal-panel__btn--small ${nearbyPreviewEnabled ? 'cal-panel__btn--active' : 'cal-panel__btn--ghost'}">
@@ -935,21 +946,53 @@ function renderNearbyPhotos(s) {
         </button>
     `;
 
-    const content = `
-        <p class="cal-panel__hint">Fotos nao conectadas dentro do raio de busca.</p>
-        <div class="cal-panel__nearby-list" id="nearby-list">
-            ${nearby.map(p => `
+    const nivelAtual = s.camera?.floor_level ?? null;
+    const seletor = temAndares ? `
+        <label class="cal-panel__hint" for="nearby-floor-scope">Buscar em</label>
+        <select id="nearby-floor-scope" class="cal-panel__select">
+            <option value="" ${nearbyFloorScope === null ? 'selected' : ''}>este andar</option>
+            <option value="all" ${nearbyFloorScope === 'all' ? 'selected' : ''}>todos os andares</option>
+            ${s.floors.map(f => `
+                <option value="${f.level}" ${String(nearbyFloorScope) === String(f.level) ? 'selected' : ''}>
+                    ${f.label}
+                </option>
+            `).join('')}
+        </select>
+        <p class="cal-panel__hint">
+            Escada e vomitorio ligam andares diferentes. Fora deste andar, a
+            marca amarela diz qual e: a distancia sozinha engana, porque em
+            planta a foto de cima aparece colada.
+        </p>
+    ` : '';
+
+    const lista = (!nearby || !nearby.length)
+        ? '<p class="cal-panel__hint">Nenhuma foto livre neste escopo.</p>'
+        : `<div class="cal-panel__nearby-list" id="nearby-list">
+            ${nearby.map(p => {
+                const outro = p.floor_level !== null && p.floor_level !== undefined
+                    && nivelAtual !== null && p.floor_level !== nivelAtual;
+                const dist = outro && p.distance3d !== undefined ? p.distance3d : p.distance;
+                const marca = outro
+                    ? `<span class="cal-panel__nearby-floor">${p.floor_label || ('nivel ' + p.floor_level)}</span>`
+                    : '';
+                return `
                 <div class="cal-panel__nearby-item ${previewingNearbyId === p.id ? 'cal-panel__nearby-item--previewing' : ''}" data-nearby-id="${p.id}">
                     <div class="cal-panel__nearby-info">
                         <span class="cal-panel__nearby-name">${p.displayName || p.id.slice(0, 8)}</span>
-                        <span class="cal-panel__nearby-dist">${p.distance.toFixed(1)}m</span>
+                        ${marca}
+                        <span class="cal-panel__nearby-dist">${dist.toFixed(1)}m</span>
                     </div>
                     <button class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost cal-panel__nearby-add" data-add-target-id="${p.id}">
                         Adicionar
                     </button>
-                </div>
-            `).join('')}
-        </div>
+                </div>`;
+            }).join('')}
+        </div>`;
+
+    const content = `
+        <p class="cal-panel__hint">Fotos nao conectadas dentro do raio de busca.</p>
+        ${seletor}
+        ${lista}
     `;
 
     return renderCollapsibleSection('nearby', 'Fotos Proximas', content, {
@@ -1165,6 +1208,14 @@ function attachEvents() {
         }
         if (onNearbyPreviewToggleCallback) onNearbyPreviewToggleCallback(nearbyPreviewEnabled);
         renderPanel(state);
+    });
+
+    // Escopo de andar da busca de proximas.
+    document.getElementById('nearby-floor-scope')?.addEventListener('change', (e) => {
+        e.stopPropagation();
+        const v = e.target.value;
+        nearbyFloorScope = v === '' ? null : (v === 'all' ? 'all' : Number(v));
+        if (onNearbyFloorScopeCallback) onNearbyFloorScopeCallback(nearbyFloorScope);
     });
 
     // Nearby photos - click for preview or add target
@@ -1416,6 +1467,14 @@ export function setSphericalGridToggleState(visible) {
  * Returns the current nearby preview state.
  * @returns {{ enabled: boolean, previewingId: string|null }}
  */
+/**
+ * Escopo de andar da busca de fotos proximas.
+ * @returns {null|'all'|number} `null` = andar da foto atual (padrao seguro)
+ */
+export function getNearbyFloorScope() {
+    return nearbyFloorScope;
+}
+
 export function getNearbyPreviewState() {
     return { enabled: nearbyPreviewEnabled, previewingId: previewingNearbyId };
 }

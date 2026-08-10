@@ -278,6 +278,9 @@ export default async function calibrationRoutes(fastify) {
       rx: p.mesh_rotation_x,
       rz: p.mesh_rotation_z,
       reviewed: Boolean(p.calibration_reviewed),
+      // Sem o andar aqui, o mapa do Beira-Rio desenha 6 andares empilhados no
+      // mesmo ponto e o operador nao tem como saber qual esta clicando.
+      floor: p.floor_level,
     }));
 
     const track = getTracksByProjectSlug(slug);
@@ -487,7 +490,29 @@ export default async function calibrationRoutes(fastify) {
     const minLat = photo.lat - latOffset;
     const maxLat = photo.lat + latOffset;
 
-    const nearby = getNearbyPhotos(uuid, minLon, maxLon, minLat, maxLat);
+    // O padrao continua sendo o andar da foto de origem, porque o rtree e 2D e
+    // as fotos se empilham: 91 das 350 do Beira-Rio tem foto de OUTRO andar a
+    // menos de 5 m em planta, a mais proxima a 0,7 m.
+    //
+    // Mas o filtro nao pode ser absoluto. Das 894 ligacoes daquele lote, 84
+    // cruzam nivel, e sao as escadas e os vomitorios. Sem uma saida explicita a
+    // interface nao consegue ligar o campo a arquibancada. `floor=all` tira o
+    // filtro, `floor=<n>` fixa um nivel, e a ausencia mantem o comportamento
+    // anterior para os 28 projetos sem andar.
+    const qFloor = request.query.floor;
+    let floorOverride;
+    if (qFloor === 'all') {
+      floorOverride = null;
+    } else if (qFloor !== undefined) {
+      const n = Number(qFloor);
+      if (!Number.isInteger(n)) {
+        reply.code(400);
+        return { error: 'floor must be an integer or "all"' };
+      }
+      floorOverride = n;
+    }
+
+    const nearby = getNearbyPhotos(uuid, minLon, maxLon, minLat, maxLat, floorOverride);
 
     // Calculate distance and bearing for each nearby photo
     const DEG_TO_RAD = Math.PI / 180;
@@ -512,15 +537,42 @@ export default async function calibrationRoutes(fastify) {
         lat: p.lat,
         lon: p.lon,
         ele: p.ele,
+        // O andar vai na resposta por duas razoes. Ele torna o filtro AUDITAVEL
+        // do lado de fora (um vazamento de andar nao teria como ser visto sem
+        // abrir o banco), e com `floor=all` ele e o que impede o operador de
+        // ligar sem saber que atravessou o predio.
+        floor_level: p.floor_level,
+        floor_label: p.floor_label ?? null,
+        // `distance` e a distancia em PLANTA. Ela ENGANA entre andares: a foto
+        // exatamente em cima aparece a 0,7 m.
+        //
+        // `distance3d` soma o desnivel, mas SO vale onde `ele` esta populado.
+        // Medido no Beira-Rio: 207 das 350 tem `ele` zero, e o que existe nao
+        // acompanha o andar (o 4o andar inteiro em zero, a area externa ate
+        // 100 m). Ali as duas distancias coincidem, e quem separa os andares e
+        // o ROTULO, nao o numero. O campo vai na resposta porque e correto onde
+        // o dado presta, e nao porque resolve este lote.
         distance: Math.round(distance * 100) / 100,
+        distance3d: Math.round(
+          Math.hypot(distance, (p.ele ?? 0) - (photo.ele ?? 0)) * 100
+        ) / 100,
         bearing: Math.round(bearing * 100) / 100,
       };
     });
 
-    // Sort by distance and filter to actual radius
+    // O raio corta pela distancia em PLANTA, como antes. A ORDEM, porem, poe o
+    // andar da origem primeiro: com `floor=all` a foto empilhada em cima
+    // apareceria no topo da lista por estar a 0,7 m em planta, e ela quase
+    // nunca e a vizinha que o operador procura.
+    const nivelOrigem = photo.floor_level ?? null;
     const filtered = photos
       .filter(p => p.distance <= radius)
-      .sort((a, b) => a.distance - b.distance);
+      .sort((a, b) => {
+        const mesmoA = a.floor_level === nivelOrigem ? 0 : 1;
+        const mesmoB = b.floor_level === nivelOrigem ? 0 : 1;
+        if (mesmoA !== mesmoB) return mesmoA - mesmoB;
+        return a.distance3d - b.distance3d;
+      });
 
     return { photos: filtered };
   });

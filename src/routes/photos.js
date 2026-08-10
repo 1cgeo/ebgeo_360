@@ -123,6 +123,9 @@ export default async function photoRoutes(fastify) {
         distance_scale: photo.distance_scale,
         marker_scale: photo.marker_scale,
         floor_level: photo.floor_level,
+        // Nulo em projeto sem andares. O visualizador usa a presenca do rotulo
+        // para saber se ha andar a mostrar, sem uma segunda chamada.
+        floor_label: photo.floor_label ?? null,
         calibration_reviewed: Boolean(photo.calibration_reviewed),
         // 'sol', 'imu' ou null (sem medida sobre esta foto). Ver schema.sql.
         calibration_source: photo.calibration_source ?? null,
@@ -137,6 +140,8 @@ export default async function photoRoutes(fastify) {
         lat: t.lat,
         ele: t.ele,
         display_name: t.display_name,
+        floor_level: t.floor_level,
+        floor_label: t.floor_label ?? null,
         icon: t.is_next ? 'next' : undefined,
         next: Boolean(t.is_next),
         is_original: Boolean(t.is_original),
