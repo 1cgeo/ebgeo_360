@@ -373,7 +373,6 @@ Environment variables (with defaults):
 | `STREETVIEW_DATA_DIR` | ./data | Root data dir (index.db + projects/ + thumbnails/) |
 | `LOG_LEVEL` | info | Fastify logger level |
 | `CORS_ORIGIN` | * | CORS allowed origins |
-| `PUBLIC_API_BASE_URL` | (derived from request) | Public base matching this service's `/api/v1`, no trailing slash. Only needed behind a proxy that mounts the service on a path prefix: the TileJSON must publish the tile URL, and the prefix never reaches the service (nginx rewrites `/ebgeo_360/` to `/api/v1/` before proxying). Scheme and host travel in headers, the path prefix does not. |
 
 ## Integration with EBGeo Web
 
@@ -659,5 +658,4 @@ can be set; `.env` itself is gitignored.
 
 Configuration is environment-driven and every variable has a default in
 `src/config.js` (`PORT`, `HOST`, `STREETVIEW_DATA_DIR`, `LOG_LEVEL`,
-`CORS_ORIGIN`, `PUBLIC_API_BASE_URL`). See `.env.example` for what each one
-does.
+`CORS_ORIGIN`). See `.env.example` for what each one does.
