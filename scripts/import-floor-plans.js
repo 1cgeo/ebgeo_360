@@ -21,6 +21,13 @@
  * andar errado passa em qualquer conferencia de contagem — o total de linhas
  * fecha, o mapa desenha — e so aparece como parede no lugar errado.
  *
+ * CORRIJA O `floor_level` DAS FOTOS ANTES DE RODAR ISTO. A verificacao acima so
+ * vale se cada foto ja estiver no andar certo: uma foto EXTERNA ainda marcada
+ * como interna seria medida contra a planta do andar, e a conferencia perderia
+ * o sentido justamente onde ela deveria pegar o erro. No Museu do CMS
+ * (2026-08-10) as duas fotos de fora foram para o nivel 0 primeiro, e so entao
+ * a planta entrou no nivel 1.
+ *
  * Uso:
  *   node scripts/import-floor-plans.js --slug beira_rio --planta <planta.geojson>
  *                                      [--data ./data] [--dry-run]
