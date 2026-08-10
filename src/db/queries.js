@@ -281,6 +281,64 @@ function stmts() {
       ORDER BY t.id
     `),
 
+    // ---- Camadas do mapa (tiles vetoriais e tracado) ----
+    //
+    // Uma linha por foto do acervo INTEIRO dentro da bbox do tile pedido. Mesma
+    // ordem de juncao do nearbyPhotos: o rtree e o laco externo, entao o indice
+    // espacial restringe o conjunto antes de tocar em photos.
+    //
+    // Os predicados sao de INTERSECAO (max >= oeste E min <= leste), nao de
+    // continencia. Cada foto e um ponto, entao os dois dao o mesmo resultado
+    // aqui, mas a intersecao e a forma certa e sobrevive a uma bbox futura.
+    photosInBbox: db.prepare(`
+      SELECT ph.id, ph.original_name, ph.display_name, ph.lon, ph.lat,
+             ph.heading, ph.ele, ph.sequence_number, ph.floor_level, ph.floor_label,
+             pr.slug AS project_slug
+      FROM photos_rtree rt
+      CROSS JOIN photos_rowid pw ON pw.rowid_id = rt.rowid_id
+      CROSS JOIN photos ph ON ph.id = pw.photo_id
+      JOIN projects pr ON pr.id = ph.project_id
+      WHERE rt.max_lon >= ? AND rt.min_lon <= ?
+        AND rt.max_lat >= ? AND rt.min_lat <= ?
+        AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)
+    `),
+
+    // A foto mais proxima de um ponto qualquer, dentro de uma bbox de busca.
+    //
+    // A ordenacao usa a distancia ao QUADRADO em graus, com o delta de longitude
+    // encolhido por cos(lat): sem isso, no Rio Grande do Sul um grau de longitude
+    // vale ~0,8 grau de latitude em metros e a "mais proxima" sai errada em
+    // sentido leste-oeste. Raiz quadrada nao muda a ordem, entao nao se paga.
+    nearestPhotoInBbox: db.prepare(`
+      SELECT ph.id, ph.display_name, ph.lon, ph.lat, ph.floor_level, pr.slug AS project_slug
+      FROM photos_rtree rt
+      CROSS JOIN photos_rowid pw ON pw.rowid_id = rt.rowid_id
+      CROSS JOIN photos ph ON ph.id = pw.photo_id
+      JOIN projects pr ON pr.id = ph.project_id
+      WHERE rt.max_lon >= ? AND rt.min_lon <= ?
+        AND rt.max_lat >= ? AND rt.min_lat <= ?
+        AND ph.id NOT IN (SELECT photo_id FROM deleted_photos)
+      ORDER BY ((ph.lon - ?) * ?) * ((ph.lon - ?) * ?) + (ph.lat - ?) * (ph.lat - ?)
+      LIMIT 1
+    `),
+
+    // Envelope de todo o acervo, para o campo `bounds` do TileJSON. Sai do
+    // rtree e nao de photos: e uma leitura de indice, nao uma varredura das 99 mil.
+    bboxDoAcervo: db.prepare(`
+      SELECT MIN(min_lon) AS oeste, MIN(min_lat) AS sul,
+             MAX(max_lon) AS leste, MAX(max_lat) AS norte
+      FROM photos_rtree
+    `),
+
+    // Todo o tracado do acervo, com o slug do projeto em `origem` — o mesmo
+    // atributo que o fotos_linha.pmtiles carrega, para o cliente nao notar troca.
+    allTracks: db.prepare(`
+      SELECT pr.slug AS origem, t.coords
+      FROM project_tracks t
+      JOIN projects pr ON pr.id = t.project_id
+      ORDER BY pr.slug, t.id
+    `),
+
     // ---- Batch calibration (writes) ----
     batchUpdateMeshRotationY: db.prepare(`
       UPDATE photos SET mesh_rotation_y = ?, calibration_source = 'manual'
@@ -626,6 +684,54 @@ export function getMapPhotosByProjectSlug(slug) {
  */
 export function getTracksByProjectSlug(slug) {
   return stmts().tracksByProjectSlug.all(slug).map(r => JSON.parse(r.coords));
+}
+
+/**
+ * Gets every photo whose position falls inside a bounding box, across all projects.
+ * @param {number} oeste - Min longitude
+ * @param {number} leste - Max longitude
+ * @param {number} sul - Min latitude
+ * @param {number} norte - Max latitude
+ * @returns {Array<Object>} Photo rows with the project slug attached
+ */
+export function getPhotosInBbox(oeste, leste, sul, norte) {
+  return stmts().photosInBbox.all(oeste, leste, sul, norte);
+}
+
+/**
+ * Gets the photo closest to a coordinate, searching inside a bounding box.
+ * @param {number} lon - Longitude of the query point
+ * @param {number} lat - Latitude of the query point
+ * @param {number} raioGraus - Half-width of the search box, in degrees of latitude
+ * @returns {Object|null} Nearest photo row, or null if the box is empty
+ */
+export function getNearestPhoto(lon, lat, raioGraus) {
+  // O raio chega em graus de LATITUDE. Convertido para longitude ele cresce com
+  // a latitude, senao a caixa fica estreita demais longe do equador e a busca
+  // falha justo onde o acervo esta.
+  const cos = Math.max(Math.cos((lat * Math.PI) / 180), 1e-6);
+  const raioLon = raioGraus / cos;
+  return stmts().nearestPhotoInBbox.get(
+    lon - raioLon, lon + raioLon, lat - raioGraus, lat + raioGraus,
+    lon, cos, lon, cos, lat, lat,
+  ) ?? null;
+}
+
+/**
+ * Gets the capture track of every project, ready to become GeoJSON features.
+ * @returns {Array<{origem: string, coords: Array<[number, number]>}>} One entry per LineString
+ */
+export function getAllTracks() {
+  return stmts().allTracks.all().map(r => ({ origem: r.origem, coords: JSON.parse(r.coords) }));
+}
+
+/**
+ * Gets the bounding box of the whole collection, read from the spatial index.
+ * @returns {{oeste: number, sul: number, leste: number, norte: number}|null} Envelope, or null if empty
+ */
+export function getBboxDoAcervo() {
+  const r = stmts().bboxDoAcervo.get();
+  return r && r.oeste !== null ? r : null;
 }
 
 // ---- Batch calibration functions ----

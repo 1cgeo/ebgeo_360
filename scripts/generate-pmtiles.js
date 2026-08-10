@@ -4,6 +4,12 @@
  * @module scripts/generate-pmtiles
  * @description Generates a PMTiles file from the street view index.db.
  *
+ * FORA DO CAMINHO DE PRODUCAO desde 2026-08-10. O mapa do EBGeo lia os dois
+ * arquivos gerados aqui atraves do Martin; hoje le src/routes/tiles.js, que
+ * monta o tile e o tracado direto do index.db. Este script continua valendo como
+ * saida de emergencia e para consumidor externo que ainda queira o arquivo, mas
+ * o que ele produz NAO alimenta mais o visualizador: mexer aqui nao muda o mapa.
+ *
  * Produces:
  *   - fotos.pmtiles — Point layer with one feature per photo
  *   - fotos_linha.pmtiles — Line layer with the capture track (from project_tracks)

@@ -61,8 +61,9 @@ src/
 ├── routes/
 │   ├── health.js          # GET /health
 │   ├── projects.js        # GET /api/v1/projects, GET /api/v1/projects/:slug
-│   ├── photos.js          # GET /api/v1/photos/:uuid, GET .../image, GET .../by-name/:name
-│   └── calibration.js     # Write endpoints (rotations, review, visibility, targets, batch)
+│   ├── photos.js          # GET /api/v1/photos/:uuid, GET .../image, GET .../by-name/:name, GET .../nearest
+│   ├── calibration.js     # Write endpoints (rotations, review, visibility, targets, batch)
+│   └── tiles.js           # Camadas de mapa: tile vetorial de pontos + traçado em GeoJSON
 └── middleware/
     └── cache.js           # Cache-Control headers + ETag computation
 
@@ -285,6 +286,35 @@ Two flags matter when encoding the line and are easy to lose:
 | `/api/v1/photos/:uuid` | Photo metadata + targets (hidden targets filtered unless `?include_hidden=true`) | no-cache (revalidate) |
 | `/api/v1/photos/:uuid/image?quality=full\|preview` | WebP image stream | 1yr immutable + ETag |
 | `/api/v1/photos/by-name/:originalName` | Backward compat lookup | 1h |
+| `/api/v1/photos/nearest?lon=&lat=` | Photo closest to a coordinate, from the R-tree | no-cache (revalidate) |
+
+### Map layers (tiles.js)
+
+O mapa do EBGeo lia estas duas camadas de dois arquivos PMTiles servidos pelo
+Martin. Agora saem daqui, direto do `index.db`: a camada é o banco, sem passo de
+tippecanoe no meio e sem defasagem entre calibrar e ver.
+
+| Endpoint | Description | Cache |
+|----------|-------------|-------|
+| `/api/v1/tiles/fotos.json` | TileJSON da camada de pontos (zoom 11–12, `bounds` do acervo) | 1h |
+| `/api/v1/tiles/fotos/:z/:x/:y.pbf` | Tile vetorial de pontos, camada `fotos`; 204 quando vazio, 400 fora da faixa | no-cache (revalidate) |
+| `/api/v1/tracks` | Todo o traçado do acervo em GeoJSON, atributo `origem` = slug | no-cache (revalidate) |
+
+Três números que mandam no desenho, todos medidos sobre os 29 projetos:
+
+- **Ponto é tile e linha é GeoJSON** porque as 99.040 fotos dão 35,7 MB de
+  GeoJSON (5,9 MB comprimido) e os 3.236 traçados dão 1,9 MB (0,3 MB), menos que
+  os 712 KB do `fotos_linha.pmtiles`.
+- **Sem índice em memória.** Um índice geojson-vt do acervo inteiro custa 374,6
+  MB e leva o RSS a 579 MB, acima do teto de 512 MB do container. Cada tile
+  nasce da consulta ao R-tree: o mediano em 3,2 ms, o pior em 37,7 ms.
+- **A faixa de zoom é o freio.** Sem o teto de 12 e o piso de 11, um pedido em
+  z0 traria as 99.040 fotos num tile só. Quem precisa de foto abaixo de z11 é o
+  clique na linha do mapa, e esse caminho usa `/photos/nearest`.
+
+O `scripts/generate-pmtiles.js` continua funcionando, mas saiu do caminho de
+produção: serve de saída de emergência e para consumidor externo que ainda queira
+o arquivo.
 
 ### Write (Calibration)
 | Endpoint | Description |

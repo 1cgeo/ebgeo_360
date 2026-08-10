@@ -13,6 +13,7 @@ import {
   getProjectByPhotoId,
   getImageBlob,
   isPhotoDeleted,
+  getNearestPhoto,
 } from '../db/queries.js';
 import {
   setImageCacheHeaders,
@@ -60,7 +61,61 @@ function releaseImageSlot() {
   }
 }
 
+/**
+ * Raios de busca do /photos/nearest, em graus de latitude (~111 km por grau).
+ *
+ * A busca cresce em degraus e para no primeiro que acha: 0,003 grau sao ~330 m,
+ * que cobrem um clique em cima da linha, e 1 grau sao ~111 km, que cobrem um
+ * clique num traco de 1 pixel visto de cima do estado. Sem o ultimo degrau, o
+ * clique numa linha com o mapa afastado nao abriria foto nenhuma.
+ * @constant {number[]}
+ */
+const RAIOS_BUSCA = [0.003, 0.02, 0.15, 1];
+
 export default async function photoRoutes(fastify) {
+  // GET /api/v1/photos/nearest?lon=&lat= — a foto mais proxima de um ponto
+  //
+  // POR QUE ESTA ROTA EXISTE. O mapa principal descobria a foto mais proxima do
+  // clique com querySourceFeatures sobre os tiles JA CARREGADOS. Isso amarrava a
+  // resposta ao que estava desenhado: abaixo do zoom minimo da fonte nao ha tile,
+  // e o clique na linha nao abria nada. Aqui a resposta sai do rtree, entao vale
+  // em qualquer zoom e devolve a foto REALMENTE mais proxima, e nao a mais
+  // proxima entre as que sobreviveram ao desbaste do tile.
+  //
+  // Segmento literal antes de /photos/:uuid: o find-my-way prefere o literal ao
+  // parametrico, independente da ordem de registro, entao 'nearest' nunca cai no
+  // handler de :uuid.
+  fastify.get('/api/v1/photos/nearest', async (request, reply) => {
+    const lon = Number(request.query.lon);
+    const lat = Number(request.query.lat);
+
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)
+      || lon < -180 || lon > 180 || lat < -90 || lat > 90) {
+      reply.code(400);
+      return { error: 'Query params lon and lat are required and must be valid coordinates' };
+    }
+
+    for (const raio of RAIOS_BUSCA) {
+      const foto = getNearestPhoto(lon, lat, raio);
+      if (foto) {
+        setMutableMetadataCacheHeaders(reply);
+        return {
+          photo: {
+            id: foto.id,
+            displayName: foto.display_name,
+            lon: foto.lon,
+            lat: foto.lat,
+            floorLevel: foto.floor_level,
+            project: foto.project_slug,
+          },
+        };
+      }
+    }
+
+    reply.code(404);
+    return { error: 'No photo found near this coordinate' };
+  });
+
   // GET /api/v1/photos/:uuid — photo metadata (same shape as legacy JSON)
   fastify.get('/api/v1/photos/:uuid', async (request, reply) => {
     const { uuid } = request.params;

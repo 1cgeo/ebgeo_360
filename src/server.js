@@ -16,6 +16,7 @@ import healthRoutes from './routes/health.js';
 import projectRoutes from './routes/projects.js';
 import photoRoutes from './routes/photos.js';
 import calibrationRoutes from './routes/calibration.js';
+import tileRoutes from './routes/tiles.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -52,9 +53,13 @@ fastify.setNotFoundHandler((request, reply) => {
 // Imagens WebP (image/webp) NÃO são recomprimidas: o customTypes restringe os
 // content-types elegíveis para compressão, deixando image/* de fora. O regex
 // casa com o content-type completo (inclui parâmetros como "; charset=utf-8").
+//
+// O tile vetorial (vnd.mapbox-vector-tile) ENTRA na lista, e a diferença não é
+// cosmética: o pior tile z12 do acervo pesa 860 KB cru e 378 KB comprimido. O
+// protobuf não vem comprimido de fábrica, ao contrário do WebP.
 await fastify.register(fastifyCompress, {
   global: true,
-  customTypes: /^(?:text\/|application\/(?:json|javascript|xml|.*\+json|.*\+xml))/,
+  customTypes: /^(?:text\/|application\/(?:json|javascript|xml|vnd\.mapbox-vector-tile|.*\+json|.*\+xml))/,
 });
 
 // CORS
@@ -85,6 +90,7 @@ await fastify.register(healthRoutes);
 await fastify.register(projectRoutes);
 await fastify.register(photoRoutes);
 await fastify.register(calibrationRoutes);
+await fastify.register(tileRoutes);
 
 // Graceful shutdown — idempotente e com timeout de segurança.
 // Tempo máximo (ms) para fastify.close() antes de forçar a saída.
