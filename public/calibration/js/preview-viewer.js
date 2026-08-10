@@ -872,6 +872,12 @@ function renderRearMarkers() {
             highlighted: false,
             selected: isSelected,
             hidden,
+            // A vista de tras desenha o MESMO marcador da vista principal, e a
+            // marca de andar tem de ir junto: dois desenhos do mesmo alvo com
+            // aparencia diferente foi o que fez as copias divergirem antes.
+            floorDelta: (typeof target.floor_level === 'number'
+                && typeof rearCameraConfig?.floor_level === 'number')
+                ? target.floor_level - rearCameraConfig.floor_level : 0,
             opacity: rankOpacity(placement.rank, isSelected),
         });
         markerCtx.restore();

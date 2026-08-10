@@ -184,21 +184,33 @@ describe('GET /api/v1/photos/:uuid/nearby com andares', () => {
     assert.equal(res.statusCode, 400);
   });
 
-  test('o andar da origem vem PRIMEIRO, e o outro traz distancia 3D', async () => {
-    // Em planta a foto empilhada aparece colada (0,7 m no Beira-Rio). Se a
-    // ordem fosse so por distancia 2D, ela lideraria a lista sem ser a vizinha
-    // que o operador procura.
+  test('a ordem e por DISTANCIA, sem agrupar por andar', async () => {
+    // Uma versao anterior agrupava o andar da origem primeiro. O elevador do
+    // 5o para o 6o andar do Beira-Rio fica a 1,84 m em planta e caia atras de
+    // vizinhas do proprio andar a 29 m: o operador nao o achava. Quem avisa a
+    // troca de andar e o rotulo na lista, nao a ordem.
     const res = await app.inject({
       method: 'GET',
       url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/nearby?radius=100&floor=all`,
     });
     const { photos } = JSON.parse(res.body);
+    assert.ok(photos.length > 1, 'preciso de mais de uma foto para julgar a ordem');
 
-    const primeiroDeFora = photos.findIndex(p => p.floor_level !== ANDAR_UM);
-    const ultimoDoAndar = photos.map(p => p.floor_level).lastIndexOf(ANDAR_UM);
-    assert.ok(primeiroDeFora === -1 || primeiroDeFora > ultimoDoAndar,
-      'foto de outro andar apareceu antes de alguma do andar da origem');
+    for (let i = 1; i < photos.length; i++) {
+      assert.ok(photos[i].distance >= photos[i - 1].distance - 1e-9,
+        `fora de ordem em ${i}: ${photos[i - 1].distance} antes de ${photos[i].distance}`);
+    }
+    // E a variancia, para o caso nao passar por falta do que ordenar.
+    const niveis = new Set(photos.map(p => p.floor_level));
+    assert.ok(niveis.size > 1, 'esperava mais de um andar na lista com floor=all');
+  });
 
+  test('distance3d vem sempre, e nunca e menor que a planta', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/photos/${SEEDS.PHOTO_1_ID}/nearby?radius=100&floor=all`,
+    });
+    const { photos } = JSON.parse(res.body);
     for (const p of photos) {
       assert.equal(typeof p.distance3d, 'number', 'distance3d tem de vir sempre');
       assert.ok(p.distance3d >= p.distance - 1e-9,

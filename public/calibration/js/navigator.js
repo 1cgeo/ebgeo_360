@@ -468,6 +468,23 @@ function calibrationMeta(target) {
     };
 }
 
+/**
+ * Quantos andares o alvo sobe (positivo) ou desce (negativo).
+ *
+ * Zero quando os dois estao no mesmo nivel E quando o projeto nao declara
+ * andar: nos 28 projetos externos o `floor_level` e 1 em tudo, entao o calculo
+ * da zero e o marcador continua identico ao de sempre.
+ *
+ * @param {Object} target - Alvo, com `floor_level` vindo da API
+ * @returns {number} Diferenca de nivel, 0 quando nao ha o que distinguir
+ */
+function deltaDeAndar(target) {
+    const aqui = cameraConfig?.floor_level;
+    const la = target?.floor_level;
+    if (typeof aqui !== 'number' || typeof la !== 'number') return 0;
+    return la - aqui;
+}
+
 function projectTargetOnHorizon(target, yaw, pitch, fov) {
     const placement = directionLayout?.get(target.id);
     if (!placement) return null;   // too small to read: the queue ended here
@@ -495,7 +512,8 @@ function projectTargetOnHorizon(target, yaw, pitch, fov) {
             ),
             rank: placement.rank,
             offscreen: true,
-            offscreenSide: projected.azimuthRelDeg > 0 ? 'right' : 'left'
+            offscreenSide: projected.azimuthRelDeg > 0 ? 'right' : 'left',
+            floorDelta: deltaDeAndar(target),
         };
     }
 
@@ -511,6 +529,10 @@ function projectTargetOnHorizon(target, yaw, pitch, fov) {
         rank: placement.rank,
         offscreen: false,
         sphere: true,
+        // Quantos andares o alvo sobe (positivo) ou desce (negativo). Zero para
+        // o mesmo andar E para todo projeto SEM andar declarado, entao o acervo
+        // externo desenha exatamente como antes.
+        floorDelta: deltaDeAndar(target),
         ...calibrationMeta(target),
     };
 }

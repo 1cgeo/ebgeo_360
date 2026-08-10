@@ -971,7 +971,14 @@ function renderNearbyPhotos(s) {
             ${nearby.map(p => {
                 const outro = p.floor_level !== null && p.floor_level !== undefined
                     && nivelAtual !== null && p.floor_level !== nivelAtual;
-                const dist = outro && p.distance3d !== undefined ? p.distance3d : p.distance;
+                // A lista mostra e ordena pela distancia em PLANTA, que e a
+                // mesma do raio de busca. Para o alvo de outro andar vai junto
+                // a 3D entre parenteses, porque em planta o elevador aparece a
+                // 1,8 m enquanto a subida real e de 12,8.
+                const dist = p.distance;
+                const extra = outro && p.distance3d !== undefined
+                    && Math.abs(p.distance3d - p.distance) >= 0.5
+                    ? ` (${p.distance3d.toFixed(1)}m 3D)` : '';
                 const marca = outro
                     ? `<span class="cal-panel__nearby-floor">${p.floor_label || ('nivel ' + p.floor_level)}</span>`
                     : '';
@@ -980,7 +987,7 @@ function renderNearbyPhotos(s) {
                     <div class="cal-panel__nearby-info">
                         <span class="cal-panel__nearby-name">${p.displayName || p.id.slice(0, 8)}</span>
                         ${marca}
-                        <span class="cal-panel__nearby-dist">${dist.toFixed(1)}m</span>
+                        <span class="cal-panel__nearby-dist">${dist.toFixed(1)}m${extra}</span>
                     </div>
                     <button class="cal-panel__btn cal-panel__btn--small cal-panel__btn--ghost cal-panel__nearby-add" data-add-target-id="${p.id}">
                         Adicionar

@@ -560,19 +560,16 @@ export default async function calibrationRoutes(fastify) {
       };
     });
 
-    // O raio corta pela distancia em PLANTA, como antes. A ORDEM, porem, poe o
-    // andar da origem primeiro: com `floor=all` a foto empilhada em cima
-    // apareceria no topo da lista por estar a 0,7 m em planta, e ela quase
-    // nunca e a vizinha que o operador procura.
-    const nivelOrigem = photo.floor_level ?? null;
+    // Corte e ORDEM pela distancia em planta, que e a mesma medida do raio.
+    //
+    // Uma versao anterior agrupava o andar da origem primeiro, para a foto
+    // empilhada nao liderar a lista. Estava errado na pratica: o elevador do
+    // 5o para o 6o andar fica a 1,84 m em planta e caia atras de vizinhas do
+    // proprio andar a 29 m. Quem avisa que o alvo troca de andar e o ROTULO na
+    // lista, nao a ordem.
     const filtered = photos
       .filter(p => p.distance <= radius)
-      .sort((a, b) => {
-        const mesmoA = a.floor_level === nivelOrigem ? 0 : 1;
-        const mesmoB = b.floor_level === nivelOrigem ? 0 : 1;
-        if (mesmoA !== mesmoB) return mesmoA - mesmoB;
-        return a.distance3d - b.distance3d;
-      });
+      .sort((a, b) => a.distance - b.distance);
 
     return { photos: filtered };
   });

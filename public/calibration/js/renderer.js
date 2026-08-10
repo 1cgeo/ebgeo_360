@@ -28,11 +28,51 @@ import { NAV_CONSTANTS } from './constants.js';
  * @param {boolean} [state.selected] - Selected for editing (calibration only)
  * @param {boolean} [state.hidden] - Hidden from navigation (calibration only)
  * @param {number} [state.opacity] - Fades markers further down the queue
+ * @param {number} [state.floorDelta] - Andares que o alvo sobe (+) ou desce (-).
+ *   Zero desenha o marcador de sempre, e e o que vale para todo projeto sem
+ *   andar declarado.
  */
+/**
+ * Pontos da seta de troca de andar, no referencial JA transladado do marcador.
+ *
+ * Existe como funcao pura porque a primeira versao errou o SINAL e desenhou a
+ * cabeca na ponta errada da haste: a seta do 5o para o 6o andar apontava para
+ * baixo. Sinal trocado nao aparece em lint nem em teste de rota, so no olho de
+ * quem usa. Aqui a geometria vira dado, e o dado se testa.
+ *
+ * Convencao da tela: `y` cresce para BAIXO, entao subir e y negativo.
+ *
+ * @param {number} radius - Raio do marcador em pixels
+ * @param {boolean} sobe - Verdadeiro quando o alvo esta num andar acima
+ * @returns {{cauda: {x: number, y: number}, ponta: {x: number, y: number},
+ *            asaEsq: {x: number, y: number}, asaDir: {x: number, y: number}}}
+ */
+export function pontosDaSeta(radius, sobe) {
+    const s = radius * 0.62;          // meia altura da haste
+    const w = radius * 0.40;          // meia largura da cabeca
+    const ponta = sobe ? -s : s;      // a PONTA e quem define o sentido
+    const recuo = sobe ? w : -w;      // as asas ficam atras da ponta
+    return {
+        cauda: { x: 0, y: -ponta },
+        ponta: { x: 0, y: ponta },
+        asaEsq: { x: -w, y: ponta + recuo },
+        asaDir: { x: w, y: ponta + recuo },
+    };
+}
+
 export function drawArmillarySphere(ctx, radius, state = {}) {
-    const { highlighted = false, selected = false, hidden = false, opacity = 1 } = state;
+    const {
+        highlighted = false, selected = false, hidden = false, opacity = 1,
+        floorDelta = 0,
+    } = state;
     const r = Math.max(1, radius);
     const TILT = 0.30;
+    // Alvo que troca de andar. Escada, vomitorio e elevador levam para outro
+    // nivel, e no chao a distancia nao denuncia isso: o elevador do 5o para o
+    // 6o andar do Beira-Rio fica a 1,84 m em planta. Sem marca propria, o
+    // marcador dele e igual ao da porta ao lado.
+    const troca = Number.isFinite(floorDelta) && floorDelta !== 0;
+    const sobe = floorDelta > 0;
 
     let ring, fill;
     if (hidden) {
@@ -46,6 +86,12 @@ export function drawArmillarySphere(ctx, radius, state = {}) {
     } else if (highlighted) {
         ring = 'rgba(255, 255, 255, 1)';
         fill = 'rgba(37, 99, 235, 0.62)';
+    } else if (troca) {
+        // Ambar, a mesma familia da marca de andar na lista de fotos proximas.
+        // O anel muda junto com o simbolo porque cor sozinha nao serve a quem
+        // nao a distingue, e simbolo sozinho some no icone pequeno.
+        ring = 'rgba(255, 212, 121, 0.98)';
+        fill = 'rgba(120, 78, 8, 0.34)';
     } else {
         ring = 'rgba(255, 255, 255, 0.95)';
         fill = 'rgba(17, 24, 36, 0.26)';
@@ -115,6 +161,30 @@ export function drawArmillarySphere(ctx, radius, state = {}) {
     ctx.stroke();
 
     ctx.setLineDash([]);
+
+    // A SETA DE ANDAR, por cima da esfera. Ela cresce com o icone e some junto,
+    // entao nao vira sujeira no marcador distante da fila.
+    if (troca && !hidden) {
+        const p = pontosDaSeta(r, sobe);
+        ctx.save();
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        // Contorno escuro primeiro: a seta tem de ler tanto sobre a lona branca
+        // do estadio quanto sobre o corredor escuro.
+        for (const [cor, larg] of [['rgba(0, 0, 0, 0.75)', r * 0.30],
+                                   ['rgba(255, 236, 190, 0.98)', r * 0.16]]) {
+            ctx.strokeStyle = cor;
+            ctx.lineWidth = Math.max(1, larg);
+            ctx.beginPath();
+            ctx.moveTo(p.cauda.x, p.cauda.y);
+            ctx.lineTo(p.ponta.x, p.ponta.y);
+            ctx.moveTo(p.asaEsq.x, p.asaEsq.y);
+            ctx.lineTo(p.ponta.x, p.ponta.y);
+            ctx.lineTo(p.asaDir.x, p.asaDir.y);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
 
     // Strike-through for a disabled target
     if (hidden) {
@@ -354,6 +424,7 @@ export class StreetViewRenderer {
                 highlighted: isHovered || isCursorNearest,
                 selected: isCalibrationSelected,
                 hidden: isHidden,
+                floorDelta: marker.floorDelta ?? 0,
                 opacity: rankOpacity(marker.rank ?? 0, isHovered || isCursorNearest || isCalibrationSelected),
             });
         }
