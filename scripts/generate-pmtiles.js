@@ -10,7 +10,7 @@
  *
  * Requires tippecanoe: either installed locally or via Docker.
  * If tippecanoe is not found locally, falls back to Docker image "tippecanoe:latest".
- * Build it with: docker build -t tippecanoe:latest https://github.com/felt/tippecanoe.git
+ * Build it with: docker build -t tippecanoe:latest -f docker/Dockerfile.tippecanoe docker
  *
  * Usage:
  *   node scripts/generate-pmtiles.js --data ./data --output ./output
@@ -72,7 +72,7 @@ if (useDocker) {
   } catch {
     console.error('Error: Neither tippecanoe nor Docker is available.');
     console.error('Install tippecanoe: https://github.com/felt/tippecanoe#installation');
-    console.error('Or install Docker and build the image: docker build -t tippecanoe:latest https://github.com/felt/tippecanoe.git');
+    console.error('Or install Docker and build the image: docker build -t tippecanoe:latest -f docker/Dockerfile.tippecanoe docker');
     process.exit(1);
   }
 
@@ -82,7 +82,7 @@ if (useDocker) {
     console.log('Using tippecanoe via Docker.');
   } catch {
     console.error('Error: Docker image "tippecanoe:latest" not found.');
-    console.error('Build it with: docker build -t tippecanoe:latest https://github.com/felt/tippecanoe.git');
+    console.error('Build it with: docker build -t tippecanoe:latest -f docker/Dockerfile.tippecanoe docker');
     process.exit(1);
   }
 }

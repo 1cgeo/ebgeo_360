@@ -1,0 +1,29 @@
+# Imagem do tippecanoe, usada pelo scripts/generate-pmtiles.js.
+#
+# POR QUE ESTE ARQUIVO EXISTE. A instrucao antiga era
+# `docker build -t tippecanoe:latest https://github.com/felt/tippecanoe.git`,
+# e ela PAROU de funcionar: o repositorio upstream nao tem mais Dockerfile na
+# raiz. O erro que aparece e "failed to read dockerfile: open Dockerfile: no
+# such file or directory", que nao denuncia a causa.
+#
+# Build em dois estagios, para a imagem final nao carregar o compilador.
+#
+# Uso:
+#   docker build -t tippecanoe:latest -f docker/Dockerfile.tippecanoe docker
+FROM debian:bookworm-slim AS build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential git libsqlite3-dev zlib1g-dev ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 https://github.com/felt/tippecanoe.git /src
+WORKDIR /src
+RUN make -j"$(nproc)" && make install
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libsqlite3-0 zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /usr/local/bin/tippecanoe /usr/local/bin/
+COPY --from=build /usr/local/bin/tile-join /usr/local/bin/
+COPY --from=build /usr/local/bin/tippecanoe-decode /usr/local/bin/
+WORKDIR /data
+ENTRYPOINT ["tippecanoe"]
