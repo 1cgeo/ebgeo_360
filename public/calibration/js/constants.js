@@ -132,6 +132,22 @@ export const NAV_CONSTANTS = Object.freeze({
      */
     ANDAR_MARGEM_RAIOS: 1.5,
 
+    /**
+     * Quanto SOBE, em graus, cada andar alem do primeiro degrau.
+     *
+     * O marcador de vizinha usa a altura para dizer QUANTO se sobe, e nao so
+     * para que lado. Com todos os andares no escopo da busca, sete niveis em
+     * duas alturas viram uma pilha, e a altura para de informar.
+     */
+    ANDAR_PASSO_DEG: 2.6,
+
+    /**
+     * Teto de degraus que a altura representa. Acima disso o marcador para de
+     * subir: o predio tem 7 niveis, e deixar a altura crescer sem limite
+     * jogaria a vizinha do outro extremo para fora da tela.
+     */
+    ANDAR_DEGRAUS_MAX: 6,
+
     MARKER_COLOR: 'rgba(255, 255, 255, 0.85)',
     MARKER_BORDER_COLOR: 'rgba(0, 0, 0, 0.4)',
     MARKER_BORDER_WIDTH: 3,

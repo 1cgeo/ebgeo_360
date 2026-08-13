@@ -314,6 +314,34 @@ export class StreetViewProjector {
     }
 
     /**
+     * Altura de uma foto VIZINHA, que diz quantos andares ela esta daqui.
+     *
+     * Difere do `elevacaoComAndar` dos alvos de proposito. O alvo responde uma
+     * pergunta binaria, "sobe ou desce", porque a fila dele ja usa a altura
+     * para outra coisa. A vizinha nao tem fila: ela e candidata a virar alvo, e
+     * com a busca em todos os andares aparecem sete niveis de uma vez. Ali a
+     * altura pode carregar o QUANTO, e duas alturas para sete andares seriam
+     * uma pilha que nao informa.
+     *
+     * O primeiro degrau vale a mesma margem dos alvos, entao a vizinha de um
+     * andar acima nasce na mesma altura do alvo que sobe. Dai em diante cada
+     * andar soma um passo, ate o teto.
+     *
+     * @param {number} floorDelta - Andares que a vizinha sobe (+) ou desce (-)
+     * @returns {number} Elevacao em graus (positivo = acima do horizonte)
+     */
+    elevacaoDeVizinha(floorDelta) {
+        // Mesmo andar: a altura de quem seria o primeiro da fila, como sempre.
+        if (!Number.isFinite(floorDelta) || floorDelta === 0) return this.elevationDeg(0);
+
+        const margem = NAV_CONSTANTS.HORIZON_ANGULAR_NEAR * NAV_CONSTANTS.ANDAR_MARGEM_RAIOS;
+        const degraus = Math.min(Math.abs(floorDelta), NAV_CONSTANTS.ANDAR_DEGRAUS_MAX);
+        const afastamento = margem + NAV_CONSTANTS.ANDAR_PASSO_DEG * (degraus - 1);
+
+        return floorDelta > 0 ? afastamento : -afastamento;
+    }
+
+    /**
      * Calculates the focal length for the current canvas and FOV.
      * @param {number} fov - Field of view in degrees
      * @returns {number} Focal length in pixels

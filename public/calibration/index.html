@@ -938,9 +938,12 @@
             border-radius: 4px;
         }
 
-        /* Marca do andar, quando a vizinha esta em outro nivel. Ela existe para
-           o operador NAO ligar sem saber que atravessou o predio. */
-        .cal-panel__nearby-floor {
+        /* Marca do andar, quando a foto esta em outro nivel. Ela existe para
+           o operador NAO ligar, nem navegar, sem saber que atravessou o
+           predio. A mesma regra vale na lista de vizinhas e na de alvos, entao
+           as duas usam a MESMA regra de estilo. */
+        .cal-panel__nearby-floor,
+        .cal-panel__target-floor {
             padding: 1px 5px;
             font-size: 10px;
             font-weight: 600;

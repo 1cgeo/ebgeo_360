@@ -38,6 +38,7 @@ import {
     updateNearbyPhotos, disposeMinimap,
 } from './minimap.js';
 import { initPanel, showToast, setSphericalGridToggleState, clearNearbyPreview, getNearbyPreviewState, getNearbyFloorScope } from './calibration-panel.js';
+import { descreverAlvo } from './descricao.js';
 import {
     initPreviewViewer, showPreview, hidePreview, showAddButton,
     showRearView, updateRearViewRotation, showTargetActions, updateHideButtonState,
@@ -316,22 +317,12 @@ async function startCalibration(photoId) {
         updateCamera(metadata.camera);
         updateTargets(metadata.targets);
 
-        // Fetch nearby unconnected photos (non-blocking). O escopo de andar
-        // vem do painel: ausente = andar da foto, que e o padrao seguro.
-        fetchNearbyPhotos(photoId, 100, {
-            signal: controller.signal,
-            floor: getNearbyFloorScope() ?? undefined,
-        }).then(data => {
-            // Ignora resultado se a foto ja mudou.
-            if (myGen !== loadGeneration) return;
-            const photos = data.photos || [];
-            setNearbyPhotos(photos);
-            updateNearbyPhotos(photos);
-            navSetNearbyPhotos(photos);
-        }).catch(err => {
-            if (err?.name === 'AbortError') return;
-            console.warn('Failed to load nearby photos:', err);
-        });
+        // Fetch nearby unconnected photos (non-blocking).
+        recarregarVizinhas(photoId, { signal: controller.signal, geracao: myGen })
+            .catch(err => {
+                if (err?.name === 'AbortError') return;
+                console.warn('Failed to load nearby photos:', err);
+            });
 
         showLoading(false);
 
@@ -451,7 +442,7 @@ function initializeSubsystems() {
                     if (state.selectedTargetId === target.id) {
                         showPreview(
                             target.id,
-                            target.display_name || target.id.slice(0, 8),
+                            rotuloDoAlvo(target),
                             meta.camera?.mesh_rotation_y ?? 180,
                             meta.camera?.mesh_rotation_x ?? 0,
                             meta.camera?.mesh_rotation_z ?? 0,
@@ -468,7 +459,7 @@ function initializeSubsystems() {
                 }).catch(() => {
                     // Still show without correct mesh rotation
                     if (state.selectedTargetId === target.id) {
-                        showPreview(target.id, target.display_name || target.id.slice(0, 8));
+                        showPreview(target.id, rotuloDoAlvo(target));
                         showTargetActions(true, {
                             onHide: () => {
                                 const hidden = isTargetHidden(state.selectedTargetId);
@@ -936,13 +927,8 @@ async function refreshTargetsAndNearby() {
         setRearViewTargets(metadata.targets, metadata.camera);
         updateTargets(metadata.targets);
 
-        // Re-fetch nearby photos
-        fetchNearbyPhotos(state.currentPhotoId).then(data => {
-            const photos = data.photos || [];
-            setNearbyPhotos(photos);
-            updateNearbyPhotos(photos);
-            navSetNearbyPhotos(photos);
-        }).catch(err => {
+        // Re-fetch nearby photos, pelo MESMO escopo que o painel mostra.
+        recarregarVizinhas(state.currentPhotoId).catch(err => {
             console.warn('Failed to reload nearby photos:', err);
         });
     } catch (err) {
@@ -977,19 +963,46 @@ function handleNearbyPreviewToggle(enabled) {
  *
  * @param {null|'all'|number} escopo - `null` = andar da foto atual
  */
-function handleNearbyFloorScope(escopo) {
+function handleNearbyFloorScope() {
     const photoId = state.currentPhotoId;
     if (!photoId) return;
-    fetchNearbyPhotos(photoId, 100, { floor: escopo ?? undefined }).then(data => {
+    // O escopo nao entra por argumento: o painel ja o guardou antes de chamar,
+    // e ler da mesma fonte que os outros dois pontos e o que impede os tres de
+    // divergirem de novo.
+    recarregarVizinhas(photoId).catch(err => {
+        console.warn('Failed to reload nearby photos:', err);
+        showToast('Nao consegui buscar as fotos proximas nesse andar', 'error');
+    });
+}
+
+/**
+ * Rebusca as fotos proximas SEMPRE com o escopo de andar que o painel mostra.
+ *
+ * POR QUE ELA EXISTE. Tres pontos rebuscavam a lista: a carga da foto, a troca
+ * do seletor e o refresh depois de criar ou remover conexao. O terceiro chamava
+ * a API sem opcao nenhuma, entao caia no andar da foto de origem: criar um
+ * marcador com o seletor em "todos os andares" devolvia a lista do andar atual,
+ * com o combo ainda escrito "todos os andares". Controle que mente sobre o
+ * proprio estado e pior que controle quebrado.
+ *
+ * @param {string} photoId - Foto de origem
+ * @param {{signal?: AbortSignal, geracao?: number}} [opcoes] - `geracao` descarta
+ *   a resposta de uma carga que ja foi superada por outra
+ * @returns {Promise<void>}
+ */
+function recarregarVizinhas(photoId, { signal, geracao } = {}) {
+    return fetchNearbyPhotos(photoId, 100, {
+        signal,
+        floor: getNearbyFloorScope() ?? undefined,
+    }).then(data => {
         // A foto pode ter mudado enquanto a consulta corria.
+        if (geracao !== undefined && geracao !== loadGeneration) return;
         if (state.currentPhotoId !== photoId) return;
+
         const photos = data.photos || [];
         setNearbyPhotos(photos);
         updateNearbyPhotos(photos);
         navSetNearbyPhotos(photos);
-    }).catch(err => {
-        console.warn('Failed to reload nearby photos:', err);
-        showToast('Nao consegui buscar as fotos proximas nesse andar', 'error');
     });
 }
 
@@ -997,6 +1010,27 @@ function handleNearbyFloorScope(escopo) {
  * Handles selecting a nearby photo for preview (from panel list or canvas click).
  * @param {Object} nearbyPhoto - Nearby photo data { id, displayName, ... }
  */
+/**
+ * O rotulo do preview de um alvo: nome, distancia e, so quando muda de andar,
+ * qual andar.
+ *
+ * Usa a MESMA descricao da lista de alvos. Escrever a segunda aqui deixaria as
+ * duas telas dizendo coisas diferentes do mesmo alvo.
+ *
+ * @param {Object} target - Alvo selecionado
+ * @returns {string} Texto do rotulo
+ */
+function rotuloDoAlvo(target) {
+    const nome = target.display_name || target.id.slice(0, 8);
+    const { distancia, andar } = descreverAlvo(target, state.currentMetadata?.camera);
+
+    const partes = [nome];
+    if (distancia) partes.push(distancia);
+    if (andar) partes.push(andar);
+
+    return partes.join(' - ');
+}
+
 function handleNearbySelect(nearbyPhoto) {
     if (!nearbyPhoto?.id) return;
 

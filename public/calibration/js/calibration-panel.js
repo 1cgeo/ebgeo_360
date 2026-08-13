@@ -13,6 +13,7 @@ import {
     getCurrentRunId, getRunEntryPhotoId, setCalibrationSource,
 } from './state.js';
 import { batchUpdateProject, resetProjectReviewed, batchUpdateRun } from './api.js';
+import { descreverAlvo } from './descricao.js';
 
 // ============================================================================
 // MODULE STATE
@@ -762,9 +763,21 @@ function renderRunsSection(s) {
 }
 
 function renderTargetsSection(targets, selectedTarget, s) {
+    // Ordem por DISTANCIA, do mais perto para o mais longe. A ordem da API e a
+    // de insercao no banco, que nao diz nada a quem olha a lista. Copia, e nao
+    // sort no lugar: `targets` e o array do metadata, e reordena-lo mudaria a
+    // ordem em todo mundo que le o mesmo objeto.
+    // Alvo sem distancia vai para o fim, e nao para o comeco: `undefined` em
+    // comparacao numerica devolve NaN, e o sort embaralha em silencio.
+    const porDistancia = [...targets].sort((a, b) => {
+        const da = Number.isFinite(a.distance) ? a.distance : Infinity;
+        const db = Number.isFinite(b.distance) ? b.distance : Infinity;
+        return da - db;
+    });
+
     const content = `
         <div class="cal-panel__target-list" id="target-list">
-            ${targets.map(t => renderTargetItem(t, s)).join('')}
+            ${porDistancia.map(t => renderTargetItem(t, s)).join('')}
         </div>
         ${selectedTarget ? renderTargetActions(selectedTarget) : ''}
     `;
@@ -810,8 +823,13 @@ function renderTargetItem(target, s) {
     const hiddenBadge = hidden ? '<span class="cal-panel__hidden-badge">oculto</span>' : '';
 
     const displayName = target.display_name || target.id.slice(0, 8);
-    const distText = target.distance != null ? `${target.distance.toFixed(1)}m` : '';
     const nextBadge = target.next ? '<span class="cal-panel__next-badge">next</span>' : '';
+
+    const { distancia, andar } = descreverAlvo(target, s.currentMetadata?.camera);
+    const distText = distancia ?? '';
+    // A marca de andar fica FORA do `target-info`: a sincronizacao de estado
+    // reescreve aquele bloco inteiro, e a marca some ao selecionar um alvo.
+    const floorBadge = andar ? `<span class="cal-panel__target-floor">${andar}</span>` : '';
 
     return `
         <div class="cal-panel__target-item ${isSelected ? 'cal-panel__target-item--selected' : ''} ${hidden ? 'cal-panel__target-item--hidden' : ''}"
@@ -821,6 +839,7 @@ function renderTargetItem(target, s) {
                 ${nextBadge}
                 ${hiddenBadge}
             </div>
+            ${floorBadge}
             <span class="cal-panel__target-dist">${distText}</span>
         </div>
     `;
@@ -946,7 +965,10 @@ function renderNearbyPhotos(s) {
         </button>
     `;
 
-    const nivelAtual = s.camera?.floor_level ?? null;
+    // `s.camera` NAO existe: o estado guarda a foto em `currentMetadata`. Com o
+    // acessor errado o nivel vinha sempre nulo, e a marca amarela desta lista,
+    // que a dica logo abaixo promete, nunca aparecia.
+    const nivelAtual = s.currentMetadata?.camera?.floor_level ?? null;
     const seletor = temAndares ? `
         <label class="cal-panel__hint" for="nearby-floor-scope">Buscar em</label>
         <select id="nearby-floor-scope" class="cal-panel__select">

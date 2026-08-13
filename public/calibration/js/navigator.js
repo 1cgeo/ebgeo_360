@@ -12,6 +12,7 @@ import { StreetViewRenderer } from './renderer.js';
 import { StreetViewHitTester } from './hit-tester.js';
 import { state, isTargetHidden, onChange } from './state.js';
 import { setHoveredTarget as setMinimapHoveredTarget } from './minimap.js';
+import { descreverAlvo } from './descricao.js';
 
 // ============================================================================
 // MODULE STATE
@@ -597,23 +598,36 @@ function projectNearbyPhoto(photo, yaw, pitch, fov) {
     );
     const bearing = ((((Math.atan2(x, -z) * 180) / Math.PI) + 360) % 360);
 
-    // Desenhada na mesma faixa dos alvos, na altura de quem seria o primeiro da
-    // fila: e uma candidata a virar alvo, nao um alvo atras de outro.
+    // A altura diz de que andar ela e: mesmo nivel na faixa dos alvos, e cada
+    // andar de diferenca mais acima ou mais abaixo. Com a busca em todos os
+    // andares, e o que impede sete niveis de virarem uma pilha.
+    const degrau = deltaDeAndar(photo, cameraConfig);
     const projected = projector.projectOnHorizon(
-        bearing, yaw, pitch, fov, projector.elevationDeg(0)
+        bearing, yaw, pitch, fov, projector.elevacaoDeVizinha(degrau)
     );
     if (!projected.visible) return null;
+
+    const distance = Math.hypot(x, z);
 
     return {
         id: photo.id,
         screenX: projected.screenX,
         screenY: projected.screenY,
-        distance: Math.hypot(x, z),
+        distance,
         radius: projector.angularMarkerRadius(1, fov),
         rank: 1,
         offscreen: false,
         type: 'nearby',
         displayName: photo.displayName || photo.id.slice(0, 8),
+        // O que o marcador ESCREVE: a distancia sempre, e o andar so quando a
+        // foto esta noutro nivel. A distancia vai daqui, medida do lat/long da
+        // camera, e nao a do payload, que foi calculada de outra foto.
+        descricao: descreverAlvo({ ...photo, distance }, cameraConfig),
+        // O andar vai como DADO, e o desenho decide o glifo. O mesmo
+        // `rotuloDeAndar` que serve a esfera serve a bola verde.
+        floorDelta: degrau,
+        floorLevel: photo.floor_level ?? null,
+        floorLabel: photo.floor_label ?? null,
         data: photo,
     };
 }
