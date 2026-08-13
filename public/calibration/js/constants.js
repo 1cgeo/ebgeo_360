@@ -118,6 +118,20 @@ export const NAV_CONSTANTS = Object.freeze({
      */
     ANDAR_NUMERO_RAIO_MIN: 11,
 
+    /**
+     * Quanto o marcador de troca de andar se afasta do horizonte ANTES de
+     * subir a escada da fila, medido em RAIOS do primeiro icone.
+     *
+     * Em raios, e nao em graus, porque a regra que interessa e visual: o disco
+     * nao pode encostar na linha. Com 1.5 o primeiro icone sobra meio raio
+     * livre entre a borda dele e o horizonte, e a folga cresce nos postos
+     * seguintes, onde o icone encolhe e a escada afasta.
+     *
+     * Grau fixo nao serve: mudar HORIZON_ANGULAR_NEAR mudaria o tamanho do
+     * icone sem mudar o afastamento, e o disco voltaria a cruzar a linha.
+     */
+    ANDAR_MARGEM_RAIOS: 1.5,
+
     MARKER_COLOR: 'rgba(255, 255, 255, 0.85)',
     MARKER_BORDER_COLOR: 'rgba(0, 0, 0, 0.4)',
     MARKER_BORDER_WIDTH: 3,

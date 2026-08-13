@@ -402,7 +402,13 @@ export function resolveTargetVector(target, proj = projector, camera = cameraCon
  */
 export function layoutDirections(targets, fov, proj = projector, camera = cameraConfig) {
     const vectors = targets
-        .map(t => ({ id: t.id, ...resolveTargetVector(t, proj, camera) }))
+        .map(t => ({
+            id: t.id,
+            // O degrau entra AQUI, e nao so na hora de desenhar, porque ele
+            // decide de que lado do horizonte o icone fica.
+            floorDelta: deltaDeAndar(t, camera),
+            ...resolveTargetVector(t, proj, camera),
+        }))
         .sort((a, b) => a.distance - b.distance);
 
     // Place in the distance order of the whole photo, 0 = nearest of all.
@@ -446,7 +452,7 @@ export function layoutDirections(targets, fov, proj = projector, camera = camera
             layout.set(member.id, {
                 rank: member.rank,
                 radius: proj.angularMarkerRadius(member.rank, fov),
-                elevationDeg: proj.elevationDeg(member.rank),
+                elevationDeg: proj.elevacaoComAndar(member.rank, member.floorDelta),
             });
         }
     }
@@ -476,10 +482,12 @@ function calibrationMeta(target) {
  * da zero e o marcador continua identico ao de sempre.
  *
  * @param {Object} target - Alvo, com `floor_level` vindo da API
+ * @param {Object} [camera] - A foto de ONDE se olha. A vista de tras passa a
+ *   propria, e sem isso ela mediria o degrau contra a foto errada.
  * @returns {number} Diferenca de nivel, 0 quando nao ha o que distinguir
  */
-function deltaDeAndar(target) {
-    const aqui = cameraConfig?.floor_level;
+function deltaDeAndar(target, camera = cameraConfig) {
+    const aqui = camera?.floor_level;
     const la = target?.floor_level;
     if (typeof aqui !== 'number' || typeof la !== 'number') return 0;
     return la - aqui;

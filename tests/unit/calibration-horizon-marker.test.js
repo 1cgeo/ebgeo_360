@@ -231,6 +231,176 @@ describe('elevationDeg', () => {
     });
 });
 
+describe('elevacaoComAndar', () => {
+    // POR QUE ESTE BLOCO EXISTE. A altura era funcao SO da posicao na fila, e
+    // a fila cruza o horizonte no rank 1: um alvo que descia dois andares
+    // aparecia ACIMA da linha por estar em segundo na direcao. Altura o olho
+    // le antes da seta, entao o lado tem de vir do degrau, nao da fila.
+    const RANKS = [0, 1, 2, 3, 5, 20];
+
+    it('a fila sozinha CRUZA o horizonte, que e o defeito de origem', () => {
+        // Sem esta medida os testes abaixo nao provam nada: se a fila nunca
+        // subisse acima da linha, garantir que quem desce fica abaixo seria de
+        // graca. Ela cruza ja no rank 1.
+        const { projector } = projectorLookingAt(0);
+
+        assert.ok((projector.elevationDeg(0)) < (0));
+        assert.ok((projector.elevationDeg(1)) > (0));
+    });
+
+    it('quem DESCE fica abaixo do horizonte em qualquer posicao da fila', () => {
+        const { projector } = projectorLookingAt(0);
+
+        for (const rank of RANKS) {
+            for (const delta of [-1, -2, -6]) {
+                assert.ok((projector.elevacaoComAndar(rank, delta)) < (0),
+                    `rank ${rank}, delta ${delta} ficou acima do horizonte`);
+            }
+        }
+    });
+
+    it('quem SOBE fica acima do horizonte em qualquer posicao da fila', () => {
+        const { projector } = projectorLookingAt(0);
+
+        for (const rank of RANKS) {
+            for (const delta of [1, 2, 6]) {
+                assert.ok((projector.elevacaoComAndar(rank, delta)) > (0),
+                    `rank ${rank}, delta ${delta} ficou abaixo do horizonte`);
+            }
+        }
+    });
+
+    it('mesmo andar nao muda nada, que e o acervo externo inteiro', () => {
+        const { projector } = projectorLookingAt(0);
+
+        for (const rank of RANKS) {
+            for (const delta of [0, null, undefined, NaN]) {
+                assert.ok(Math.abs((projector.elevacaoComAndar(rank, delta))
+                    - (projector.elevationDeg(rank))) < 1e-12,
+                `rank ${rank}, delta ${String(delta)} mexeu no marcador comum`);
+            }
+        }
+    });
+
+    it('sobe e desce sao espelhos exatos, entao a escada e a MESMA', () => {
+        // E o que preserva a garantia do arranjo: o centro de um icone nunca
+        // cai dentro do disco do icone da frente. Refletir mantem distancias,
+        // inventar uma segunda escada nao manteria.
+        const { projector } = projectorLookingAt(0);
+
+        for (const rank of RANKS) {
+            assert.ok(Math.abs((projector.elevacaoComAndar(rank, 1))
+                + (projector.elevacaoComAndar(rank, -1))) < 1e-12);
+        }
+    });
+
+    it('o DISCO nao encosta na linha, e nao so o centro dele', () => {
+        // A regra que o olho cobra: o icone tem de ficar inteiro de um lado.
+        // Comparar o centro com zero passaria com o disco cruzando a linha, que
+        // foi exatamente a primeira versao desta regra.
+        const { projector } = projectorLookingAt(0);
+
+        for (const rank of RANKS) {
+            const raio = projector.angularRadiusDeg(rank);
+            for (const delta of [1, -1]) {
+                const altura = projector.elevacaoComAndar(rank, delta);
+                assert.ok((Math.abs(altura)) > (raio),
+                    `rank ${rank}, delta ${delta}: centro a ${altura.toFixed(2)} graus `
+                    + `com raio de ${raio.toFixed(2)}, o disco cruza o horizonte`);
+            }
+        }
+    });
+
+    it('a folga do primeiro icone vale meio raio dele', () => {
+        // O numero sai do tamanho do icone, e nao de um grau escolhido a dedo.
+        const { projector } = projectorLookingAt(0);
+        const raio = projector.angularRadiusDeg(0);
+        const folga = Math.abs(projector.elevacaoComAndar(0, -1)) - raio;
+
+        assert.ok(Math.abs((folga) - (raio * 0.5)) < 1e-6);
+    });
+
+    it('a fila afunda e sobe monotonicamente, cada uma para o seu lado', () => {
+        const { projector } = projectorLookingAt(0);
+        const descendo = [0, 1, 2, 3].map(r => projector.elevacaoComAndar(r, -1));
+        const subindo = [0, 1, 2, 3].map(r => projector.elevacaoComAndar(r, 1));
+
+        for (let i = 1; i < descendo.length; i++) {
+            assert.ok((descendo[i]) < (descendo[i - 1]), 'a fila que desce tem de afundar');
+            assert.ok((subindo[i]) > (subindo[i - 1]), 'a fila que sobe tem de subir');
+        }
+    });
+});
+
+describe('layoutDirections e o lado do horizonte', () => {
+    // DUAS filas de dois, e nao uma de tres: no terceiro posto o icone ja cai
+    // abaixo de HORIZON_MIN_ANGULAR_DRAW e a fila termina, entao o alvo nem
+    // entra no arranjo. O que interessa e o SEGUNDO posto, porque e onde a
+    // fila comum ja passou para cima da linha.
+    const camera = { lon: 0, lat: 0, floor_level: 3 };
+    const fila = [
+        { id: 'perto', bearing: 340.0, distance: 2, floor_level: 3 },
+        { id: 'desce', bearing: 340.2, distance: 5, floor_level: 1 },
+        { id: 'base', bearing: 90.0, distance: 3, floor_level: 3 },
+        { id: 'sobe', bearing: 90.2, distance: 6, floor_level: 5 },
+        // Sozinho na direcao dele, ou seja, PRIMEIRO da fila. E o caso que
+        // separa de verdade: a regra antiga punha todo primeiro icone abaixo
+        // da linha, entao um alvo que sobe nascia do lado errado.
+        { id: 'sobe_so', bearing: 200.0, distance: 4, floor_level: 6 },
+    ];
+
+    it('poe o alvo que desce abaixo do horizonte, mesmo no meio da fila', () => {
+        const nav = navigatorStub(camera);
+        const layout = nav.layoutDirections(fila, FOV);
+
+        assert.ok((layout.get('desce').rank) > (0), 'o caso so vale no meio da fila');
+        assert.ok((layout.get('desce').elevationDeg) < (0));
+    });
+
+    it('poe o alvo que sobe acima do horizonte, mesmo no meio da fila', () => {
+        const nav = navigatorStub(camera);
+        const layout = nav.layoutDirections(fila, FOV);
+
+        assert.ok((layout.get('sobe').rank) > (0), 'o caso so vale no meio da fila');
+        assert.ok((layout.get('sobe').elevationDeg) > (0));
+    });
+
+    it('poe o alvo que sobe acima do horizonte tambem no PRIMEIRO posto', () => {
+        // Aqui a regra antiga reprova: o primeiro icone de uma direcao nascia
+        // abaixo da linha, subisse ele ou nao.
+        const nav = navigatorStub(camera);
+        const layout = nav.layoutDirections(fila, FOV);
+
+        assert.ok((layout.get('sobe_so').rank) < (1), 'o caso so vale no primeiro posto');
+        assert.ok((layout.get('sobe_so').elevationDeg) > (0));
+    });
+
+    it('nao mexe no alvo do mesmo andar', () => {
+        const nav = navigatorStub(camera);
+        const layout = nav.layoutDirections(fila, FOV);
+
+        assert.ok(Math.abs((layout.get('perto').elevationDeg)
+            - (nav.projector.elevationDeg(layout.get('perto').rank))) < 1e-12);
+    });
+
+    it('mede o degrau contra a camera PASSADA, e nao contra a foto aberta', () => {
+        // A vista de tras passa a propria camera. Medindo contra a foto do
+        // overlay principal, ela poria o icone do lado errado da linha.
+        const doTerceiro = navigatorStub(camera).layoutDirections(fila, FOV);
+        const doQuinto = navigatorStub({ lon: 0, lat: 0, floor_level: 5 })
+            .layoutDirections(fila, FOV);
+
+        // O MESMO alvo, olhado de dois andares diferentes, nao pode cair na
+        // mesma altura: do 3o ele sobe, do 5o ele esta no proprio andar.
+        assert.ok((doTerceiro.get('sobe').elevationDeg) > (0));
+        assert.notEqual(doQuinto.get('sobe').elevationDeg,
+            doTerceiro.get('sobe').elevationDeg);
+
+        // E o que descia continua descendo, agora dois andares mais fundo.
+        assert.ok((doQuinto.get('desce').elevationDeg) < (0));
+    });
+});
+
 describe('layoutDirections', () => {
     // The real first photo of the museum: four targets down one corridor.
     const museum = [

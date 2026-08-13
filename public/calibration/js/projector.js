@@ -280,6 +280,40 @@ export class StreetViewProjector {
     }
 
     /**
+     * Altura do icone quando o alvo TROCA de andar.
+     *
+     * A regra e de leitura, nao de enfeite: quem desce fica ABAIXO da linha do
+     * horizonte e quem sobe fica ACIMA. Sem isso o lado do horizonte dependia
+     * da posicao na fila, e um alvo que descia dois andares podia aparecer
+     * acima da linha so por estar em terceiro na direcao. O olho le altura
+     * antes de ler seta.
+     *
+     * O deslocamento reusa a MESMA escada da fila, espelhada. Ela e quem
+     * garante que o centro de um icone nunca cai dentro do disco do icone da
+     * frente, e essa garantia e simetrica: refletir preserva as distancias.
+     * Inventar uma segunda escada para baixo quebraria a propriedade que o
+     * arranjo inteiro sustenta.
+     *
+     * @param {number} rank - Posicao na fila daquela direcao, 0 = primeiro
+     * @param {number} floorDelta - Andares que o alvo sobe (+) ou desce (-)
+     * @returns {number} Elevacao em graus (positivo = acima do horizonte)
+     */
+    elevacaoComAndar(rank, floorDelta) {
+        const semAndar = this.elevationDeg(rank);
+        if (!Number.isFinite(floorDelta) || floorDelta === 0) return semAndar;
+
+        // A escada medida do PE da banda: 0 no primeiro icone, crescendo ate a
+        // banda inteira nos ranks profundos.
+        const escada = semAndar + NAV_CONSTANTS.HORIZON_BASE_DEPRESSION_DEG;
+        // A margem sai do RAIO do primeiro icone, entao o disco nunca encosta
+        // na linha, por maior que o icone fique.
+        const margem = NAV_CONSTANTS.HORIZON_ANGULAR_NEAR * NAV_CONSTANTS.ANDAR_MARGEM_RAIOS;
+        const afastamento = margem + escada;
+
+        return floorDelta > 0 ? afastamento : -afastamento;
+    }
+
+    /**
      * Calculates the focal length for the current canvas and FOV.
      * @param {number} fov - Field of view in degrees
      * @returns {number} Focal length in pixels
