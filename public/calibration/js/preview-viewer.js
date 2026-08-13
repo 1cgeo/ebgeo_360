@@ -878,6 +878,8 @@ function renderRearMarkers() {
             floorDelta: (typeof target.floor_level === 'number'
                 && typeof rearCameraConfig?.floor_level === 'number')
                 ? target.floor_level - rearCameraConfig.floor_level : 0,
+            floorLevel: target.floor_level ?? null,
+            floorLabel: target.floor_label ?? null,
             opacity: rankOpacity(placement.rank, isSelected),
         });
         markerCtx.restore();

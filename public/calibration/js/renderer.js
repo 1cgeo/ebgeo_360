@@ -31,6 +31,10 @@ import { NAV_CONSTANTS } from './constants.js';
  * @param {number} [state.floorDelta] - Andares que o alvo sobe (+) ou desce (-).
  *   Zero desenha o marcador de sempre, e e o que vale para todo projeto sem
  *   andar declarado.
+ * @param {number|null} [state.floorLevel] - `floor_level` do ALVO, o andar a
+ *   que o clique leva.
+ * @param {string|null} [state.floorLabel] - `floor_label` do ALVO. Manda no
+ *   texto desenhado ao lado da seta, e o nivel so vale quando ele falta.
  */
 /**
  * Pontos da seta de troca de andar, no referencial JA transladado do marcador.
@@ -60,10 +64,41 @@ export function pontosDaSeta(radius, sobe) {
     };
 }
 
+/**
+ * O texto que o marcador escreve para o andar de DESTINO.
+ *
+ * Funcao pura, e separada do desenho, porque o rotulo e decisao de DADO, nao de
+ * pincel: o canvas so sabe desenhar texto.
+ *
+ * A regra le o NOME do andar, em vez de mapear numero para letra. Nivel 0 no
+ * Beira-Rio nao e "terreo": sao 86 fotos "Externo", o anel de fora, e 8 fotos
+ * "Campo", o gramado. Sao lugares distintos no mesmo nivel, e um mapa fixo
+ * 0 -> "E" apagaria essa diferenca. Quem nomeia o andar e o dado.
+ *
+ * Rotulo que comeca por algarismo entrega o algarismo ("6o andar" -> "6"), e o
+ * resto entrega a inicial ("Externo" -> "E", "Campo" -> "C"). Sem rotulo, cai
+ * no numero do nivel, que e o que sobra quando o banco nao nomeou nada.
+ *
+ * @param {number|null|undefined} nivel - `floor_level` do alvo
+ * @param {string|null|undefined} [rotulo] - `floor_label` do alvo
+ * @returns {string|null} O texto a desenhar, ou null quando nao ha o que dizer
+ */
+export function rotuloDeAndar(nivel, rotulo = null) {
+    if (typeof rotulo === 'string') {
+        const limpo = rotulo.trim();
+        if (limpo.length > 0) {
+            const digitos = limpo.match(/^\d+/);
+            return digitos ? digitos[0] : limpo[0].toUpperCase();
+        }
+    }
+    if (!Number.isFinite(nivel)) return null;
+    return String(nivel);
+}
+
 export function drawArmillarySphere(ctx, radius, state = {}) {
     const {
         highlighted = false, selected = false, hidden = false, opacity = 1,
-        floorDelta = 0,
+        floorDelta = 0, floorLevel = null, floorLabel = null,
     } = state;
     const r = Math.max(1, radius);
     const TILT = 0.30;
@@ -165,23 +200,47 @@ export function drawArmillarySphere(ctx, radius, state = {}) {
     // A SETA DE ANDAR, por cima da esfera. Ela cresce com o icone e some junto,
     // entao nao vira sujeira no marcador distante da fila.
     if (troca && !hidden) {
-        const p = pontosDaSeta(r, sobe);
+        // A seta diz o SENTIDO, e o texto diz ONDE se chega. Um sem o outro
+        // deixa a pergunta pela metade: no Beira-Rio o vomitorio sobe, mas sobe
+        // para o 4o ou para o 5o? Cabendo os dois, a seta encolhe e sai da
+        // frente; nao cabendo, ela volta inteira ao centro, como sempre foi.
+        const rotulo = rotuloDeAndar(floorLevel, floorLabel);
+        const comNumero = rotulo !== null && r >= NAV_CONSTANTS.ANDAR_NUMERO_RAIO_MIN;
+
+        const rSeta = comNumero ? r * 0.60 : r;
+        const xSeta = comNumero ? -r * 0.42 : 0;
+
+        const p = pontosDaSeta(rSeta, sobe);
         ctx.save();
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
         // Contorno escuro primeiro: a seta tem de ler tanto sobre a lona branca
         // do estadio quanto sobre o corredor escuro.
-        for (const [cor, larg] of [['rgba(0, 0, 0, 0.75)', r * 0.30],
-                                   ['rgba(255, 236, 190, 0.98)', r * 0.16]]) {
+        for (const [cor, larg] of [['rgba(0, 0, 0, 0.75)', rSeta * 0.30],
+                                   ['rgba(255, 236, 190, 0.98)', rSeta * 0.16]]) {
             ctx.strokeStyle = cor;
             ctx.lineWidth = Math.max(1, larg);
             ctx.beginPath();
-            ctx.moveTo(p.cauda.x, p.cauda.y);
-            ctx.lineTo(p.ponta.x, p.ponta.y);
-            ctx.moveTo(p.asaEsq.x, p.asaEsq.y);
-            ctx.lineTo(p.ponta.x, p.ponta.y);
-            ctx.lineTo(p.asaDir.x, p.asaDir.y);
+            ctx.moveTo(xSeta + p.cauda.x, p.cauda.y);
+            ctx.lineTo(xSeta + p.ponta.x, p.ponta.y);
+            ctx.moveTo(xSeta + p.asaEsq.x, p.asaEsq.y);
+            ctx.lineTo(xSeta + p.ponta.x, p.ponta.y);
+            ctx.lineTo(xSeta + p.asaDir.x, p.asaDir.y);
             ctx.stroke();
+        }
+
+        if (comNumero) {
+            // Mesmo contorno e mesma cor da seta, porque os dois sao UMA marca
+            // ("sobe para o 5"), nao dois enfeites soltos sobre a esfera.
+            const corpo = r * (rotulo.length > 1 ? 0.86 : 1.12);
+            ctx.font = `700 ${corpo.toFixed(2)}px system-ui, "Segoe UI", Roboto, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+            ctx.lineWidth = Math.max(1, r * 0.24);
+            ctx.strokeText(rotulo, r * 0.34, 0);
+            ctx.fillStyle = 'rgba(255, 236, 190, 0.98)';
+            ctx.fillText(rotulo, r * 0.34, 0);
         }
         ctx.restore();
     }
@@ -425,6 +484,8 @@ export class StreetViewRenderer {
                 selected: isCalibrationSelected,
                 hidden: isHidden,
                 floorDelta: marker.floorDelta ?? 0,
+                floorLevel: marker.floorLevel ?? null,
+                floorLabel: marker.floorLabel ?? null,
                 opacity: rankOpacity(marker.rank ?? 0, isHovered || isCursorNearest || isCalibrationSelected),
             });
         }

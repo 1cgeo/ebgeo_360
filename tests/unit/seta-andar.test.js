@@ -16,7 +16,9 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { pontosDaSeta } from '../../public/calibration/js/renderer.js';
+import {
+  pontosDaSeta, rotuloDeAndar, drawArmillarySphere,
+} from '../../public/calibration/js/renderer.js';
 
 const R = 20;
 
@@ -72,5 +74,118 @@ describe('pontosDaSeta', () => {
     const grande = pontosDaSeta(30, true);
     assert.ok(Math.abs(grande.ponta.y) > Math.abs(pequena.ponta.y));
     assert.equal(grande.ponta.y / pequena.ponta.y, 3);
+  });
+});
+
+describe('rotuloDeAndar', () => {
+  // Os rotulos abaixo NAO sao inventados: sao os sete valores medidos em
+  // photos.floor_label do beira_rio, com a contagem de fotos de cada um.
+  test('andar numerado entrega o algarismo', () => {
+    assert.equal(rotuloDeAndar(6, '6º andar'), '6');
+    assert.equal(rotuloDeAndar(5, '5º andar'), '5');
+    assert.equal(rotuloDeAndar(1, '1º andar'), '1');
+  });
+
+  test('o nivel 0 do Beira-Rio nao e terreo, e sao DOIS lugares', () => {
+    // 86 fotos "Externo" (o anel de fora) e 8 fotos "Campo" (o gramado), ambas
+    // com floor_level 0. Um mapa fixo 0 -> "E" apagaria o gramado.
+    assert.equal(rotuloDeAndar(0, 'Externo'), 'E');
+    assert.equal(rotuloDeAndar(0, 'Campo'), 'C');
+  });
+
+  test('sem rotulo, o numero do nivel e o que sobra', () => {
+    assert.equal(rotuloDeAndar(5, null), '5');
+    assert.equal(rotuloDeAndar(0, null), '0');
+    assert.equal(rotuloDeAndar(0, '   '), '0');
+  });
+
+  test('o nivel ZERO se escreve, e nao se confunde com ausencia', () => {
+    // Tratar 0 como ausente e o erro classico do `if (nivel)`.
+    assert.equal(rotuloDeAndar(0), '0');
+  });
+
+  test('sem nivel e sem rotulo nao ha texto, e sobra a seta sozinha', () => {
+    for (const vazio of [null, undefined, NaN]) {
+      assert.equal(rotuloDeAndar(vazio), null, `${String(vazio)} devia dar null`);
+      assert.equal(rotuloDeAndar(vazio, null), null, `${String(vazio)} devia dar null`);
+    }
+  });
+});
+
+/**
+ * Contexto de canvas falso, que so ANOTA o que foi pedido.
+ *
+ * Existe porque a regra util nao e a geometria da seta, e sim a decisao de
+ * DESENHAR ou nao o texto. Essa decisao mora dentro do `drawArmillarySphere`,
+ * e sem um espiao ela so apareceria no olho de quem usa, que foi exatamente
+ * como o erro de sinal da seta escapou da primeira vez.
+ */
+function ctxFalso() {
+  const textos = [];
+  const linhas = [];
+  const ctx = {
+    textos, linhas,
+    save() {}, restore() {}, beginPath() {}, stroke() {}, fill() {},
+    arc() {}, ellipse() {}, setLineDash() {},
+    moveTo(x, y) { linhas.push({ x, y }); },
+    lineTo(x, y) { linhas.push({ x, y }); },
+    fillText(t, x, y) { textos.push({ t, x, y }); },
+    strokeText(t, x, y) { textos.push({ t, x, y }); },
+  };
+  return ctx;
+}
+
+describe('o texto do andar no marcador', () => {
+  test('marcador grande que troca de andar escreve o andar de DESTINO', () => {
+    const ctx = ctxFalso();
+    drawArmillarySphere(ctx, 30, { floorDelta: 1, floorLevel: 5, floorLabel: '5º andar' });
+    assert.ok(ctx.textos.length > 0, 'nenhum texto desenhado');
+    assert.ok(ctx.textos.every(d => d.t === '5'),
+      `o texto tinha de ser o destino '5': ${JSON.stringify(ctx.textos)}`);
+  });
+
+  test('descer do 6o para o Externo escreve E, e nao 0 nem -6', () => {
+    // O caso que o chefe pegou na tela: nivel 0 aqui e "Externo", nao terreo.
+    const ctx = ctxFalso();
+    drawArmillarySphere(ctx, 30, { floorDelta: -6, floorLevel: 0, floorLabel: 'Externo' });
+    assert.ok(ctx.textos.length > 0, 'nenhum texto desenhado');
+    assert.ok(ctx.textos.every(d => d.t === 'E'),
+      `esperado 'E': ${JSON.stringify(ctx.textos)}`);
+  });
+
+  test('o texto e o do ALVO, nunca o salto', () => {
+    // Descer do 6o para o 4o e delta -2, e o que se le no icone e 4.
+    const ctx = ctxFalso();
+    drawArmillarySphere(ctx, 30, { floorDelta: -2, floorLevel: 4, floorLabel: '4º andar' });
+    // O `length > 0` nao e zelo: sem ele o `every` de lista VAZIA devolve
+    // true, e o teste passa num renderizador que nao escreve texto nenhum.
+    assert.ok(ctx.textos.length > 0, 'nenhum texto desenhado');
+    assert.ok(ctx.textos.every(d => d.t === '4'),
+      `escreveu o salto em vez do destino: ${JSON.stringify(ctx.textos)}`);
+  });
+
+  test('mesmo andar nao escreve nada, que e o acervo externo inteiro', () => {
+    const ctx = ctxFalso();
+    drawArmillarySphere(ctx, 30, { floorDelta: 0, floorLevel: 1, floorLabel: '1º andar' });
+    assert.equal(ctx.textos.length, 0,
+      `marcador de mesmo andar ganhou texto: ${JSON.stringify(ctx.textos)}`);
+  });
+
+  test('marcador pequeno abandona o texto e recentra a seta', () => {
+    // A regua que decide o texto e a MESMA que decide o lugar da seta: se o
+    // texto nao cabe, a seta nao pode ficar deslocada para um vazio.
+    const ctx = ctxFalso();
+    drawArmillarySphere(ctx, 6, { floorDelta: 1, floorLevel: 5, floorLabel: '5º andar' });
+    assert.equal(ctx.textos.length, 0, 'texto ilegivel foi desenhado');
+    assert.ok(ctx.linhas.some(p => p.x === 0),
+      'a seta sozinha tem de voltar ao centro do marcador');
+  });
+
+  test('alvo oculto nao ganha texto', () => {
+    const ctx = ctxFalso();
+    drawArmillarySphere(ctx, 30, {
+      floorDelta: 1, floorLevel: 5, floorLabel: '5º andar', hidden: true,
+    });
+    assert.equal(ctx.textos.length, 0, 'alvo desligado ganhou texto');
   });
 });

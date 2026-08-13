@@ -110,6 +110,14 @@ export const NAV_CONSTANTS = Object.freeze({
      */
     HOVER_SCALE: 1.10,
 
+    /**
+     * Raio minimo, em pixels, para o marcador de troca de andar levar o texto
+     * do andar de destino. Abaixo disso o algarismo vira borrao ao lado da
+     * seta, e um borrao le pior que a seta sozinha: o marcador pequeno volta a
+     * ser so a seta, centrada, como era antes do texto existir.
+     */
+    ANDAR_NUMERO_RAIO_MIN: 11,
+
     MARKER_COLOR: 'rgba(255, 255, 255, 0.85)',
     MARKER_BORDER_COLOR: 'rgba(0, 0, 0, 0.4)',
     MARKER_BORDER_WIDTH: 3,

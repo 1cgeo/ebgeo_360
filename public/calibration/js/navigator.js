@@ -514,6 +514,8 @@ function projectTargetOnHorizon(target, yaw, pitch, fov) {
             offscreen: true,
             offscreenSide: projected.azimuthRelDeg > 0 ? 'right' : 'left',
             floorDelta: deltaDeAndar(target),
+            floorLevel: target?.floor_level ?? null,
+            floorLabel: target?.floor_label ?? null,
         };
     }
 
@@ -533,6 +535,10 @@ function projectTargetOnHorizon(target, yaw, pitch, fov) {
         // o mesmo andar E para todo projeto SEM andar declarado, entao o acervo
         // externo desenha exatamente como antes.
         floorDelta: deltaDeAndar(target),
+        // O andar de DESTINO, que vira o texto desenhado ao lado da seta. O
+        // rotulo manda, e o nivel so vale quando o banco nao nomeou o andar.
+        floorLevel: target?.floor_level ?? null,
+        floorLabel: target?.floor_label ?? null,
         ...calibrationMeta(target),
     };
 }
