@@ -22,7 +22,7 @@
  *   node scripts/gerar-acervo.js --refazer          # regera o que ja esta pronto
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,10 +76,17 @@ const opt = {
   maior: argv.includes('--maior'),
   so: null,
   workers: null,
+  paralelos: 1,
+  ate: null,
 };
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--so') opt.so = new Set(argv[++i].split(','));
   if (argv[i] === '--workers') opt.workers = argv[++i];
+  if (argv[i] === '--paralelos') opt.paralelos = Math.max(1, parseInt(argv[++i], 10) || 1);
+  // `--ate 2026-08-18T06:30` fecha a janela: nenhum projeto NOVO comeca depois
+  // disso. O que ja estiver rodando termina, porque matar no meio da escrita
+  // deixa banco pela metade e a retomada perde o projeto inteiro.
+  if (argv[i] === '--ate') opt.ate = new Date(argv[++i]).getTime();
 }
 
 // ------------------------------------------------------------------ inventario
@@ -229,50 +236,103 @@ console.log(`\nDiario em ${diario}\n`);
 let seguidas = 0;
 const falhas = [];
 const inicioTudo = Date.now();
+let pararTudo = null;
 
-for (const [i, p] of aFazer.entries()) {
+/**
+ * Roda UM projeto, como processo proprio.
+ *
+ * Processo separado, e nao worker deste script, porque cada projeto escreve no
+ * seu banco e o `generate-tiles.js` ja gerencia o proprio pool. Assim o
+ * paralelismo entre projetos nao disputa a transacao de ninguem.
+ * @param {object} p - Linha do plano.
+ * @param {string} rotulo - Prefixo do log.
+ * @returns {Promise<{ok:boolean,status:number,seg:number,gastos:number}>}
+ */
+function rodarProjeto(p, rotulo) {
   const antes = gbLivres();
-  if (antes < PISO_DISCO_GB) {
-    console.error(`PARANDO: disco em ${antes.toFixed(1)} GB, abaixo do piso de ${PISO_DISCO_GB}.`);
-    registrar({ evento: 'parada', motivo: 'disco', livre: antes });
-    break;
-  }
-
-  const rotulo = `[${i + 1}/${aFazer.length}] ${p.slug} (${p.esperadas} fotos, razao ${p.razao})`;
-  console.log(`\n=== ${rotulo} ===`);
   const t0 = Date.now();
-
   const args = ['scripts/generate-tiles.js', '--project', p.slug];
   if (opt.refazer) args.push('--force');
   if (opt.workers) args.push('--workers', opt.workers);
-  const r = spawnSync(process.execPath, args, { stdio: 'inherit', cwd: resolve(__dirname, '..') });
 
-  const seg = (Date.now() - t0) / 1000;
-  const depois = gbLivres();
-  const ok = r.status === 0;
-
-  registrar({
-    evento: ok ? 'projeto-ok' : 'projeto-falhou',
-    slug: p.slug, fotos: p.esperadas, razao: p.razao,
-    segundos: Math.round(seg), status: r.status,
-    gbGastos: +(antes - depois).toFixed(2), gbPrevistos: +p.gbDisco.toFixed(2),
-    livreDepois: +depois.toFixed(1),
+  return new Promise((resolver) => {
+    // `pipe` e nao `inherit`: com projetos em paralelo, as barras de progresso
+    // se sobrepoem e o log fica ilegivel. Guardamos so as linhas do resumo.
+    const filho = spawn(process.execPath, args, { cwd: resolve(__dirname, '..'), stdio: ['ignore', 'pipe', 'pipe'] });
+    let cauda = '';
+    const juntar = (d) => { cauda = (cauda + d).slice(-4000); };
+    filho.stdout.on('data', juntar);
+    filho.stderr.on('data', juntar);
+    filho.on('close', (status) => {
+      const seg = (Date.now() - t0) / 1000;
+      const gastos = antes - gbLivres();
+      const ok = status === 0;
+      for (const linha of cauda.split(String.fromCharCode(10))) {
+        if (/RAZAO|Tiles:|Conferencia|Grade|Escadas|falha|FALHOU|Erro/i.test(linha)) {
+          console.log(`  ${rotulo} ${linha.trim()}`);
+        }
+      }
+      console.log(`  ${rotulo} ${ok ? 'OK' : 'FALHOU'} em ${(seg / 60).toFixed(1)} min. Gastou ${gastos.toFixed(1)} GB, previa ${p.gbDisco.toFixed(1)} GB.`);
+      registrar({
+        evento: ok ? 'projeto-ok' : 'projeto-falhou',
+        slug: p.slug, fotos: p.esperadas, razao: p.razao,
+        segundos: Math.round(seg), status,
+        gbGastos: +gastos.toFixed(2), gbPrevistos: +p.gbDisco.toFixed(2),
+        livreDepois: +gbLivres().toFixed(1),
+      });
+      resolver({ ok, status, seg, gastos });
+    });
   });
+}
 
-  if (ok) {
-    seguidas = 0;
-    console.log(`  OK em ${(seg / 60).toFixed(1)} min. Gastou ${(antes - depois).toFixed(1)} GB, previa ${p.gbDisco.toFixed(1)} GB.`);
-  } else {
-    seguidas++;
-    falhas.push(p.slug);
-    console.error(`  FALHOU (status ${r.status}). Seguidas: ${seguidas}/${FALHAS_SEGUIDAS_LIMITE}.`);
-    if (seguidas >= FALHAS_SEGUIDAS_LIMITE) {
-      console.error('PARANDO: falhas seguidas demais. Isto e defeito sistemico, nao azar.');
-      registrar({ evento: 'parada', motivo: 'falhas-seguidas', falhas });
-      break;
+// Pool de projetos: `opt.paralelos` correndo ao mesmo tempo, puxando da fila.
+const fila = [...aFazer];
+let proximo = 0;
+
+async function trabalhador(id) {
+  for (;;) {
+    if (pararTudo) return;
+    const i = proximo++;
+    if (i >= fila.length) return;
+    const p = fila[i];
+
+    const livreAgora = gbLivres();
+    if (livreAgora < PISO_DISCO_GB) {
+      pararTudo = 'disco';
+      console.error(`PARANDO: disco em ${livreAgora.toFixed(1)} GB, abaixo do piso de ${PISO_DISCO_GB}.`);
+      registrar({ evento: 'parada', motivo: 'disco', livre: livreAgora });
+      return;
+    }
+    if (opt.ate && Date.now() > opt.ate) {
+      pararTudo = 'prazo';
+      console.error(`PARANDO: passou do prazo. ${fila.length - i} projeto(s) ficaram para depois.`);
+      registrar({ evento: 'parada', motivo: 'prazo', restantes: fila.slice(i).map(x => x.slug) });
+      return;
+    }
+
+    const rotulo = `[t${id} ${i + 1}/${fila.length} ${p.slug}]`;
+    console.log(`
+=== ${rotulo} ${p.esperadas} fotos, razao ${p.razao}, previa ${p.horas.toFixed(1)} h ===`);
+    const r = await rodarProjeto(p, rotulo);
+
+    if (r.ok) {
+      seguidas = 0;
+    } else {
+      seguidas++;
+      falhas.push(p.slug);
+      if (seguidas >= FALHAS_SEGUIDAS_LIMITE) {
+        pararTudo = 'falhas';
+        console.error('PARANDO: falhas seguidas demais. Isto e defeito sistemico, nao azar.');
+        registrar({ evento: 'parada', motivo: 'falhas-seguidas', falhas });
+        return;
+      }
     }
   }
 }
+
+await Promise.all(
+  Array.from({ length: Math.min(opt.paralelos, fila.length) }, (_, k) => trabalhador(k + 1)),
+);
 
 const horas = (Date.now() - inicioTudo) / 3600000;
 console.log(`\n=== FIM: ${horas.toFixed(1)} h de parede. Falhas: ${falhas.length ? falhas.join(', ') : 'nenhuma'} ===`);
