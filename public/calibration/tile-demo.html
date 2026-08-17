@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EBGeo360: piloto de tiles 360</title>
+
+<!-- Favicon embutido: sem ele o browser pede /favicon.ico e o 404 suja o
+     console de quem esta lendo as medidas. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' fill='%23181825' stroke='%2389b4fa' stroke-width='3'/%3E%3Cpath d='M11 2v28M21 2v28M2 11h28M2 21h28' stroke='%2389b4fa' stroke-width='1.5'/%3E%3C/svg%3E" />
+
+<!--
+  O three vem LOCAL, e nao do jsdelivr como o index.html da calibracao.
+
+  Nao e preferencia: na rede do quartel o proxy responde 407 a jsdelivr, o
+  modulo aborta antes de publicar `window.__rodar`, e a medida de parede fica
+  inexecutavel. O `vendor/three.module.js` e a revisao 170, a mesma que o
+  importmap do index.html pede, copiada de node_modules.
+
+  Fica anotado que o index.html continua dependendo do CDN, e que isso e
+  condicao pre-existente do repositorio, nao deste piloto.
+-->
+<link rel="modulepreload" href="./vendor/three.module.js" />
+<script type="importmap">
+{
+    "imports": {
+        "three": "./vendor/three.module.js"
+    }
+}
+</script>
+
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden;
+        font: 13px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #11111b; color: #cdd6f4; }
+    /* overflow auto, e nao hidden: com um viewport dirigido maior que a janela
+       o painel sairia da tela e o humano perderia os botoes. O viewer tem
+       tamanho em px nesse modo, entao a barra de rolagem nao mexe na medida. */
+    #palco { display: flex; width: 100%; height: 100%; overflow: auto; }
+    #viewer { flex: 1; position: relative; background: #000; min-width: 0; }
+    #hud { position: absolute; left: 10px; top: 10px; padding: 6px 10px;
+        background: rgba(17,17,27,.72); border: 1px solid #313244; border-radius: 4px;
+        font-family: ui-monospace, Consolas, monospace; font-size: 12px; pointer-events: none; }
+    #painel { width: 360px; flex: none; height: 100%; overflow-y: auto;
+        background: #181825; border-left: 1px solid #313244; padding: 12px; }
+    h1 { font-size: 15px; margin-bottom: 4px; color: #89b4fa; }
+    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em;
+        color: #a6adc8; margin: 14px 0 6px; border-bottom: 1px solid #313244; padding-bottom: 3px; }
+    p.nota { color: #7f849c; font-size: 12px; }
+    label { display: block; margin-top: 6px; color: #a6adc8; font-size: 12px; }
+    input[type=text], select { width: 100%; padding: 5px 6px; background: #1e1e2e;
+        border: 1px solid #45475a; border-radius: 3px; color: #cdd6f4;
+        font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+    button { margin-top: 6px; padding: 6px 10px; background: #313244; color: #cdd6f4;
+        border: 1px solid #45475a; border-radius: 3px; cursor: pointer; font-size: 12px; }
+    button:hover { background: #45475a; }
+    button.primario { background: #1e66f5; border-color: #1e66f5; color: #fff; }
+    button:disabled { opacity: .5; cursor: default; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; }
+    th, td { border: 1px solid #313244; padding: 3px 6px; text-align: left; }
+    th { background: #1e1e2e; color: #a6adc8; font-weight: 500; width: 58%; }
+    td.num { font-family: ui-monospace, Consolas, monospace; text-align: right; }
+    .linha { display: flex; gap: 6px; }
+    .linha > * { flex: 1; }
+    #log, #piloto { margin-top: 6px; max-height: 160px; overflow: auto; background: #11111b;
+        border: 1px solid #313244; border-radius: 3px; padding: 6px;
+        font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #9399b2;
+        white-space: pre-wrap; }
+    .ganho { color: #a6e3a1; font-weight: 600; }
+    .perda { color: #f38ba8; font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="palco">
+    <div id="viewer"><div id="hud">carregando…</div></div>
+
+    <aside id="painel">
+        <h1>Piloto de tiles 360</h1>
+        <p class="nota">Compara a piramide de tiles contra o WebP inteiro de hoje.
+            Arraste para girar, roda para o zoom (FOV 10 a 75).</p>
+
+        <h2>Foto</h2>
+        <label for="slug">Projeto (slug)</label>
+        <div class="linha">
+            <input type="text" id="slug" value="museu_cms" />
+            <button id="btListar">Listar</button>
+        </div>
+        <label for="lista">Fotos do projeto</label>
+        <select id="lista"><option value="">(clique em Listar)</option></select>
+        <label for="uuid">UUID</label>
+        <input type="text" id="uuid" value="6a0ab98b-81d0-453a-b2c8-582c1d65a67a" />
+        <button id="btCarregar" class="primario">Carregar por tiles</button>
+
+        <h2>Fundo</h2>
+        <label for="estrategia">Estrategia de fundo</label>
+        <select id="estrategia"></select>
+        <p class="nota" id="notaEstrategia"></p>
+
+        <h2>Viewport</h2>
+        <label for="viewport">Tamanho aplicado ao canvas</label>
+        <select id="viewport">
+            <option value="auto">a janela (uso humano)</option>
+            <option value="1350x673">notebook 1350x673 (dpr 1)</option>
+            <option value="1904x985">monitor 1904x985 (dpr 1)</option>
+            <option value="1280x720">1280x720 (dpr 1)</option>
+        </select>
+        <p class="nota">O tamanho vai ao canvas E a camera. Anotar sem aplicar
+            deixaria a escolha de nivel presa a janela real. O driver headless
+            nao usa este seletor: sem viewport, <code>__rodar</code> toma a
+            janela inteira, que e o tamanho com que ele abriu o Chrome.</p>
+
+        <h2>Rede</h2>
+        <label for="cache">Cache do navegador</label>
+        <select id="cache">
+            <option value="no-store">no-store (nao le nem grava)</option>
+            <option value="reload">reload (vai a rede, mas grava)</option>
+            <option value="default">default (usa o cache)</option>
+        </select>
+
+        <h2>Nivel</h2>
+        <select id="nivel"><option value="auto">automatico (pela tela)</option></select>
+
+        <h2>Medida ao vivo</h2>
+        <table>
+            <tr><th>Estrategia de fundo</th><td class="num" id="mEstrategia">-</td></tr>
+            <tr><th>Nivel em uso</th><td class="num" id="mNivel">-</td></tr>
+            <tr><th>Largura necessaria (px)</th><td class="num" id="mNecessaria">-</td></tr>
+            <tr><th>Tiles pedidos / desenhados</th><td class="num" id="mTiles">-</td></tr>
+            <tr><th>Tiles em voo</th><td class="num" id="mPendentes">-</td></tr>
+            <tr><th>Requests na rede</th><td class="num" id="mRequests">-</td></tr>
+            <tr><th>Bytes baixados</th><td class="num" id="mBytes">-</td></tr>
+            <tr><th>&nbsp;&nbsp;descritor / preview / fundo</th><td class="num" id="mBytesParcelas">-</td></tr>
+            <tr><th>ms ate a primeira pintura</th><td class="num" id="mPrimeira">-</td></tr>
+            <tr><th>ms ate o nivel alvo completo</th><td class="num" id="mCompleto">-</td></tr>
+        </table>
+
+        <h2>Comparativo</h2>
+        <p class="nota">Baixa a MESMA foto pelo caminho de hoje (preview e depois
+            <code>image?quality=full</code>) e poe os dois lado a lado. Estas
+            quatro linhas sao o produto do piloto.</p>
+        <button id="btFull">Comparar com full</button>
+        <table>
+            <tr><th></th><td class="num">tiles</td><td class="num">full</td></tr>
+            <tr><th>bytes</th><td class="num" id="cBytesT">-</td><td class="num" id="cBytesF">-</td></tr>
+            <tr><th>requests</th><td class="num" id="cReqT">-</td><td class="num" id="cReqF">-</td></tr>
+            <tr><th>ms ate a primeira pintura</th><td class="num" id="cMsT">-</td><td class="num" id="cMsF">-</td></tr>
+            <tr><th>ms ate o nivel alvo completo</th><td class="num" id="cMsTC">-</td><td class="num" id="cMsFD">-</td></tr>
+        </table>
+        <p class="nota" id="veredito"></p>
+
+        <h2>Execucao dirigida</h2>
+        <p class="nota">O mesmo caminho que o Chrome headless chama por
+            <code>window.__rodar(...)</code>. O botao usa os seletores acima, e o
+            resultado e o objeto <code>window.__piloto</code>.</p>
+        <button id="btRodar">Rodar dirigido (tiles)</button>
+        <div id="piloto">window.__piloto: (nenhuma execucao)</div>
+
+        <h2>Ambiente</h2>
+        <table>
+            <tr><th>MAX_TEXTURE_SIZE</th><td class="num" id="aMax">-</td></tr>
+            <tr><th>Buffer de render</th><td class="num" id="aBuffer">-</td></tr>
+            <tr><th>devicePixelRatio</th><td class="num" id="aDpr">-</td></tr>
+            <tr><th>Raiz da API</th><td class="num" id="aBase">-</td></tr>
+        </table>
+
+        <h2>Log</h2>
+        <div id="log"></div>
+    </aside>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import {
+    bytesDaResposta,
+    createTileLoader,
+    ESTRATEGIAS_FUNDO,
+    ESTRATEGIA_FUNDO_PADRAO,
+    raizDaApi,
+} from './js/tile-loader.js';
+
+// A raiz da API sai do endereco desta pagina, e nao da constante '/api/v1' que
+// api.js usa. Aquela so vale na raiz do dominio: em producao o servico responde
+// atras de `location /ebgeo_360/`, e o caminho absoluto daria 404 no comparativo
+// inteiro. O override manual pela query (`?api=/outro/api/v1`) fica para apontar
+// o demo a outra instancia sem editar arquivo.
+const PARAMS = new URLSearchParams(location.search);
+const BASE = PARAMS.get('api') || raizDaApi();
+
+/**
+ * Timeout padrao de uma execucao dirigida, em ms.
+ *
+ * Explicito, e nunca infinito: o driver headless nao tem quem clique nele, e uma
+ * promessa que nao resolve trava a serie inteira sem dizer em qual foto parou.
+ */
+const TIMEOUT_PADRAO_MS = 30000;
+
+// ============================================================================
+// CENA
+// ============================================================================
+
+const container = document.getElementById('viewer');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+// Mesmo teto de DPR do viewer.js, para a medida do demo valer para a interface
+// de calibracao: um DPR livre mudaria a largura necessaria e, com ela, o nivel.
+let dprAtual = Math.min(window.devicePixelRatio, 2);
+renderer.setPixelRatio(dprAtual);
+renderer.setSize(container.clientWidth, container.clientHeight);
+container.appendChild(renderer.domElement);
+renderer.domElement.style.display = 'block';
+
+const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+camera.position.set(0, -0.1, 0);
+camera.rotation.order = 'YXZ';
+
+const scene = new THREE.Scene();
+scene.add(camera);
+
+// Esfera invertida, identica a do viewer.js: a UV da SphereGeometry ja mapeia a
+// equirretangular, e por isso o carregador entrega UMA textura so.
+const geometry = new THREE.SphereGeometry(500, 60, 40);
+geometry.scale(-1, 1, 1);
+const material = new THREE.MeshBasicMaterial({ color: 0x111111 });
+const sphere = new THREE.Mesh(geometry, material);
+sphere.rotation.order = 'ZXY';
+scene.add(sphere);
+
+let lon = 0;
+let lat = 0;
+let fov = 75;
+
+// ============================================================================
+// CONTROLE DE CAMERA (mesma matematica do viewer.js)
+// ============================================================================
+
+let arrastando = false;
+let x0 = 0, y0 = 0, lon0 = 0, lat0 = 0;
+const tela = renderer.domElement;
+
+tela.addEventListener('pointerdown', (e) => {
+    arrastando = true;
+    x0 = e.clientX; y0 = e.clientY; lon0 = lon; lat0 = lat;
+    tela.setPointerCapture(e.pointerId);
+});
+tela.addEventListener('pointermove', (e) => {
+    if (!arrastando) return;
+    // Sensibilidade proporcional a fov, senao o arrasto fica violento no zoom.
+    const sensibilidade = 0.1 * (fov / 75);
+    lon = lon0 - (e.clientX - x0) * sensibilidade;
+    lat = lat0 + (e.clientY - y0) * sensibilidade;
+    lat = Math.max(-85, Math.min(85, lat));
+});
+tela.addEventListener('pointerup', () => { arrastando = false; });
+tela.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    fov = Math.max(10, Math.min(75, fov + e.deltaY * 0.05));
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+}, { passive: false });
+
+/**
+ * Poe o renderer e a camera no tamanho que o container tem AGORA.
+ * Um caminho so, usado pelo resize da janela e pelo viewport dirigido: dois
+ * lugares chamando setSize com contas diferentes foi como o buffer de render e a
+ * fov horizontal ja discordaram uma vez.
+ */
+function ajustarRenderer() {
+    const largura = container.clientWidth;
+    const altura = container.clientHeight;
+    if (largura <= 0 || altura <= 0) return;
+    camera.aspect = largura / altura;
+    camera.updateProjectionMatrix();
+    renderer.setPixelRatio(dprAtual);
+    renderer.setSize(largura, altura);
+}
+
+window.addEventListener('resize', ajustarRenderer);
+
+/**
+ * Aplica um viewport DE VERDADE: muda o tamanho do container, do canvas e da
+ * camera. O carregador escolhe o nivel por `renderer.domElement.width`, entao um
+ * viewport apenas anotado deixaria toda execucao medindo a janela real da
+ * maquina, e a escolha de nivel nunca mudaria.
+ *
+ * O dpr entra fixo em 1 no modo dirigido. O Chrome headless abre em 1, e deixar
+ * o dpr da maquina entrar faria a mesma serie dar niveis diferentes em telas
+ * diferentes, que e justamente a variavel que o piloto quer controlar.
+ *
+ * @param {{largura: number, altura: number, dpr?: number}|null} viewport
+ * @returns {{largura: number, altura: number, dpr: number}} o que ficou valendo
+ */
+function aplicarViewport(viewport) {
+    if (viewport && viewport.largura > 0 && viewport.altura > 0) {
+        // Sem dpr declarado vale a politica da pagina (teto 2), que e a mesma do
+        // viewer.js. Os presets do seletor declaram dpr 1 de proposito: e o dpr
+        // com que o orcamento da escada foi feito, e tambem o do Chrome headless.
+        // `flex: 0 0 auto` impede o flex de encolher o palco: sem isso, numa
+        // janela estreita o container ficaria menor que o pedido e a medida
+        // sairia com outro tamanho do que o rotulo diz.
+        container.style.flex = '0 0 auto';
+        container.style.width = `${viewport.largura}px`;
+        container.style.height = `${viewport.altura}px`;
+        dprAtual = viewport.dpr > 0 ? viewport.dpr : Math.min(window.devicePixelRatio, 2);
+    } else {
+        container.style.flex = '';
+        container.style.width = '';
+        container.style.height = '';
+        dprAtual = Math.min(window.devicePixelRatio, 2);
+    }
+    ajustarRenderer();
+    return {
+        largura: container.clientWidth,
+        altura: container.clientHeight,
+        dpr: dprAtual,
+    };
+}
+
+// ============================================================================
+// CARREGADOR
+// ============================================================================
+
+const gl = renderer.getContext();
+/** Teto de textura desta maquina, o mesmo que o carregador respeita. */
+const MAX_TEXTURA = Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE), 16384);
+
+/** Textura do comparativo full. So o demo a cria, e so ele a descarta. */
+let texturaFull = null;
+
+function largarTexturaFull() {
+    if (texturaFull) texturaFull.dispose();
+    texturaFull = null;
+}
+
+const carregador = createTileLoader({
+    gl,
+    // A mesma raiz do resto do demo, para as duas colunas do comparativo
+    // falarem com o mesmo servidor.
+    base: BASE,
+    estrategiaFundo: ESTRATEGIA_FUNDO_PADRAO,
+    onTextura: (textura) => {
+        // O carregador ja descartou a textura anterior DELE em
+        // reconstruirCanvas. O que sobra para o demo largar e a do full, que so
+        // ele criou. Descartar `material.map` as cegas mataria duas vezes a
+        // mesma textura e uma vez a que o carregador ainda vai repintar.
+        largarTexturaFull();
+        material.map = textura;
+        material.color.set(0xffffff);
+        material.needsUpdate = true;
+    },
+    onEstatisticas: mostrarEstatisticas,
+    onLog: escreverLog,
+});
+
+const alvo = new THREE.Vector3();
+
+function animar() {
+    requestAnimationFrame(animar);
+
+    const phi = THREE.MathUtils.degToRad(90 - lat);
+    const theta = THREE.MathUtils.degToRad(lon);
+    alvo.set(
+        500 * Math.sin(phi) * Math.cos(theta),
+        500 * Math.cos(phi),
+        500 * Math.sin(phi) * Math.sin(theta),
+    );
+    camera.lookAt(alvo);
+
+    // A largura do buffer ja inclui o devicePixelRatio, que e o numero que a
+    // formula do contrato pede.
+    carregador.atualizarCamera({
+        lon, lat, fov,
+        largura: renderer.domElement.width,
+        altura: renderer.domElement.height,
+    });
+    // Uma unica subida de textura por frame: por tile, cada needsUpdate
+    // reenviaria o canvas inteiro para a GPU.
+    carregador.aplicarAtualizacoes();
+
+    renderer.render(scene, camera);
+    atualizarHud();
+}
+animar();
+
+// ============================================================================
+// PAINEL
+// ============================================================================
+
+// Declaracao de funcao, e nao `const $ = ...`: o laco de render comeca la em
+// cima, no meio do corpo do modulo, e uma seta em `const` ainda estaria na zona
+// morta quando o primeiro quadro chama o HUD. O ReferenceError abortava o corpo
+// do modulo inteiro, e a pagina abria sem nenhum listener e sem carregar foto.
+function $(id) {
+    return document.getElementById(id);
+}
+
+function escreverLog(msg) {
+    const el = $('log');
+    el.textContent += `${new Date().toLocaleTimeString()}  ${msg}\n`;
+    el.scrollTop = el.scrollHeight;
+}
+
+function kb(bytes) {
+    if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`;
+    return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+let ultimaEstat = null;
+
+/** Numero ainda nao medido. Um traco, e nunca zero, que se confunde com medida. */
+const VAZIO = '-';
+
+function ms(valor) {
+    return valor === null || valor === undefined ? VAZIO : String(valor);
+}
+
+/**
+ * Quem espera o nivel alvo completar. Mora aqui, e nao dentro do carregador,
+ * porque a condicao de pronto do piloto e "alvo completo E nada mais em voo": o
+ * debounce da camera pode acrescentar tiles depois do primeiro lote fechar.
+ */
+let aguardandoAlvo = null;
+
+function mostrarEstatisticas(e) {
+    ultimaEstat = e;
+    $('mEstrategia').textContent = e.estrategiaFundo || VAZIO;
+    $('mNivel').textContent = e.nivel === null ? VAZIO : String(e.nivel);
+    $('mNecessaria').textContent = e.larguraNecessaria ? String(e.larguraNecessaria) : VAZIO;
+    $('mTiles').textContent = `${e.tilesPedidos} / ${e.tilesDesenhados}`;
+    $('mPendentes').textContent = String(e.pendentes);
+    // `requests` conta o que foi a rede: descritor, preview e tiles. E o numero
+    // que se compara com as duas requisicoes do caminho de hoje.
+    $('mRequests').textContent = String(e.requests);
+    $('mBytes').textContent = kb(e.bytes);
+    $('mBytesParcelas').textContent =
+        `${kb(e.bytesDescritor)} / ${kb(e.bytesPreview)} / ${kb(e.bytesFundo)}`;
+    $('mPrimeira').textContent = ms(e.msPrimeiraPintura);
+    $('mCompleto').textContent = ms(e.msNivelCompleto);
+    $('cBytesT').textContent = kb(e.bytes);
+    $('cReqT').textContent = String(e.requests);
+    $('cMsT').textContent = ms(e.msPrimeiraPintura);
+    $('cMsTC').textContent = ms(e.msNivelCompleto);
+    if (aguardandoAlvo) aguardandoAlvo(e);
+    vereditoComparativo();
+}
+
+function atualizarHud() {
+    $('hud').textContent =
+        `lon ${lon.toFixed(1)}  lat ${lat.toFixed(1)}  fov ${fov.toFixed(1)}  ` +
+        `${renderer.domElement.width}x${renderer.domElement.height}`;
+}
+
+$('aMax').textContent = String(gl.getParameter(gl.MAX_TEXTURE_SIZE));
+$('aDpr').textContent = String(window.devicePixelRatio);
+$('aBase').textContent = BASE;
+setInterval(() => {
+    $('aBuffer').textContent = `${renderer.domElement.width}x${renderer.domElement.height}`;
+}, 500);
+
+// ============================================================================
+// CONTROLES
+// ============================================================================
+
+/** Uma linha por estrategia, para o humano saber o que esta escolhendo. */
+const EXPLICACAO_FUNDO = {
+    preview: 'So o preview esticado, como Google e Photo Sphere Viewer.',
+    nivel0vis: 'Preview mais os tiles de nivel 0 que a camera ve.',
+    nivel0: 'Preview mais o nivel 0 inteiro. E o desenho antigo, para comparar.',
+};
+
+$('estrategia').innerHTML = ESTRATEGIAS_FUNDO
+    .map((nome) => `<option value="${nome}">${nome}</option>`)
+    .join('');
+$('estrategia').value = ESTRATEGIA_FUNDO_PADRAO;
+$('estrategia').addEventListener('change', (e) => {
+    carregador.definirEstrategiaFundo(e.target.value);
+    $('notaEstrategia').textContent = EXPLICACAO_FUNDO[e.target.value] || '';
+    escreverLog(`fundo: ${e.target.value} (vale na proxima carga)`);
+});
+$('notaEstrategia').textContent = EXPLICACAO_FUNDO[ESTRATEGIA_FUNDO_PADRAO];
+
+$('cache').addEventListener('change', (e) => {
+    carregador.ignorarCache(e.target.value);
+    escreverLog(`cache: ${e.target.value}`);
+});
+carregador.ignorarCache($('cache').value);
+
+/**
+ * Le o seletor de viewport. `auto` devolve null, que e o pedido para soltar o
+ * container e voltar a acompanhar a janela.
+ * @returns {{largura: number, altura: number, dpr: number}|null}
+ */
+function viewportDoSeletor() {
+    const v = $('viewport').value;
+    if (v === 'auto') return null;
+    const [largura, altura] = v.split('x').map(Number);
+    return { largura, altura, dpr: 1 };
+}
+
+$('viewport').addEventListener('change', () => {
+    const aplicado = aplicarViewport(viewportDoSeletor());
+    escreverLog(`viewport ${aplicado.largura}x${aplicado.altura} dpr ${aplicado.dpr}`);
+});
+
+$('btListar').addEventListener('click', async () => {
+    const slug = $('slug').value.trim();
+    try {
+        const r = await fetch(`${BASE}/projects/${slug}/photos`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const dados = await r.json();
+        const sel = $('lista');
+        sel.innerHTML = dados.photos
+            .map((p) => `<option value="${p.id}">${p.displayName}</option>`)
+            .join('');
+        escreverLog(`${dados.photos.length} fotos em ${slug}`);
+        if (dados.photos.length) $('uuid').value = dados.photos[0].id;
+    } catch (erro) {
+        escreverLog(`listar ${slug}: ${erro.message}`);
+    }
+});
+
+$('lista').addEventListener('change', (e) => {
+    if (e.target.value) $('uuid').value = e.target.value;
+});
+
+$('btCarregar').addEventListener('click', carregarPorTiles);
+
+async function carregarPorTiles() {
+    const uuid = $('uuid').value.trim();
+    if (!uuid) return;
+    zerarComparativo();
+    $('btCarregar').disabled = true;
+    try {
+        const descritor = await carregador.carregarFoto(uuid, {
+            estrategiaFundo: $('estrategia').value,
+        });
+        // null significa que outra foto tomou o lugar desta no meio do
+        // carregamento. Montar o seletor aqui poria os niveis da foto velha
+        // sobre a nova, que e exatamente a corrida que o carregador corta.
+        if (!descritor) return;
+        montarSeletorDeNivel(descritor);
+        escreverLog(
+            `${descritor.width}x${descritor.height}, tile ${descritor.tileSize}, ` +
+            `niveis 0..${descritor.maxLevel}, razao ${razaoDaEscada(descritor)}`,
+        );
+    } catch (erro) {
+        escreverLog(`carregar ${uuid}: ${erro.message}`);
+    } finally {
+        $('btCarregar').disabled = false;
+    }
+}
+
+function montarSeletorDeNivel(descritor) {
+    const sel = $('nivel');
+    sel.innerHTML =
+        '<option value="auto">automatico (pela tela)</option>' +
+        descritor.levels
+            .map((n) => `<option value="${n.level}">nivel ${n.level}: ${n.width}x${n.height} (${n.cols}x${n.rows})</option>`)
+            .join('');
+}
+
+$('nivel').addEventListener('change', (e) => {
+    const v = e.target.value;
+    carregador.fixarNivel(v === 'auto' ? null : Number(v));
+    escreverLog(`nivel ${v}`);
+});
+
+/**
+ * A razao da piramide que ESTA no ar, medida na escada publicada.
+ *
+ * O numero sai do descritor, e nao de uma constante do cliente: a escada e
+ * determinada por (width, height, tileSize, razao), entao supor a razao errada e
+ * supor outra grade. Quando o servidor publicar `razao` no descritor, ele manda;
+ * ate la a mediana das razoes entre niveis vizinhos e a leitura direta do fato.
+ * Mediana, e nao media, porque o arredondamento de cada degrau desvia o primeiro
+ * salto quando a largura nativa nao e potencia da razao.
+ *
+ * @param {Object} descritor
+ * @returns {number|null}
+ */
+function razaoDaEscada(descritor) {
+    if (Number.isFinite(descritor.razao)) return descritor.razao;
+    const ordem = [...descritor.levels].sort((a, b) => a.level - b.level);
+    if (ordem.length < 2) return null;
+    const razoes = ordem.slice(1).map((n, i) => n.width / ordem[i].width);
+    razoes.sort((a, b) => a - b);
+    return Number(razoes[Math.floor(razoes.length / 2)].toFixed(3));
+}
+
+// ============================================================================
+// COMPARATIVO COM O CAMINHO DE HOJE
+// ============================================================================
+
+let medidaFull = null;
+
+function zerarComparativo() {
+    medidaFull = null;
+    $('cBytesF').textContent = VAZIO;
+    $('cReqF').textContent = VAZIO;
+    $('cMsF').textContent = VAZIO;
+    $('cMsFD').textContent = VAZIO;
+    $('veredito').textContent = '';
+}
+
+/**
+ * Pinta uma equirretangular inteira na esfera, pelo mesmo caminho de canvas que
+ * o carregador usa. Vale a pena pintar de verdade: sem isso o comparativo
+ * mediria decodificacao, e nao o instante em que a imagem aparece.
+ * @param {ImageBitmap} bitmap
+ */
+function pintarNaEsfera(bitmap) {
+    const largura = Math.min(bitmap.width, MAX_TEXTURA);
+    const altura = Math.round((largura * bitmap.height) / bitmap.width);
+    const canvas = document.createElement('canvas');
+    canvas.width = largura;
+    canvas.height = altura;
+    canvas.getContext('2d', { alpha: false }).drawImage(bitmap, 0, 0, largura, altura);
+
+    // Canvas e textura novos a cada pintura, e nao reaproveitados: o carregador
+    // pode ter descartado a textura anterior no meio do caminho, e uma textura
+    // ja descartada volta preta sem lancar erro nenhum.
+    const nova = new THREE.CanvasTexture(canvas);
+    nova.colorSpace = THREE.SRGBColorSpace;
+    nova.generateMipmaps = false;
+    nova.minFilter = THREE.LinearFilter;
+    nova.magFilter = THREE.LinearFilter;
+    largarTexturaFull();
+    texturaFull = nova;
+    material.map = nova;
+    material.color.set(0xffffff);
+    material.needsUpdate = true;
+}
+
+/**
+ * Mede o caminho de hoje: preview e depois o WebP inteiro.
+ *
+ * Duas requisicoes, e nao uma: e assim que o visualizador de producao abre uma
+ * foto, e comparar contra so o full daria ao caminho antigo um desconto que ele
+ * nao tem.
+ *
+ * @param {string} uuid
+ * @param {number} t0 - marca zero, tomada pelo chamador no mesmo relogio
+ * @param {string} modoCache - o mesmo `cache:` que o lado dos tiles usou
+ * @returns {Promise<Object>} as mesmas chaves de medida do modo tiles
+ */
+async function medirFull(uuid, t0, modoCache) {
+    let requests = 0;
+    let bytes = 0;
+    let bytesPreview = 0;
+    let msPrimeiraPintura = null;
+
+    requests++;
+    const respPreview = await fetch(`${BASE}/photos/${uuid}/image?quality=preview`, {
+        cache: modoCache,
+    });
+    if (respPreview.ok) {
+        const buffer = await respPreview.arrayBuffer();
+        bytesPreview = bytesDaResposta(respPreview, buffer);
+        bytes += bytesPreview;
+        const bitmap = await createImageBitmap(new Blob([buffer], { type: 'image/webp' }));
+        pintarNaEsfera(bitmap);
+        bitmap.close();
+        msPrimeiraPintura = Math.round(performance.now() - t0);
+    }
+
+    requests++;
+    const resp = await fetch(`${BASE}/photos/${uuid}/image?quality=full`, { cache: modoCache });
+    if (!resp.ok) throw new Error(`full: HTTP ${resp.status}`);
+    const buffer = await resp.arrayBuffer();
+    bytes += bytesDaResposta(resp, buffer);
+    const bitmap = await createImageBitmap(new Blob([buffer], { type: 'image/webp' }));
+    pintarNaEsfera(bitmap);
+    bitmap.close();
+    const msCompleto = Math.round(performance.now() - t0);
+
+    return {
+        requests,
+        bytes,
+        bytesDescritor: 0,
+        bytesPreview,
+        bytesFundo: 0,
+        tilesPedidos: 0,
+        tilesDesenhados: 0,
+        // O full nao tem nivel: ele e o nativo inteiro, sempre.
+        nivelEscolhido: null,
+        larguraNecessaria: null,
+        msPrimeiraPintura,
+        msNivelAlvoCompleto: msCompleto,
+        completo: true,
+    };
+}
+
+function mostrarColunaFull(medida) {
+    medidaFull = medida;
+    $('cBytesF').textContent = kb(medida.bytes);
+    $('cReqF').textContent = String(medida.requests);
+    $('cMsF').textContent = ms(medida.msPrimeiraPintura);
+    $('cMsFD').textContent = ms(medida.msNivelAlvoCompleto);
+    vereditoComparativo();
+}
+
+function vereditoComparativo() {
+    if (!ultimaEstat || !medidaFull || ultimaEstat.msNivelCompleto === null) return;
+    // Preview que falhou deixa o tempo de primeira pintura nulo, e a divisao
+    // sairia NaN. Sem os quatro numeros nao ha veredito, e um veredito com NaN
+    // seria pior que nenhum.
+    if (ultimaEstat.msPrimeiraPintura === null || medidaFull.msPrimeiraPintura === null) return;
+    const razaoBytes = ultimaEstat.bytes / medidaFull.bytes;
+    const razaoPrimeira = ultimaEstat.msPrimeiraPintura / medidaFull.msPrimeiraPintura;
+    const razaoCompleto = ultimaEstat.msNivelCompleto / medidaFull.msNivelAlvoCompleto;
+    // A classe sai da MEDIDA, e nao de uma aposta: abaixo de 1 os tiles ganham,
+    // acima eles perdem, e o veredito tem de saber dizer as duas coisas.
+    const cor = (razao) => (razao <= 1 ? 'ganho' : 'perda');
+    $('veredito').innerHTML =
+        `Tiles gastam <span class="${cor(razaoBytes)}">${razaoBytes.toFixed(2)}x</span> os bytes ` +
+        `do full em ${ultimaEstat.requests} requests contra ${medidaFull.requests}. ` +
+        `Mostram a primeira imagem em <span class="${cor(razaoPrimeira)}">${razaoPrimeira.toFixed(2)}x</span> ` +
+        `o tempo dele, e completam o nivel alvo em ` +
+        `<span class="${cor(razaoCompleto)}">${razaoCompleto.toFixed(2)}x</span>.`;
+}
+
+// ============================================================================
+// MODO DIRIGIDO
+// ============================================================================
+
+/**
+ * Espera o nivel alvo fechar: `msNivelCompleto` medido E nada mais em voo.
+ * @param {number} limiteMs
+ * @returns {{promessa: Promise<boolean>, cancelar: () => void}}
+ */
+function esperarAlvo(limiteMs) {
+    let relogio = null;
+    const promessa = new Promise((resolve) => {
+        relogio = setTimeout(() => {
+            aguardandoAlvo = null;
+            resolve(false);
+        }, limiteMs);
+        aguardandoAlvo = (e) => {
+            if (e.msNivelCompleto === null || e.pendentes > 0) return;
+            clearTimeout(relogio);
+            aguardandoAlvo = null;
+            resolve(true);
+        };
+    });
+    return {
+        promessa,
+        cancelar() {
+            clearTimeout(relogio);
+            aguardandoAlvo = null;
+        },
+    };
+}
+
+/**
+ * Espera um quadro. Depois dele o `atualizarCamera` do laco ja empurrou o novo
+ * viewport ao carregador, e a escolha de nivel considera o tamanho certo.
+ * @returns {Promise<void>}
+ */
+function proximoQuadro() {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function mostrarPiloto(medida) {
+    $('piloto').textContent = `window.__piloto =\n${JSON.stringify(medida, null, 2)}`;
+}
+
+/**
+ * Uma execucao medida, do jeito que o Chrome headless precisa: numeros por
+ * objeto, e nao por pixel na tela.
+ *
+ * A promessa resolve SO quando o nivel alvo completa, ou quando estoura
+ * `timeoutMs`. Nos dois casos ela resolve com o objeto de medida, e `completo`
+ * diz qual dos dois aconteceu: rejeitar por timeout obrigaria o driver a
+ * adivinhar o que ja tinha sido medido.
+ *
+ * @param {Object} [opcoes]
+ * @param {string} [opcoes.uuid] - foto. Sem ela, a do campo de UUID
+ * @param {string} [opcoes.estrategia] - um de ESTRATEGIAS_FUNDO
+ * @param {number} [opcoes.razao] - a razao com que a piramide FOI gerada. Serve
+ *   de conferencia: o cliente nao reconstroi a escada, quem manda e o descritor
+ * @param {{largura: number, altura: number, dpr?: number}|null} [opcoes.viewport] -
+ *   AUSENTE vale a janela inteira, que e o que um driver headless quer dizer ao
+ *   abrir o Chrome com `--window-size`. `null` deixa o layout mandar, que e o
+ *   caso do humano com o painel do lado. Objeto forca o tamanho
+ * @param {number} [opcoes.lon]
+ * @param {number} [opcoes.lat]
+ * @param {number} [opcoes.fov]
+ * @param {'tiles'|'full'} [opcoes.modo]
+ * @param {'no-store'|'reload'|'default'} [opcoes.cache]
+ * @param {number} [opcoes.timeoutMs]
+ * @returns {Promise<Object>} a medida, tambem deixada em `window.__piloto`
+ */
+async function rodar(opcoes = {}) {
+    const {
+        uuid = $('uuid').value.trim(),
+        estrategia = $('estrategia').value,
+        razao = null,
+        // Sem viewport o canvas toma a JANELA INTEIRA, e nao a sobra ao lado do
+        // painel de 360 px. O driver headless dimensiona o Chrome com
+        // `--window-size` e rotula a serie com esse tamanho: se o painel comesse
+        // 360 px, a linha rotulada 1350x673 teria medido 990x673, e a largura
+        // necessaria (e com ela o nivel escolhido) sairia de outra tela.
+        viewport = { largura: window.innerWidth, altura: window.innerHeight },
+        lon: lonPedida = 0,
+        lat: latPedida = 0,
+        fov: fovPedida = 75,
+        modo = 'tiles',
+        cache = $('cache').value,
+        timeoutMs = TIMEOUT_PADRAO_MS,
+    } = opcoes;
+
+    // A camera e o viewport entram ANTES do relogio comecar. Aplicar depois
+    // mediria a reconstrucao do canvas junto com a rede.
+    const viewportAplicado = aplicarViewport(viewport);
+    lon = lonPedida;
+    lat = latPedida;
+    fov = fovPedida;
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+    // Dois quadros: o primeiro aplica o tamanho novo ao canvas, o segundo
+    // garante que o laco ja mandou essa camera ao carregador.
+    await proximoQuadro();
+    await proximoQuadro();
+
+    carregador.ignorarCache(cache);
+    $('cache').value = cache;
+    // Cache FRIO do proprio carregador. Sem isto, a segunda execucao da mesma
+    // foto acha os bitmaps em memoria, nao pede nada e mede zero byte.
+    carregador.limparCaches();
+
+    const medida = {
+        ok: false,
+        modo,
+        uuid,
+        estrategia: modo === 'full' ? null : estrategia,
+        razao: null,
+        razaoDeclarada: razao,
+        nivelEscolhido: null,
+        viewport: viewportAplicado,
+        lon, lat, fov,
+        cache,
+        requests: 0,
+        bytes: 0,
+        msPrimeiraPintura: null,
+        msNivelAlvoCompleto: null,
+        msTotal: null,
+        completo: false,
+        erro: null,
+    };
+
+    // UM relogio para os dois modos, e `performance.now()` nos dois. O tiles
+    // conta a partir do `estat.inicio` do carregador, que e a primeira linha do
+    // `carregarFoto` chamado na linha seguinte: a diferenca para este t0 e o
+    // custo de entrar na funcao, e ambos sao o mesmo relogio monotonico.
+    const t0 = performance.now();
+    try {
+        if (modo === 'full') {
+            Object.assign(medida, await medirFull(uuid, t0, cache));
+            medida.ok = true;
+            mostrarColunaFull(medida);
+        } else if (modo === 'tiles') {
+            zerarComparativo();
+            const espera = esperarAlvo(timeoutMs);
+            let descritor = null;
+            try {
+                descritor = await carregador.carregarFoto(uuid, { estrategiaFundo: estrategia });
+            } catch (erro) {
+                espera.cancelar();
+                throw erro;
+            }
+            if (!descritor) {
+                espera.cancelar();
+                throw new Error('carga superada por outra foto');
+            }
+            montarSeletorDeNivel(descritor);
+            medida.completo = await espera.promessa;
+            const e = carregador.getEstatisticas();
+            // O rotulo sai do carregador, e nao do pedido: nome de estrategia
+            // errado cai na padrao, e anotar o pedido rotularia a medida com um
+            // desenho que nao rodou.
+            medida.estrategia = carregador.getEstrategiaFundo();
+            $('estrategia').value = medida.estrategia;
+            medida.razao = razaoDaEscada(descritor);
+            medida.nivelEscolhido = e.nivel;
+            medida.larguraNecessaria = e.larguraNecessaria;
+            medida.requests = e.requests;
+            medida.bytes = e.bytes;
+            medida.bytesDescritor = e.bytesDescritor;
+            medida.bytesPreview = e.bytesPreview;
+            medida.bytesFundo = e.bytesFundo;
+            medida.tilesPedidos = e.tilesPedidos;
+            medida.tilesDesenhados = e.tilesDesenhados;
+            medida.msPrimeiraPintura = e.msPrimeiraPintura;
+            medida.msNivelAlvoCompleto = e.msNivelCompleto;
+            medida.ok = medida.completo;
+            if (!medida.completo) medida.erro = `timeout de ${timeoutMs} ms`;
+            // A razao declarada nao MUDA a grade, ela so denuncia divergencia.
+            // Reconstruir a escada com outra razao daria tile faltando, nunca
+            // erro, e este e o unico lugar onde o desencontro aparece.
+            if (razao !== null && medida.razao !== null
+                && Math.abs(medida.razao - razao) > 0.02) {
+                medida.erro = `razao declarada ${razao} contra ${medida.razao} no descritor`;
+                // `ok` cai junto. A medida vale, mas nao mede a piramide que o
+                // chamador pensa estar medindo, e uma serie inteira rotulada
+                // errado e pior que uma serie que para.
+                medida.ok = false;
+                escreverLog(medida.erro);
+            }
+        } else {
+            throw new Error(`modo "${modo}" desconhecido, use tiles ou full`);
+        }
+    } catch (erro) {
+        medida.erro = erro.message;
+    }
+    medida.msTotal = Math.round(performance.now() - t0);
+
+    window.__piloto = medida;
+    mostrarPiloto(medida);
+    escreverLog(
+        `dirigido ${modo}/${medida.estrategia || '-'}: ${medida.requests} req, ` +
+        `${kb(medida.bytes)}, primeira ${ms(medida.msPrimeiraPintura)} ms, ` +
+        `alvo ${ms(medida.msNivelAlvoCompleto)} ms, total ${medida.msTotal} ms` +
+        `${medida.erro ? ` (${medida.erro})` : ''}`,
+    );
+    return medida;
+}
+
+window.__rodar = rodar;
+/** Ultima execucao dirigida. Nulo ate a primeira, para o driver saber esperar. */
+window.__piloto = null;
+/** O modulo carregou inteiro. O driver headless espera por esta bandeira. */
+window.__pronto = true;
+
+// Os dois botoes passam o viewport do SELETOR, inclusive o `null` do modo
+// automatico. Sem passar, eles cairiam no padrao da janela inteira e o painel
+// sairia da tela justamente para quem esta clicando.
+$('btRodar').addEventListener('click', async () => {
+    $('btRodar').disabled = true;
+    try {
+        await rodar({ modo: 'tiles', viewport: viewportDoSeletor() });
+    } finally {
+        $('btRodar').disabled = false;
+    }
+});
+
+$('btFull').addEventListener('click', async () => {
+    $('btFull').disabled = true;
+    try {
+        await rodar({ modo: 'full', viewport: viewportDoSeletor() });
+    } finally {
+        $('btFull').disabled = false;
+    }
+});
+
+// Carrega a foto do exemplo do contrato assim que a pagina abre, para a medida
+// aparecer sem nenhum clique. O driver headless abre com `?auto=0`: uma carga
+// automatica no meio da primeira execucao dirigida disputaria a rede com ela.
+if (PARAMS.get('auto') !== '0') carregarPorTiles();
+</script>
+</body>
+</html>
