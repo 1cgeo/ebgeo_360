@@ -9,36 +9,50 @@
          404 resultante suja o console de quem esta depurando a interface. -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23181825' stroke='%2389b4fa' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%2389b4fa'/%3E%3C/svg%3E" />
 
-    <!-- Resource hints: pre-resolve DNS/TLS para as origens externas no caminho de carga.
-         cdn.jsdelivr.net serve MapLibre + Three; tile.openstreetmap.org serve os tiles do minimapa. -->
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <!-- Resource hints: so o raster do minimapa sai daqui agora.
+         O cdn.jsdelivr.net saiu desta lista: Three e MapLibre vem do disco, em ./vendor.
+         Fica anotado que tile.openstreetmap.org continua externo, e que o minimapa degrada
+         sem internet. Trocar o raster por fonte local e decisao a parte. -->
     <link rel="preconnect" href="https://tile.openstreetmap.org" />
-    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
     <link rel="dns-prefetch" href="https://tile.openstreetmap.org" />
 
-    <!-- Three.js (importmap) resolvido tarde via app.js → viewer.js; precarrega o módulo
-         para que entre cedo na fila e fique visível ao preload scanner. -->
-    <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" />
+    <!-- Three.js servido do próprio host, em ./vendor/three.module.js.
+         POR QUE: na rede do quartel o proxy responde 407 ao cdn.jsdelivr.net. Com o Three
+         no CDN a UI de calibração inteira não abre sem internet, porque o importmap falha
+         antes do primeiro módulo rodar. Isso é condição de produção, não inconveniência de
+         desenvolvimento: foi assim que a medida de parede quase não aconteceu.
+         O arquivo local é a revisão 170, a mesma que o CDN servia.
+         O modulepreload continua porque o Three só é resolvido tarde, via app.js e viewer.js.
+         Ele põe o módulo cedo na fila e o deixa visível ao preload scanner. -->
+    <link rel="modulepreload" href="./vendor/three.module.js" />
 
-    <!-- MapLibre GL JS — CSS carregado de forma não-bloqueante (só necessário quando o
-         minimapa é montado). media=print + onload aplica a folha após o download sem
-         bloquear o render inicial; <noscript> garante o estilo sem JS. -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.1.0/dist/maplibre-gl.css"
+    <!-- MapLibre GL JS, servido do proprio host, em ./vendor.
+         POR QUE ELE SAIU DO CDN, e este e o defeito mais grave que o piloto encontrou:
+         o script tem `defer`, e defer SEGURA o DOMContentLoaded. Atras do proxy do quartel
+         o pedido ao cdn.jsdelivr.net nao e recusado, ele PENDURA. Sem DOMContentLoaded o
+         app.js nunca inicia, e a tela fica em "Carregando..." para sempre, em todos os 29
+         projetos. Falha lenta e pior que falha rapida: a pagina nao se recupera nunca.
+         Medido em 2026-08-14, com Chrome headless dirigido por CDP.
+         Os arquivos locais sao a versao 5.1.0, os mesmos bytes que o CDN servia
+         (910166 no js e 69422 no css). -->
+    <link rel="stylesheet" href="./vendor/maplibre-gl.css"
           media="print" onload="this.media='all'" />
     <noscript>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.1.0/dist/maplibre-gl.css" />
+        <link rel="stylesheet" href="./vendor/maplibre-gl.css" />
     </noscript>
 
-    <!-- MapLibre GL JS — defer para não bloquear o parser. Scripts classic com defer
-         executam, em ordem de documento, antes dos módulos (app.js está no fim do body),
-         garantindo que window.maplibregl exista quando initMinimap rodar. -->
-    <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.1.0/dist/maplibre-gl.js" defer></script>
+    <!-- defer para nao bloquear o parser. Script classic com defer executa, em ordem de
+         documento, antes dos modulos (app.js esta no fim do body), garantindo que
+         window.maplibregl exista quando initMinimap rodar. -->
+    <script src="./vendor/maplibre-gl.js" defer></script>
 
-    <!-- Three.js via import map -->
+    <!-- Three.js via import map, apontando para o arquivo local. O caminho é relativo ao
+         documento, que o Fastify serve sob /calibration/, então resolve em
+         /calibration/vendor/three.module.js. -->
     <script type="importmap">
     {
         "imports": {
-            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"
+            "three": "./vendor/three.module.js"
         }
     }
     </script>
