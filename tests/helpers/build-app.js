@@ -8,6 +8,7 @@
  * singleton init.
  */
 
+import { existsSync } from 'node:fs';
 import Fastify from 'fastify';
 import healthRoutes from '../../src/routes/health.js';
 import projectRoutes from '../../src/routes/projects.js';
@@ -27,6 +28,20 @@ export async function buildApp() {
   await app.register(photoRoutes);
   await app.register(calibrationRoutes);
   await app.register(tileRoutes);
+
+  // A rota de tiles da panoramica entra por import dinamico e guardado.
+  //
+  // POR QUE A GUARDA. No piloto o teste chegou ANTES da rota, e um import
+  // estatico de um modulo inexistente derruba QUALQUER arquivo de teste que
+  // construa o app, e nao so o de tiles. A guarda cobre exclusivamente o arquivo
+  // ausente: existindo o modulo, erro de sintaxe ou de registro dentro dele
+  // estoura normalmente. O phototiles.test.js confere a existencia do arquivo no
+  // before(), entao a falta da rota reprova la, alto e claro.
+  const rotaTiles = new URL('../../src/routes/phototiles.js', import.meta.url);
+  if (existsSync(rotaTiles)) {
+    const { default: photoTileRoutes } = await import(rotaTiles.href);
+    await app.register(photoTileRoutes);
+  }
 
   return app;
 }

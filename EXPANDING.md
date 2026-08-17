@@ -14,9 +14,10 @@ Fotos 360 (JPG) + Metadados (JSON)
 1. Registrar novo projeto em migrate.js
 2. Executar migracao (JSON+JPG -> SQLite)
 3. Gerar PMTiles para marcadores no mapa
-4. Adicionar thumbnail do projeto
-5. Verificar e testar
-6. Deploy
+4. Gerar a piramide de tiles do projeto
+5. Adicionar thumbnail do projeto
+6. Verificar e testar
+7. Deploy
 ```
 
 ## Pre-requisitos
@@ -232,7 +233,143 @@ Isso cria `fotos.pmtiles` contendo um ponto para cada foto com:
 
 Requisito: [tippecanoe](https://github.com/felt/tippecanoe) deve estar instalado.
 
-## Passo 5: Adicionar Thumbnail
+## Passo 5: Gerar a Piramide de Tiles
+
+O visualizador nao precisa mais baixar a panoramica inteira para mostrar um
+pedaco dela. Ele pede os tiles do nivel que a tela usa. Medido no navegador de um
+notebook, o caminho por tiles entrega 2,45x menos bytes e 2,32x menos tempo que o
+`full`.
+
+Este passo nao apaga nada. O `full_webp` continua no `{slug}.db`, e a rota
+`image?quality=full` continua servindo, porque o EBGeo Web depende dela em
+producao.
+
+### Como gerar
+
+```bash
+# O projeto inteiro, com a escada que o formato de cada foto pede
+node scripts/generate-tiles.js --project nome_do_local
+
+# Piloto de 5 fotos, para medir antes de queimar CPU no projeto todo
+node scripts/generate-tiles.js --project nome_do_local --limit 5
+```
+
+O gerador abre o `{slug}.db` em modo READONLY. Ele escreve num arquivo NOVO,
+`data/projects/{slug}_tiles.db`. O acervo de imagens nunca e reescrito, entao a
+geracao roda com o servico no ar.
+
+| Parametro | Padrao | Descricao |
+|-----------|--------|-----------|
+| `--project` | obrigatorio | Slug do projeto |
+| `--data` | `./data` | Raiz dos dados |
+| `--tile` | 512 | Lado do tile em pixels. E o valor do contrato |
+| `--quality` | 80 | Qualidade WebP dos tiles, a mesma do `full_webp` |
+| `--razao` | por formato | Fator entre um nivel e o proximo. Ver abaixo |
+| `--workers` | ate 4 | Fotos em paralelo. Cada worker guarda o RAW da foto |
+| `--limit` | sem limite | Processa so as N primeiras fotos, na ordem da sequencia |
+| `--force` | false | Regera foto que ja tem piramide |
+
+A rodada e retomavel. Sem `--force`, o gerador pula a foto que ja tem piramide
+com os mesmos tile, quality e razao. Uma rodada interrompida na foto 40 de 77
+retoma na 41.
+
+Ao lado do banco sai `data/projects/{slug}_tiles.json`, o resumo MEDIDO da
+rodada: tiles e bytes por nivel, escadas do arquivo, custo por foto e o resultado
+das conferencias. O `bench-tiles.js` le esse arquivo.
+
+### O que a razao significa
+
+A escada de niveis divide a largura da foto pela RAZAO, enquanto o resultado
+passar de 2048 px. O nivel 0 e o mais grosso, e o ultimo nivel e a resolucao
+nativa.
+
+Com razao 2 uma foto de 7680 rende 1920 / 3840 / 7680. Com razao 1,6 ela rende
+1875 / 3000 / 4800 / 7680. A razao menor acrescenta degraus, e cada degrau custa
+armazenamento.
+
+A razao vai GRAVADA em `tile_pyramids`, por foto. A grade de tiles e
+consequencia dela, entao quem reconstruir a escada com outra razao produz outras
+colunas e outras linhas. O sintoma seria tile faltando, nunca erro, e o buraco
+apareceria como quadrado preto na parede.
+
+A regra da escada mora em `public/calibration/js/pyramid-math.js`, e ela e a
+unica verdade. O gerador, a rota, o cliente e o benchmark importam a mesma
+funcao.
+
+### Por que a razao e por FORMATO
+
+A largura util de uma tela foi medida com `larguraNecessaria()`: 4264 px num
+notebook de 1350x673, e 6119 px num monitor de 1904x985. Essa faixa cai em
+lugares diferentes das duas escadas do acervo.
+
+**Fotos de 5760 usam razao 2.** A escada da 1440 / 2880 / 5760, e o nativo ja
+casa com a faixa inteira. Nenhuma tela medida escolheria um nivel diferente com
+uma escada mais fina. La a escada fina so custaria armazenamento.
+
+**Fotos de 7680 usam razao 1,6.** Com razao 2 a escada da 1920 / 3840 / 7680, e
+a faixa inteira cai no vao entre 3840 e 7680. Todo viewport satura no nativo e
+paga ate 80% de largura a toa: 7680 px servidos para 4264 pedidos. Com 1,6 o
+notebook passa a levar o nivel de 4800.
+
+O mapa esta na constante `RAZAO_POR_LARGURA`, em `scripts/generate-tiles.js`. O
+gerador le a largura NATIVA de cada foto depois do decode, e escolhe. Um projeto
+com os dois formatos ganha as duas escadas, cada foto com a sua.
+
+`--razao` explicito manda em tudo, e vale para todas as fotos da rodada. Use so
+para medir uma alternativa, nunca para gerar acervo.
+
+### Quanto custa
+
+O denominador aqui e o `full_webp` de hoje, ou seja o custo de armazenamento.
+
+| Medida | Razao 2 | Razao 1,6 |
+|--------|---------|-----------|
+| museu_cms, 76 fotos de 7680 | 1,429x o `full_webp` | 1,813x o `full_webp` |
+
+Projetado para o acervo, que tem 22.707 fotos de 7680 e 76.333 de 5760:
+
+| Politica | Projecao |
+|----------|----------|
+| Razao por formato (1,6 em 7680, 2 em 5760) | 98,6 GB |
+| Razao 1,6 em tudo | 113,4 GB |
+
+O recorte por formato economiza 14,8 GB, e nenhuma tela medida perde nivel por
+causa dele.
+
+### Conferir a piramide
+
+O proprio gerador confere, e o codigo de saida conta a historia. Ele soma tiles
+e bytes contra o que `tile_pyramids` declarou, e refaz a grade de uma foto por
+escada com `montarEscada`. Essa terceira conferencia e a unica que enxerga escada
+trocada.
+
+O resumo imprime uma linha por escada distinta do arquivo, com quantas fotos
+caem em cada uma:
+
+```
+  Escadas no arquivo:  2
+        1 foto(s)  7680x3840 tile 512 razao 1.6  niveis 1875/3000/4800/7680  custo 1.60x o nativo  1.45 MB medidos
+        1 foto(s)  5760x2880 tile 512 razao 2  niveis 1440/2880/5760  custo 1.31x o nativo  0.48 MB medidos
+```
+
+Duas escadas num projeto com dois formatos e o resultado CERTO. O aviso que
+importa e o de razao que a rodada nao produziria, sinal de reconstrucao pela
+metade.
+
+Pelas rotas, com o servico no ar:
+
+```bash
+# O descritor da piramide, com a escada que o cliente vai usar
+curl http://localhost:8081/api/v1/photos/<uuid>/tiles.json
+
+# Um tile. O ".webp" vem colado no ultimo segmento
+curl -o tile.webp "http://localhost:8081/api/v1/photos/<uuid>/tiles/0/0/0.webp"
+```
+
+O teste de olho se faz na UI de calibracao, em `http://localhost:8081/calibration/`,
+que ja carrega a panoramica por tiles.
+
+## Passo 6: Adicionar Thumbnail
 
 Crie uma imagem de thumbnail para o novo projeto no diretorio de thumbnails:
 
@@ -248,7 +385,7 @@ Crie uma imagem de thumbnail para o novo projeto no diretorio de thumbnails:
 O diretorio e `thumbnails/` dentro do `STREETVIEW_DATA_DIR` definido no `.env`
 (padrao `./data/thumbnails/`).
 
-## Passo 6: Verificar
+## Passo 7: Verificar
 
 ### Verificacao manual
 
@@ -289,9 +426,23 @@ curl -o test_preview.webp "http://localhost:8081/api/v1/photos/<entryPhotoId>/im
 curl -o test_full.webp "http://localhost:8081/api/v1/photos/<entryPhotoId>/image?quality=full"
 ```
 
+### Testar os tiles
+
+So depois do Passo 5. Sem piramide, as duas rotas respondem 404.
+
+```bash
+# O descritor traz a escada, e ela tem de bater com a razao do formato da foto
+curl http://localhost:8081/api/v1/photos/<entryPhotoId>/tiles.json
+
+# O tile do canto do nivel mais grosso
+curl -o test_tile.webp "http://localhost:8081/api/v1/photos/<entryPhotoId>/tiles/0/0/0.webp"
+```
+
 ### Testar Calibração
 
 Abra `http://localhost:8081/calibration/` no navegador e selecione o novo projeto no seletor.
+A UI de calibracao carrega a panoramica por TILES, entao ela e tambem o teste de
+olho da piramide.
 
 ### Executar testes automatizados
 
@@ -299,7 +450,7 @@ Abra `http://localhost:8081/calibration/` no navegador e selecione o novo projet
 npm test
 ```
 
-## Passo 6: Deploy
+## Passo 8: Deploy
 
 ### Reiniciar o servico
 
@@ -335,9 +486,15 @@ data/
     alegrete.db          # BLOBs do projeto Alegrete
     uruguaiana.db        # BLOBs do projeto Uruguaiana
     nome_do_local.db     # BLOBs do novo projeto
+    nome_do_local_tiles.db    # Piramide de tiles do novo projeto
+    nome_do_local_tiles.json  # Resumo medido da geracao de tiles
     ...
   fotos.pmtiles          # Marcadores para mapa 2D
 ```
+
+O banco de tiles e um arquivo SEPARADO de proposito. Reconstruir a piramide nao
+pode reescrever os BLOBs de 2,5 MB de `images`, que nao mudam. Separado, a troca
+cobre os dois arquivos na mesma janela.
 
 ## Troubleshooting
 
@@ -352,6 +509,35 @@ Verifique se os nomes dos arquivos JPG correspondem exatamente aos nomes dos JSO
 
 ### Projeto aparece com 0 fotos
 As fotos provavelmente foram atribuidas a outro projeto mais proximo. Ajuste as coordenadas do centro ou verifique se nao ha outro projeto com centro mais proximo das fotos.
+
+### GRADE REPROVOU no fim da geracao de tiles
+
+A escada gravada nao produz a grade que esta no arquivo. Em geral e piramide
+reconstruida pela metade, com duas razoes na mesma foto. Rode de novo com
+`--force`. O gerador ja saiu com codigo 1, entao nada la fora tomou o arquivo
+como bom.
+
+### "piramide(s) com razao que esta rodada nao produziria"
+
+Alguma foto ficou com uma razao que o formato dela nao pede, ou que o `--razao`
+desta rodada nao pede. Rode com `--force` para uniformizar. Duas razoes no mesmo
+arquivo NAO sao defeito por si so: um projeto com fotos de 7680 e de 5760 tem
+duas escadas de proposito.
+
+### page_size errado no banco de tiles
+
+O contrato pede 65536, e o gerador para se o arquivo tiver outro valor. O
+`page_size` so pega antes da primeira tabela, entao nao ha conserto no lugar.
+Apague o `{slug}_tiles.db` e gere de novo.
+
+### Tile responde 404 com a foto no ar
+
+A foto nao tem piramide, e o 404 e a resposta certa. Quem cai para o `full` e o
+CLIENTE, nunca a rota, entao a tela continua funcionando e o projeto so nao ganha
+o beneficio dos tiles.
+Confira se o `{slug}_tiles.db` esta no mesmo diretorio do `{slug}.db`, e se a
+rodada de geracao cobriu essa foto. O `--limit` gera so as primeiras da
+sequencia.
 
 ### tippecanoe nao encontrado
 Instale seguindo as instrucoes em https://github.com/felt/tippecanoe#installation. No Linux: `apt install tippecanoe`. No macOS: `brew install tippecanoe`.
