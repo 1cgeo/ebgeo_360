@@ -53,6 +53,20 @@ const PISO_DISCO_GB = 20;
  */
 const FALHAS_SEGUIDAS_LIMITE = 3;
 
+/**
+ * Quanto o ARQUIVO passa da soma dos tiles que ele guarda.
+ *
+ * A conta que interessa ao disco nao e a soma dos BLOBs, e o tamanho do
+ * arquivo. Com `page_size` de 65536 um tile de 20 KB nao preenche a pagina, e
+ * sobra folga em cada uma. Medido em tres projetos ja gerados: 1,168x no
+ * museu_cms, 1,332x no blumenau e 1,259x no cigi, ou 1,286x no agregado.
+ *
+ * Sem este fator o plano subestimava o disco em 28%, o que num acervo de 99 GB
+ * de tiles sao 28 GB que ninguem tinha orcado.
+ * @constant {number}
+ */
+const OVERHEAD_SQLITE = 1.286;
+
 // ------------------------------------------------------------------ argumentos
 
 const argv = process.argv.slice(2);
@@ -144,7 +158,8 @@ for (const p of projetos) {
   const origemBytes = idx.prepare('SELECT SUM(full_size_bytes) s FROM photos WHERE project_id = ?').get(p.id).s || 0;
   const razao = razaoParaLargura(largura ?? 0, null);
   // Fator de crescimento MEDIDO, por classe: 1,443x em 5760 (parque_osorio, 120
-  // fotos) e 1,813x em 7680 (museu_cms, 76 fotos). Nao e estimativa de tabela.
+  // fotos) e 1,813x em 7680 (museu_cms, 76 fotos; cigi confirmou em 1,811x).
+  // Nao e estimativa de tabela.
   const fator = razao === 2 ? 1.443 : 1.813;
   // Segundos por foto MEDIDOS com 4 workers, nas mesmas duas amostras.
   const segPorFoto = razao === 2 ? 0.45 : 0.97;
@@ -152,6 +167,7 @@ for (const p of projetos) {
     ...p, largura, razao, fator, segPorFoto, ...est,
     gbOrigem: origemBytes / 1073741824,
     gbTiles: (origemBytes * fator) / 1073741824,
+    gbDisco: (origemBytes * fator * OVERHEAD_SQLITE) / 1073741824,
     horas: (est.esperadas * segPorFoto) / 3600,
   });
 }
@@ -172,15 +188,18 @@ console.table(aFazer.map(p => ({
   razao: p.razao,
   'GB origem': +p.gbOrigem.toFixed(1),
   'GB tiles (prev)': +p.gbTiles.toFixed(1),
+  'GB disco (prev)': +p.gbDisco.toFixed(1),
   'horas (prev)': +p.horas.toFixed(1),
   parcial: p.feitas > 0 ? `${p.feitas}/${p.esperadas}` : '',
 })));
 
 const gbTotal = aFazer.reduce((a, p) => a + p.gbTiles, 0);
+const gbDiscoTotal = aFazer.reduce((a, p) => a + p.gbDisco, 0);
 const horasTotal = aFazer.reduce((a, p) => a + p.horas, 0);
 const livre = gbLivres();
-console.log(`  TOTAL previsto: ${gbTotal.toFixed(1)} GB de tiles, ${horasTotal.toFixed(1)} h de parede com 4 workers`);
-console.log(`  Disco livre agora: ${livre.toFixed(1)} GB  |  sobraria: ${(livre - gbTotal).toFixed(1)} GB  |  piso de parada: ${PISO_DISCO_GB} GB`);
+console.log(`  TOTAL previsto: ${gbTotal.toFixed(1)} GB de tiles, que viram ${gbDiscoTotal.toFixed(1)} GB de ARQUIVO`);
+console.log(`  Parede prevista: ${horasTotal.toFixed(1)} h com 4 workers`);
+console.log(`  Disco livre agora: ${livre.toFixed(1)} GB  |  sobraria: ${(livre - gbDiscoTotal).toFixed(1)} GB  |  piso de parada: ${PISO_DISCO_GB} GB`);
 console.log('  Previsao de GB e de horas sai de DOIS projetos medidos, e nao de tabela.');
 console.log('  Nada aqui e medida do acervo: e extrapolacao, e vai errar por projeto.');
 
@@ -188,7 +207,7 @@ if (opt.dryRun) {
   console.log('\n--dry-run: nada foi escrito.');
   process.exit(0);
 }
-if (!Number.isFinite(livre) || livre - gbTotal < PISO_DISCO_GB) {
+if (!Number.isFinite(livre) || livre - gbDiscoTotal < PISO_DISCO_GB) {
   console.error(`\nABORTADO: o disco nao comporta o plano com o piso de ${PISO_DISCO_GB} GB.`);
   process.exit(1);
 }
@@ -204,7 +223,7 @@ const registrar = (o) => {
   writeFileSync(diario, `${JSON.stringify({ quando: new Date().toISOString(), ...o })}\n`, { flag: 'a' });
 };
 
-registrar({ evento: 'inicio', aFazer: aFazer.map(p => p.slug), gbTotal, horasTotal, livre });
+registrar({ evento: 'inicio', aFazer: aFazer.map(p => p.slug), gbTotal, gbDiscoTotal, horasTotal, livre });
 console.log(`\nDiario em ${diario}\n`);
 
 let seguidas = 0;
@@ -236,13 +255,13 @@ for (const [i, p] of aFazer.entries()) {
     evento: ok ? 'projeto-ok' : 'projeto-falhou',
     slug: p.slug, fotos: p.esperadas, razao: p.razao,
     segundos: Math.round(seg), status: r.status,
-    gbGastos: +(antes - depois).toFixed(2), gbPrevistos: +p.gbTiles.toFixed(2),
+    gbGastos: +(antes - depois).toFixed(2), gbPrevistos: +p.gbDisco.toFixed(2),
     livreDepois: +depois.toFixed(1),
   });
 
   if (ok) {
     seguidas = 0;
-    console.log(`  OK em ${(seg / 60).toFixed(1)} min. Gastou ${(antes - depois).toFixed(1)} GB, previa ${p.gbTiles.toFixed(1)} GB.`);
+    console.log(`  OK em ${(seg / 60).toFixed(1)} min. Gastou ${(antes - depois).toFixed(1)} GB, previa ${p.gbDisco.toFixed(1)} GB.`);
   } else {
     seguidas++;
     falhas.push(p.slug);
