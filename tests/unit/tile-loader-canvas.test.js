@@ -179,10 +179,14 @@ test('tela sem area SEGURA o canvas, em vez de ir ao nativo', async () => {
     }
 });
 
-test('sem canvas ainda, area zero pega o menor degrau, e nao o teto', async () => {
+test('sem canvas ainda, area zero fica no nivel 0, que hoje cabe num tile', async () => {
     // Primeira foto com o container ja recolhido: nao ha canvas para segurar.
+    //
+    // A ESCADA MUDOU EMBAIXO DESTE CASO. Ela desce ate o nivel caber em um tile,
+    // entao o 5760 ganhou dois degraus (360 e 720) e o nivel 0 saiu de 1440 para
+    // 360. A conta sob teste nao mudou, e o nivel escolhido continua sendo o 0.
     const descritor = descritorDe(5760, 2880, 2);
-    const grosso = descritor.levels[0].width;
+    const nativo = descritor.levels[descritor.levels.length - 1].width;
     const desfazer = instalarNavegador(descritor);
     const { createTileLoader } = await importarTileLoader();
     const carregador = createTileLoader({ gl: null, base: 'http://teste.local/api/v1' });
@@ -192,9 +196,46 @@ test('sem canvas ainda, area zero pega o menor degrau, e nao o teto', async () =
         await carregador.carregarFoto('foto-2');
 
         // O nivel escolhido e o 0, o mais grosso, porque `nivelDesejado` ja
-        // segurava esse caso. A largura antiga era o TETO desse nivel, 1440.
+        // segurava esse caso.
         assert.equal(carregador.getEstatisticas().nivel, 0);
-        assert.equal(grosso, 1440);
+        assert.equal(descritor.levels[0].width, 360);
+        assert.equal(carregador.getTextura().image.width, 360);
+        assert.notEqual(carregador.getTextura().image.width, nativo,
+            'area zero levou o canvas ao nivel nativo, que e o pior caso');
+    } finally {
+        carregador.dispose();
+        desfazer();
+    }
+});
+
+test('sem canvas ainda, o nivel travado a mao para no degrau, e nao no teto', async () => {
+    // ESTE CASO GUARDA O DEFEITO ORIGINAL, que o caso acima deixou de separar.
+    //
+    // O defeito era `larguraDoCanvas` devolver o TETO na guarda de area zero.
+    // Enquanto a escada parava em 2048, o nivel 0 de 5760 media 1440, e o teto
+    // (1440) diferia do degrau (1024): o numero acusava. Agora o nivel 0 cabe em
+    // um tile e mede 360, entao o teto e o degrau dao o mesmo valor, e a conta
+    // errada passaria verde ali.
+    //
+    // Quem ainda separa os dois e o nivel TRAVADO A MAO, que o painel de
+    // calibracao oferece. Travar o nivel 3 com o container recolhido poe um teto
+    // de 2880 na guarda de area zero: a conta certa corta em 1024, e a errada
+    // reconstroi 2880x1440 de textura para quem nao esta vendo nada.
+    const descritor = descritorDe(5760, 2880, 2);
+    const desfazer = instalarNavegador(descritor);
+    const { createTileLoader } = await importarTileLoader();
+    const carregador = createTileLoader({ gl: null, base: 'http://teste.local/api/v1' });
+
+    try {
+        // O nivel se fixa ANTES da foto, de proposito. Com um canvas ja em pe a
+        // guarda cai no outro ramo, o que segura a largura em uso, e o degrau
+        // nunca entraria na conta.
+        carregador.fixarNivel(3);
+        carregador.atualizarCamera({ lon: 0, lat: 0, fov: 75, largura: 0, altura: 0 });
+        await carregador.carregarFoto('foto-2b');
+
+        assert.equal(carregador.getEstatisticas().nivel, 3);
+        assert.equal(descritor.levels[3].width, 2880);
         assert.equal(carregador.getTextura().image.width, 1024,
             'sem canvas, area zero escolheu o teto do nivel em vez do menor degrau');
     } finally {
@@ -214,10 +255,15 @@ test('tela COM area continua quantizando em passos de 1024', async () => {
         // O notebook do piloto, 1350x673, pede 4264 px. O degrau sobe para 5120,
         // e o TETO do nivel escolhido, o de 4800, e quem corta: canvas nunca
         // passa do nivel que o esta enchendo, senao os tiles sairiam esticados.
+        //
+        // O NIVEL DE 4800 VIROU O 5, e era o 2. A escada de 7680 desce ate caber
+        // num tile e passou de 4 degraus para 7 (458, 733, 1172, 1875, 3000,
+        // 4800, 7680): a numeracao empurrou tres casas, e a largura escolhida
+        // continua a mesma.
         carregador.atualizarCamera({ lon: 0, lat: 0, fov: 75, largura: 1350, altura: 673 });
         await carregador.carregarFoto('foto-3');
-        assert.equal(carregador.getEstatisticas().nivel, 2);
-        assert.equal(descritor.levels[2].width, 4800);
+        assert.equal(carregador.getEstatisticas().nivel, 5);
+        assert.equal(descritor.levels[5].width, 4800);
         assert.equal(carregador.getTextura().image.width, 4800);
     } finally {
         carregador.dispose();

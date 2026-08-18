@@ -16,8 +16,14 @@
  * unico numero sem prova.
  *
  * O segundo bloco NAO depende dessa funcao. Ele mede, na propria escada, a
- * afirmacao que sustenta a decisao: nos 5760 a razao fina escolhe o MESMO nivel
- * que a classica para as duas telas medidas, e so custa armazenamento.
+ * afirmacao que sustenta a decisao: nos 5760 a razao fina escolhe a MESMA
+ * largura que a classica para as duas telas medidas, e so custa armazenamento.
+ *
+ * A ESCADA MUDOU EM 2026-08-18, e este arquivo mudou junto. Ela agora desce ate
+ * o nivel caber em um tile, entao entraram degraus POR BAIXO e a numeracao
+ * andou. A POLITICA que este arquivo testa nao mudou: 1,6 nos 7680 e 2 no resto.
+ * Por isso as asercoes daqui falam em LARGURA, e nao em indice de nivel: a
+ * decisao 2 e sobre qual resolucao a tela recebe, nunca sobre o numero do level.
  */
 
 import { describe, it } from 'node:test';
@@ -93,11 +99,19 @@ describe('a escolha da razao por formato', () => {
 
   it('da 2 nos 5760, e nao a razao fina', { skip: SEM_FUNCAO }, () => {
     // Nos 5760 a escada classica ja casa com a largura util das telas. A razao
-    // fina la nao escolheria nivel menor nenhum: so gastaria disco. O segundo
+    // fina la nao escolheria largura menor nenhuma: so gastaria disco. O segundo
     // bloco deste arquivo mede isso.
     assert.equal(escolherRazao(5760), RAZAO_PADRAO);
     assert.equal(escolherRazao(5760), 2);
     assert.notEqual(escolherRazao(5760), RAZAO_FINA);
+  });
+
+  it('da 2 nos 2048, o terceiro formato do acervo', { skip: SEM_FUNCAO }, () => {
+    // O acervo tem 828 fotos de 2048x1024, razao 2:1. A politica e por LARGURA,
+    // entao 2048 cai na mesma faixa que 5760 e leva a razao classica. Nao ha vao
+    // a fechar ali: a foto inteira e menor que qualquer tela util.
+    assert.equal(escolherRazao(2048), RAZAO_PADRAO);
+    assert.notEqual(escolherRazao(2048), RAZAO_FINA);
   });
 
   it('a razao explicita vence os DOIS formatos', { skip: SEM_EXPLICITA }, () => {
@@ -121,20 +135,45 @@ describe('a escolha da razao por formato', () => {
 
   it('a escolha de cada formato monta a escada que a decisao nomeia', { skip: SEM_FUNCAO }, () => {
     // A LIGACAO COM O DADO GRAVADO. A funcao devolve um numero, e quem sofre a
-    // consequencia e a grade. Os literais sao a escada do piloto ja provado
-    // (1875/3000/4800/7680) e a escada classica dos 5760.
+    // consequencia e a grade. A cauda de 1875 para cima em 7680, e de 1440 para
+    // cima em 5760, e a escada do piloto ja provado. Os degraus abaixo dela sao
+    // os que a decisao de 2026-08-18 acrescentou, para a piramide bastar sozinha.
     assert.deepEqual(montarEscada(7680, 3840, TILE, escolherRazao(7680)), [
-      { level: 0, width: 1875, height: 938, cols: 4, rows: 2 },
-      { level: 1, width: 3000, height: 1500, cols: 6, rows: 3 },
-      { level: 2, width: 4800, height: 2400, cols: 10, rows: 5 },
-      { level: 3, width: 7680, height: 3840, cols: 15, rows: 8 },
+      { level: 0, width: 458, height: 229, cols: 1, rows: 1 },
+      { level: 1, width: 733, height: 366, cols: 2, rows: 1 },
+      { level: 2, width: 1172, height: 586, cols: 3, rows: 2 },
+      { level: 3, width: 1875, height: 938, cols: 4, rows: 2 },
+      { level: 4, width: 3000, height: 1500, cols: 6, rows: 3 },
+      { level: 5, width: 4800, height: 2400, cols: 10, rows: 5 },
+      { level: 6, width: 7680, height: 3840, cols: 15, rows: 8 },
     ]);
 
     assert.deepEqual(montarEscada(5760, 2880, TILE, escolherRazao(5760)), [
-      { level: 0, width: 1440, height: 720, cols: 3, rows: 2 },
-      { level: 1, width: 2880, height: 1440, cols: 6, rows: 3 },
-      { level: 2, width: 5760, height: 2880, cols: 12, rows: 6 },
+      { level: 0, width: 360, height: 180, cols: 1, rows: 1 },
+      { level: 1, width: 720, height: 360, cols: 2, rows: 1 },
+      { level: 2, width: 1440, height: 720, cols: 3, rows: 2 },
+      { level: 3, width: 2880, height: 1440, cols: 6, rows: 3 },
+      { level: 4, width: 5760, height: 2880, cols: 12, rows: 6 },
     ]);
+
+    assert.deepEqual(montarEscada(2048, 1024, TILE, escolherRazao(2048)), [
+      { level: 0, width: 512, height: 256, cols: 1, rows: 1 },
+      { level: 1, width: 1024, height: 512, cols: 2, rows: 1 },
+      { level: 2, width: 2048, height: 1024, cols: 4, rows: 2 },
+    ]);
+  });
+
+  it('a escolha por formato poe o preview dentro da piramide', { skip: SEM_FUNCAO }, () => {
+    // A CONSEQUENCIA QUE AUTORIZA APAGAR O `preview_webp`. Seja qual for a razao
+    // que a politica devolver, o nivel 0 tem de caber em UM tile. Se um formato
+    // novo entrar na politica com uma razao que quebre isso, este teste cai antes
+    // de alguem apagar 1,03 GB de preview.
+    const formatos = [[7680, 3840], [5760, 2880], [2048, 1024]];
+    for (const [largura, altura] of formatos) {
+      const escada = montarEscada(largura, altura, TILE, escolherRazao(largura));
+      assert.equal(escada[0].cols, 1, `${largura}: nivel 0 com ${escada[0].cols} colunas`);
+      assert.equal(escada[0].rows, 1, `${largura}: nivel 0 com ${escada[0].rows} linhas`);
+    }
   });
 });
 
@@ -157,14 +196,15 @@ describe('decisao 2 medida na escada, sem depender da funcao de escolha', () => 
    */
   const larguraEscolhida = (escada, necessaria) => escada[escolherNivel(escada, necessaria)].width;
 
-  it('nos 7680 a razao fina ENTREGA nivel menor no notebook', () => {
+  it('nos 7680 a razao fina ENTREGA largura menor no notebook', () => {
     // O ganho que paga o disco: 4800 no lugar de 7680, ou seja 2,56 vezes menos
-    // pixel na mesma tela.
+    // pixel na mesma tela. A asercao e em LARGURA de proposito: a escada nova
+    // empurrou o indice de 2 para 5, e o indice nao e o que a rede paga.
     assert.equal(larguraEscolhida(E7680_R2, NOTEBOOK), 7680);
     assert.equal(larguraEscolhida(E7680_R16, NOTEBOOK), 4800);
   });
 
-  it('nos 5760 a razao fina escolhe o MESMO nivel das duas telas', () => {
+  it('nos 5760 a razao fina escolhe a MESMA largura das duas telas', () => {
     // O CASO QUE DECIDE A DECISAO 2. As duas escadas mandam as duas telas ao
     // nativo de 5760: a classica porque a foto acabou, a fina tambem. Nenhum
     // degrau novo entra entre a demanda e o nativo.
@@ -175,18 +215,34 @@ describe('decisao 2 medida na escada, sem depender da funcao de escolha', () => 
   });
 
   it('nos 5760 a razao fina so acrescenta armazenamento', () => {
-    // O PRECO, medido em area antes de gerar um byte. 1,60x contra 1,3125x, ou
-    // seja 22% a mais de piramide, e um nivel a mais para manter, em troca de
+    // O PRECO, medido em area antes de gerar um byte. 1,639x contra 1,332x, ou
+    // seja 23% a mais de piramide, e dois niveis a mais para manter, em troca de
     // nada que a tela use.
-    assert.equal(custoDaEscada(E5760_R2), 1.3125);
-    assert.ok(Math.abs(custoDaEscada(E5760_R16) - 1.6028) < 1e-4,
+    //
+    // OS DOIS CUSTOS SUBIRAM com a escada descendo ate um tile, e SUBIRAM JUNTOS:
+    // a comparacao que decide a razao continua valendo, porque os degraus novos
+    // entram nas duas escadas. Antes eram 1,6028 contra 1,3125.
+    assert.equal(custoDaEscada(E5760_R2), 1.33203125);
+    assert.ok(Math.abs(custoDaEscada(E5760_R16) - 1.63866) < 1e-5,
       `custo da escada fina em 5760: ${custoDaEscada(E5760_R16)}`);
-    assert.equal(E5760_R16.length, E5760_R2.length + 1);
+    assert.ok(custoDaEscada(E5760_R16) > custoDaEscada(E5760_R2));
+    assert.equal(E5760_R16.length, E5760_R2.length + 2);
 
-    // O degrau extra e o de 3600 px, e ele cai ACIMA das duas telas medidas: por
-    // isso ninguem o pede. Se uma tela futura pedir menos que 3600, esta linha
-    // continua verdadeira e a decisao 2 precisa ser reaberta a mao.
+    // O degrau extra util e o de 3600 px, e ele cai ACIMA das duas telas
+    // medidas: por isso ninguem o pede. Se uma tela futura pedir menos que 3600,
+    // esta linha continua verdadeira e a decisao 2 precisa ser reaberta a mao.
     assert.ok(E5760_R16.some(n => n.width === 3600));
     assert.ok(NOTEBOOK > 3600, `o notebook passou a caber em 3600: ${NOTEBOOK}`);
+  });
+
+  it('as duas razoes poem o nivel 0 em um tile, nos dois formatos', () => {
+    // A DECISAO DE 2026-08-18 NAO DEPENDE DA RAZAO. Ela e sobre onde a escada
+    // PARA, e a parada e o tile. Fixar isso aqui protege a decisao 2 de ser
+    // reaberta com uma razao que devolva o `preview_webp` pela porta dos fundos.
+    for (const escada of [E5760_R2, E5760_R16, E7680_R2, E7680_R16]) {
+      assert.equal(escada[0].cols, 1, `nivel 0 de ${escada[0].width} px nao coube em um tile`);
+      assert.equal(escada[0].rows, 1, `nivel 0 de ${escada[0].width} px nao coube em um tile`);
+      assert.equal(escada[0].level, 0, 'o mais grosso deixou de ser o level 0');
+    }
   });
 });

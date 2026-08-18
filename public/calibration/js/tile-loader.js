@@ -18,6 +18,14 @@
  * borda recortada, `wrapX` do lado do cliente, e template relativo ao proprio
  * documento `tiles.json`.
  *
+ * A NUMERACAO ANDOU, e o contrato nao. A escada passou a descer ate o nivel
+ * caber em UM TILE, entao a piramide ganhou niveis POR BAIXO: o que era `level`
+ * 0 virou level 2 ou level 3. `level` 0 segue sendo o mais grosso, e essa e a
+ * unica coisa que este arquivo supoe. Ele nunca conta quantos niveis existem,
+ * nem deduz largura de nivel por uma conta propria: tudo sai de
+ * `descritor.levels`. Por isso ele le dado velho e dado novo sem saber a
+ * diferenca.
+ *
  * DOIS CONSUMIDORES, e nao mais so o demo: `tile-demo.html`, que compara tiles
  * contra o full, e `viewer.js`, a interface de calibracao. O que os dois
  * precisam saber e a POSSE DA TEXTURA, porque descartar em dobro mata a esfera
@@ -28,12 +36,35 @@
  *     entrega a ultima textura viva. Dali em diante quem descarta e o chamador.
  *   - `dispose()` descarta a textura que ainda for dele.
  *
- * O FUNDO E ESTRATEGIA, e nao regra fixa. A primeira versao baixava o preview E
- * o nivel 0 inteiro para a mesma funcao: 13,0 KB mais 139,3 KB, ou 10,7x o
- * preview, o que sozinho levava a foto de 553 KB para 686 KB. Google, Photo
- * Sphere Viewer e Marzipano usam UMA imagem base borrada e depois os tiles. Aqui
- * os tres desenhos convivem sob `ESTRATEGIAS_FUNDO`, porque o piloto existe para
- * MEDIR qual deles ganha, e nao para decretar.
+ * O FUNDO E O NIVEL 0, e nao mais o preview. Com a escada descendo ate um tile,
+ * o nivel 0 E a imagem base borrada que Google, Photo Sphere Viewer e Marzipano
+ * pintam antes dos tiles: 458x229 em 7680, 360x180 em 5760, 512x256 em 2048,
+ * sempre um objeto so. A piramide passa a bastar sozinha, e o `preview_webp` e o
+ * `full_webp` saem do disco.
+ *
+ * QUANTO CUSTA O FUNDO NOVO, medido e nao estimado. O gerador foi reproduzido
+ * (lanczos3 e webp q80, generate-tiles.js:194) sobre o `full_webp` de cada foto,
+ * e o tile de nivel 0 foi pesado contra o `preview_webp` da MESMA foto:
+ *   7680x3840, nivel 0 de 458x229: 17.547 B contra 16.400 B, 1,07x (162 fotos
+ *     de blumenau, o projeto inteiro naquele formato)
+ *   5760x2880, nivel 0 de 360x180: 11.471 B contra 15.956 B, 0,72x (19 fotos
+ *     de blumenau, o projeto inteiro naquele formato)
+ *   2048x1024, nivel 0 de 512x256: 18.214 B contra 14.576 B, 1,25x (20 fotos
+ *     de santana_livramento, amostra de 828)
+ * O fundo custa de 0,72x a 1,25x o preview, ou seja troca-se um objeto por outro
+ * do mesmo tamanho. O 2048 e o pior caso, e a razao e exata: o nivel 0 dele tem
+ * os MESMOS 512x256 do preview, so que em q80 contra os q70 do preview
+ * (migrate.js:1036). Paga-se 3,6 KB por foto em 828 fotos, ou 3,0 MB, para
+ * apagar 62,6 GB de `full_webp` e 1,03 GB de `preview_webp`.
+ *
+ * A MEDIDA ANTIGA NAO VALE MAIS, e por isso ela sai daqui. Ela dizia 13,0 KB de
+ * preview contra 139,3 KB de nivel 0, ou 10,7x. Aquele nivel 0 tinha 1875 ou
+ * 1440 px de largura, em 8 ou 6 tiles, porque a escada parava em 2048. O de
+ * agora tem 458 ou 360 px, em UM tile.
+ *
+ * `descritor.base` continua no documento por compatibilidade, e o caminho padrao
+ * NAO o toca. So a estrategia legada 'preview' o pede, e ela morre junto do dado
+ * que ela busca.
  */
 
 import * as THREE from 'three';
@@ -47,50 +78,38 @@ import {
 const MARGEM_TILES = 1;
 
 /**
- * Margem, em tiles, ao redor do que a camera enxerga no nivel de FUNDO.
+ * Os DOIS desenhos de fundo que sobraram.
  *
- * ZERO, e nao MARGEM_TILES. Margem se conta em tiles, e o mesmo tile vale
- * angulos diferentes em cada nivel: no alvo de 7680 um tile de 512 e 6,7% da
- * volta, no nivel 0 de 1920 ele e 26,7%. Medido em 7680x3840, tile 512, nas duas
- * telas do piloto (1350x673 e 1904x985) e nas fovs 75, 40 e 20: com margem 1 o
- * conjunto visivel do nivel 0 da 8 de 8 tiles em TODOS os casos, ou seja
- * 'nivel0vis' viraria 'nivel0' sem economizar um byte. Com margem 0 ele pede 4
- * de 8.
+ * - `nivel0`: o nivel 0 da propria piramide. E o padrao, e e um tile so.
+ * - `preview`: o `descritor.base`, ou seja `image?quality=preview`. E o desenho
+ *   LEGADO, mantido so enquanto o `preview_webp` existir no disco.
  *
- * Zero nao abre buraco preto. O preview ja esta pintado embaixo, entao arrastar
- * para fora do fundo grosso cai no preview, que e exatamente o desenho da
- * estrategia 'preview'. A degradacao e de nitidez, nunca de imagem faltando.
- */
-const MARGEM_FUNDO = 0;
-
-/**
- * Os tres desenhos de fundo que o piloto compara.
- *
- * - `preview`: so a imagem base de 13,0 KB, esticada. E o que Google, Photo
- *   Sphere Viewer e Marzipano fazem.
- * - `nivel0vis`: o preview mais SO os tiles do nivel 0 que a camera enxerga.
- * - `nivel0`: o preview mais o nivel 0 inteiro. E o desenho da primeira versao,
- *   mantido para a comparacao ter a linha de base medida no mesmo relogio.
+ * ERAM TRES NOMES PARA DOIS DESENHOS, e agora sao dois. 'nivel0vis' baixava so
+ * os tiles do nivel 0 que a camera enxergava, e 'nivel0' baixava a grade
+ * inteira; a diferenca media 4 tiles de 8. Com o nivel 0 cabendo em UM tile nao
+ * ha o que recortar, entao os dois viraram a mesma requisicao, e manter os dois
+ * nomes so rotularia duas execucoes identicas com rotulos diferentes. Junto
+ * deles sai `MARGEM_FUNDO`, a margem que existia para recortar esse conjunto.
  * @constant {string[]}
  */
-export const ESTRATEGIAS_FUNDO = ['preview', 'nivel0vis', 'nivel0'];
+export const ESTRATEGIAS_FUNDO = ['nivel0', 'preview'];
 
 /**
  * Estrategia de fundo padrao.
  *
- * E 'preview', decidido pela medida de parede. Ela venceu 'nivel0vis' e
- * 'nivel0' em BYTES e em TEMPO, e o comentario anterior, que defendia o nivel 0
- * visivel, era argumento sem numero.
+ * E 'nivel0', porque o `preview_webp` vai ser apagado e o cliente nao pode
+ * depender de um dado que deixa de existir. Nenhum caminho padrao pede
+ * `image?quality=preview` nem `image?quality=full`.
  *
- * O QUE A MEDIDA COBRIU: a CARGA da foto, ate a primeira pintura e ate o nivel
- * alvo fechar. Ela NAO mediu arrasto. A objecao antiga continua de pe no papel
- * (o preview de 512x256 estica 15 vezes sobre um alvo de 7680, e arrastar rapido
- * mostra borrao ate o debounce pedir os finos), e quem quiser reabrir a
- * comparacao troca a estrategia, que segue selecionavel. O que nao vale mais e
- * pagar o fundo grosso em toda carga por causa de um custo que ninguem mediu.
+ * A MEDIDA DE PAREDE QUE ELEGEU O PREVIEW MEDIU OUTRO OBJETO. Ela comparou
+ * 13,0 KB de preview contra 139,3 KB de nivel 0, e aquele nivel 0 eram 8 tiles
+ * de uma escada que parava em 2048. O nivel 0 de hoje e UM tile de 458 ou 360 px
+ * de largura, e custa de 0,72x a 1,25x o preview (numeros no cabecalho). O que
+ * a medida de parede decidiu continua valendo: paga-se UM objeto grosso, nunca
+ * oito.
  * @constant {string}
  */
-export const ESTRATEGIA_FUNDO_PADRAO = 'preview';
+export const ESTRATEGIA_FUNDO_PADRAO = 'nivel0';
 
 /** Espera de camera parada antes de recalcular nivel e tiles visiveis (ms). */
 const DEBOUNCE_MS = 120;
@@ -233,7 +252,11 @@ export function createTileLoader({
     const cache = new Map();
     /** Chaves ja desenhadas no canvas atual. Zera a cada canvas novo. */
     let desenhados = new Set();
-    /** Preview esticado, guardado para repintar o fundo sem baixar de novo. */
+    /**
+     * Preview esticado, guardado para repintar o fundo sem baixar de novo.
+     * So a estrategia legada 'preview' o enche. No caminho padrao ele fica nulo,
+     * e quem repinta o fundo e `repintarDoCache(0)`, com o tile de nivel 0.
+     */
     let bitmapPreview = null;
 
     let geracao = 0;
@@ -303,6 +326,9 @@ export function createTileLoader({
             // outro, e deixa-lo de fora subestimaria o caminho por tiles
             // justamente contra o full, que gasta UMA requisicao.
             bytesDescritor: 0,
+            // `bytesPreview` fica ZERO no caminho padrao, porque o preview nao
+            // e mais baixado. Ele sobrevive para a estrategia legada, e para o
+            // painel do demo nao perder a coluna que separa fundo de descritor.
             bytesPreview: 0,
             bytesFundo: 0,
             msPrimeiraPintura: null,
@@ -397,17 +423,19 @@ export function createTileLoader({
     /**
      * Os tiles de nivel 0 que a estrategia de fundo em vigor manda baixar.
      *
-     * `preview` devolve lista vazia de proposito: o preview ja foi pintado, e a
-     * estrategia dele e justamente NAO ter segunda camada de fundo.
+     * A GRADE INTEIRA, e nao o conjunto visivel. Na escada nova ela e UM tile,
+     * entao "inteira" e o pedido mais barato que existe. O `cols` e o `rows` vem
+     * do descritor, e nao de uma suposicao: uma piramide gerada antes de
+     * 2026-08-18 tem nivel 0 de 8 ou 6 tiles, e ela continua abrindo certo aqui
+     * enquanto o acervo nao termina de ser regerado.
+     *
+     * `preview` devolve lista vazia de proposito: naquela estrategia o fundo e o
+     * `descritor.base`, e nao tile nenhum.
      *
      * @returns {Array<{x: number, y: number}>}
      */
     function tilesDeFundo() {
         if (fundoAtual === 'preview') return [];
-        if (fundoAtual === 'nivel0vis') {
-            return tilesVisiveis(niveis[0], descritor.tileSize, camera, MARGEM_FUNDO);
-        }
-        // 'nivel0': a grade inteira, que e a linha de base a bater.
         const base = niveis[0];
         const todos = [];
         for (let x = 0; x < base.cols; x++) {
@@ -510,8 +538,12 @@ export function createTileLoader({
     }
 
     /**
-     * Pinta a imagem base esticada no canvas inteiro. E o que garante que a
-     * esfera nunca aparece preta: os tiles entram por cima conforme chegam.
+     * Pinta a imagem base esticada no canvas inteiro.
+     *
+     * So a estrategia legada 'preview' chega aqui. No caminho padrao quem
+     * garante que a esfera nunca aparece preta e `desenharTile` com o tile de
+     * nivel 0: sendo um tile so, ele ja cobre o canvas inteiro pela mesma
+     * escala, e nao precisa de um desenho a parte.
      * @param {ImageBitmap} bitmap
      */
     function pintarFundo(bitmap) {
@@ -701,17 +733,38 @@ export function createTileLoader({
     /**
      * Guarda o bitmap com teto de memoria. O Map preserva a ordem de insercao,
      * entao o primeiro a sair e o mais antigo.
+     *
+     * O NIVEL 0 NAO SAI. Ele e o FUNDO, e o fundo e o primeiro a entrar, ou seja
+     * seria justamente o primeiro despejado. Antes isso nao machucava: o fundo
+     * de verdade era o preview, que morava fora do cache, em `bitmapPreview`.
+     * Agora o fundo e um tile como qualquer outro, e sem esta guarda uma sessao
+     * longa de arrasto (mais de 256 tiles) o despejaria em silencio. O buraco so
+     * apareceria na proxima reconstrucao do canvas, quando `repintarDoCache(0)`
+     * nao achasse mais nada para pintar embaixo. Pinar custa pouco: o nivel 0 e
+     * 1 tile na escada nova, e 8 na antiga.
      * @param {string} chave
      * @param {ImageBitmap} bitmap
      */
     function guardarNoCache(chave, bitmap) {
         cache.set(chave, bitmap);
         while (cache.size > MAX_TILES_EM_CACHE) {
-            const velha = cache.keys().next().value;
+            const velha = primeiraDespejavel();
+            if (velha === null) break;
             const antigo = cache.get(velha);
             cache.delete(velha);
             if (antigo) antigo.close();
         }
+    }
+
+    /**
+     * A chave mais antiga que pode ser despejada, pulando o nivel 0.
+     * @returns {string|null} `null` quando so resta fundo no cache.
+     */
+    function primeiraDespejavel() {
+        for (const chave of cache.keys()) {
+            if (!chave.startsWith('0/')) return chave;
+        }
+        return null;
     }
 
     // ========================================================================
@@ -773,9 +826,12 @@ export function createTileLoader({
 
     return {
         /**
-         * Carrega uma foto: descritor, preview, o fundo pedido pela estrategia
-         * e, por fim, os tiles visiveis do nivel alvo. Aborta o que a foto
-         * anterior ainda tinha em voo.
+         * Carrega uma foto: descritor, fundo e, por fim, os tiles visiveis do
+         * nivel alvo. Aborta o que a foto anterior ainda tinha em voo.
+         *
+         * NO CAMINHO PADRAO O FUNDO E O TILE DE NIVEL 0, e sao duas requisicoes
+         * antes do detalhe (o `tiles.json` e o tile). A estrategia legada
+         * 'preview' troca esse tile pelo `descritor.base`.
          *
          * Devolve `null` quando outra foto tomou o lugar desta no meio do
          * caminho. Cada `await` reconfere a geracao ANTES de escrever qualquer
@@ -856,42 +912,51 @@ export function createTileLoader({
 
             reconstruirCanvas(nivelDesejado());
 
-            // 1. Preview esticado. Vale nas TRES estrategias: e ele que impede a
-            // tela preta, e chega antes de qualquer tile.
-            estat.requests++;
-            const respPreview = await fetch(resolver(descritor.base), {
-                signal: controlador.signal,
-                cache: modoCache,
-            });
-            if (g !== geracao) return null;
-            if (respPreview.ok) {
-                const buffer = await respPreview.arrayBuffer();
+            // 1. Preview esticado, SO na estrategia legada. O caminho padrao
+            // nao toca em `descritor.base`, porque ele aponta para
+            // `image?quality=preview`, e esse dado vai ser apagado.
+            if (fundoAtual === 'preview') {
+                estat.requests++;
+                const respPreview = await fetch(resolver(descritor.base), {
+                    signal: controlador.signal,
+                    cache: modoCache,
+                });
                 if (g !== geracao) return null;
-                estat.bytesPreview = bytesDaResposta(respPreview, buffer);
-                estat.bytes += estat.bytesPreview;
-                bitmapPreview = await createImageBitmap(
-                    new Blob([buffer], { type: 'image/webp' }),
-                );
-                if (g !== geracao) {
-                    bitmapPreview.close();
-                    bitmapPreview = null;
-                    return null;
+                if (respPreview.ok) {
+                    const buffer = await respPreview.arrayBuffer();
+                    if (g !== geracao) return null;
+                    estat.bytesPreview = bytesDaResposta(respPreview, buffer);
+                    estat.bytes += estat.bytesPreview;
+                    bitmapPreview = await createImageBitmap(
+                        new Blob([buffer], { type: 'image/webp' }),
+                    );
+                    if (g !== geracao) {
+                        bitmapPreview.close();
+                        bitmapPreview = null;
+                        return null;
+                    }
+                    pintarFundo(bitmapPreview);
+                    publicar();
                 }
-                pintarFundo(bitmapPreview);
-                publicar();
             }
 
-            // 2. Fundo de nivel 0, conforme a estrategia.
+            // 2. Fundo de nivel 0. E ele que impede a esfera preta, e por isso
+            // vem antes do detalhe.
             //
-            // O lote e ESPERADO antes do detalhe, e nao disparado junto: os dois
+            // O lote e ESPERADO, e nao disparado junto do alvo: os dois
             // concorreriam no mesmo pool de 24, e um tile grosso que chegasse
             // depois de um fino apagaria o detalhe dele.
             //
-            // Quando o proprio alvo E o nivel 0 (tela pequena, ou nivel travado
-            // a mao) o fundo nao existe como etapa separada: baixar os mesmos
-            // tiles fora do alvo esconderia o custo deles do relogio do alvo, e
-            // o piloto mediria um nivel que se completa sozinho.
-            const tilesDoFundo = nivelAtual === 0 ? [] : tilesDeFundo();
+            // O ALVO SER O PROPRIO NIVEL 0 DEIXOU DE SER CASO ESPECIAL. A versao
+            // antiga pulava o fundo nesse estado, para o relogio do alvo nao
+            // esconder o custo de tiles baixados fora dele. So que com a tela
+            // sem area (painel recolhido, aba trocada) o alvo cai no nivel 0 e o
+            // conjunto visivel sai VAZIO: ninguem baixava nada, e agora que o
+            // preview nao vem mais a esfera ficaria preta ate a tela voltar.
+            // Um tile de 11 a 18 KB nao distorce medida nenhuma, e o quadro
+            // garantido vale mais. Quando o alvo repete o nivel 0, `pedirTiles`
+            // acha a chave em `desenhados` e nao pede duas vezes.
+            const tilesDoFundo = tilesDeFundo();
             if (tilesDoFundo.length > 0) {
                 await pedirTiles(0, tilesDoFundo, false);
                 if (g !== geracao) return null;

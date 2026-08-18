@@ -1,12 +1,27 @@
 /**
  * @fileoverview Three.js 360 panorama viewer for the calibration interface.
  * Renders an equirectangular photo on an inverted sphere with orbit-style controls.
- * Supports progressive loading (preview first, then full) and live mesh_rotation_y preview.
+ * Supports live mesh_rotation_y preview.
  *
- * A FONTE DA TEXTURA TEM DOIS CAMINHOS, e so isso. `loadProgressive` pinta o
- * preview, sonda o `tiles.json` da foto e, se a piramide existir, compoe a
- * panoramica por tiles (ver tile-loader.js). Sem piramide cai no full de sempre,
- * e o 404 e o caminho NORMAL: 28 dos 29 projetos ainda nao tem tiles gerados.
+ * A FONTE DA TEXTURA TEM DOIS CAMINHOS, e so isso. `loadProgressive` sonda o
+ * `tiles.json` da foto e, se a piramide existir, compoe a panoramica por tiles
+ * (ver tile-loader.js). So o ramo SEM piramide pede preview e full.
+ *
+ * A PIRAMIDE E A REGRA, E NAO A EXCECAO. Contadas nos 29 bancos
+ * `{slug}_tiles.db` em 2026-08-18, TODAS as 99.035 fotos que a API serve tem
+ * piramide. As 5 linhas de `photos` sem piramide estao em `deleted_photos`, e a
+ * rota responde 404 nelas antes mesmo de chegar aqui (conferido nas cinco). O
+ * 404 do `tiles.json` deixou de ser o caminho normal. Comentario que ainda
+ * disser "28 dos 29 projetos nao tem tiles" esta vencido: era verdade no piloto,
+ * e o acervo foi gerado depois.
+ *
+ * O QUE AINDA DIFERE ENTRE OS PROJETOS e a ESCADA, e nao a existencia da
+ * piramide. So blumenau foi migrado para a escada que desce ate um tile, e o
+ * nivel 0 dele e 1 objeto de 11 a 13 KB. Nos outros 28 a escada velha para em
+ * 2048, e o nivel 0 sao 6 tiles (formato 5760) ou 8 tiles (formato 7680), de 40
+ * a 291 KB. Os dois ramos abrem certo, porque o cliente le a grade do descritor
+ * e nunca a deduz. O que muda e o PESO do primeiro quadro, e por isso a migracao
+ * do acervo continua valendo a pena.
  *
  * O QUE NAO MUDA POR CAUSA DOS TILES: a esfera invertida, a ordem de rotacao
  * ZXY da malha, a camera YXZ e todo o overlay 2D. A UV tem de continuar
@@ -257,8 +272,13 @@ function garantirCarregadorTiles() {
         gl: renderer.getContext(),
         onTextura: (textura) => {
             // A textura NAO entra na esfera aqui. O canvas acaba de nascer em
-            // branco, e aplica-lo agora piscaria preto ate o preview pintar,
-            // justo onde hoje a foto anterior segura a tela. Fica pendente.
+            // branco, e aplica-lo agora apagaria a foto anterior por um quadro
+            // vazio. Fica pendente ate o nivel 0 pintar nele.
+            //
+            // ISTO PESA MAIS DESDE QUE O PREVIEW SAIU. Antes o preview cobria
+            // essa janela, e aplicar cedo custava pouco. Agora e a foto anterior
+            // que segura a tela sozinha, e trocar antes da hora seria a unica
+            // coisa entre o operador e uma esfera vazia.
             //
             // `isFull` verdadeiro porque a esfera composta por tiles vale pelo
             // full: sem esta marca, um preview atrasado da foto anterior
@@ -268,8 +288,8 @@ function garantirCarregadorTiles() {
         },
         onEstatisticas: (estat) => {
             // Ha pintura no canvas: agora ele pode substituir a esfera. O
-            // carregador publica estatistica depois do preview e depois de cada
-            // tile, entao este e o primeiro instante seguro.
+            // carregador publica estatistica depois de cada tile, e o primeiro a
+            // chegar e o de nivel 0, entao este e o primeiro instante seguro.
             if (texturaTilesPendente && estat.msPrimeiraPintura !== null) {
                 aplicarTexturaDeTiles();
             }
@@ -358,8 +378,9 @@ async function tentarTiles(photoId, generation) {
         // aqui, e e este o ramo certo para ele.
         if (generation !== loadGeneration) return true;
 
-        // 404 e o CAMINHO NORMAL, e nao excecao: 28 dos 29 projetos nao tem
-        // piramide gerada. So o que nao for 404 merece barulho no console.
+        // O 404 DEIXOU DE SER O CAMINHO NORMAL, mas continua legitimo: foto
+        // recem-importada nao tem piramide ate o gerador rodar. Legitimo nao
+        // merece barulho no console, entao so o resto avisa.
         if (err?.status !== 404) {
             console.warn('Falha ao carregar tiles, caindo no full:', err);
         }
@@ -369,30 +390,58 @@ async function tentarTiles(photoId, generation) {
 }
 
 /**
- * Loads a photo with progressive quality (preview, then tiles or full).
- * @param {string} previewUrl - Preview image URL
- * @param {string} fullUrl - Full quality image URL
+ * Carrega uma foto: piramide de tiles, ou preview mais full quando nao houver.
+ *
+ * A SONDA VEM PRIMEIRO, E SOZINHA. O preview so pode ser pedido no ramo SEM
+ * piramide, porque `preview_webp` vai ser apagado do banco e a interface nao
+ * pode depender de um dado que deixa de existir. Com piramide, quem pinta o
+ * primeiro quadro e o carregador de tiles, pelo nivel 0.
+ *
+ * A ORDEM SE INVERTEU, e o motivo e uma medida. Antes a sonda partia junto do
+ * preview, para nao atrasar o full "de todo mundo" numa volta de rede. Aquele
+ * "todo mundo" nao existe mais: toda foto que a API serve tem piramide, entao a
+ * sonda responde 200, e nao 404. Pedir o preview em paralelo baixaria um objeto
+ * que nunca chega a ser usado.
+ *
+ * O QUE ISSO CUSTA, medido e nao estimado. O primeiro quadro passa a depender
+ * de DUAS voltas de rede em sequencia (o `tiles.json`, depois o tile de nivel
+ * 0), contra UMA do preview. Medido em blumenau, 12 cargas por celula, cache
+ * desligado, primeira subida de textura a GPU:
+ *   latencia 0 (loopback): 101 ms antes, 119 ms depois  (+18)
+ *   latencia 30 ms:        108 ms antes, 137 ms depois  (+29)
+ *   latencia 80 ms:        108 ms antes, 210 ms depois  (+102)
+ *   latencia 200 ms:       231 ms antes, 453 ms depois  (+222)
+ * O custo E a volta de rede a mais, e nao bytes: ele acompanha a latencia quase
+ * um por um. Em rede de quartel isso nao aparece; num enlace ruim aparece.
+ *
+ * A CONTA SO FECHA PORQUE O NIVEL 0 E PEQUENO. Em blumenau ele e 1 tile de 11 a
+ * 13 KB, contra 16 KB do preview. Nos 28 projetos que ainda estao na escada
+ * velha o nivel 0 sao 6 ou 8 tiles, de 40 a 291 KB, e ali a segunda volta de
+ * rede ainda carrega dez vezes mais bytes. Migrar o acervo fecha essa ponta.
+ *
+ * @param {string} previewUrl - URL do preview. So o ramo sem piramide a usa
+ * @param {string} fullUrl - URL da imagem inteira
  * @param {string} [photoId] - uuid da foto. Sem ele, sai da propria fullUrl
  */
 export async function loadProgressive(previewUrl, fullUrl, photoId = null) {
     // Nova geracao: invalida qualquer carga anterior ainda em voo.
     const generation = nextLoadGeneration();
 
-    // A sonda do tiles.json parte JUNTO do preview, e nao depois dele. Ela
-    // responde 404 na esmagadora maioria das fotos, e enfileira-la atras do
-    // preview atrasaria o full de todo mundo em uma volta de rede inteira.
-    const sonda = tentarTiles(photoId || uuidDaUrlDeImagem(fullUrl), generation);
+    if (await tentarTiles(photoId || uuidDaUrlDeImagem(fullUrl), generation)) return;
 
-    // Load preview first for fast display
+    // Daqui para baixo a foto NAO tem piramide. Hoje NENHUMA foto servida cai
+    // aqui, e o ramo existe para a foto recem-importada, que passa por aqui
+    // ate o gerador rodar.
+    //
+    // O preview segura a tela enquanto o full chega. Ele sobrevive so neste
+    // ramo, e morre junto do `preview_webp` quando a importacao passar a gerar
+    // a piramide antes de publicar a foto.
     try {
         await loadPanorama(previewUrl, true, generation);
     } catch {
-        // Preview failed, will try full directly
+        // Preview falhou: vai direto ao full.
     }
 
-    if (await sonda) return;
-
-    // Sem piramide: o full de sempre, exatamente como antes.
     try {
         await loadPanorama(fullUrl, false, generation);
     } catch (err) {

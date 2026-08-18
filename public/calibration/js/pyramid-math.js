@@ -18,11 +18,28 @@
  */
 
 /**
- * Largura abaixo da qual a escada para de descer.
+ * A escada desce ate o nivel caber em UM TILE, e nao ate uma largura fixa.
  *
- * Um nivel mais grosso que isso nao economiza nada util: em 1920 de largura a
- * panoramica inteira ja cabe em 8 tiles, e o preview de 512x256 cobre o caso
- * do primeiro quadro.
+ * POR QUE MUDOU. Ate 2026-08-18 ela parava em 2048, e o primeiro quadro vinha do
+ * `preview_webp` de 512x256, um segundo dado ao lado da piramide. Isso obrigava a
+ * guardar TRES representacoes da mesma foto: preview, full e tiles. Com a escada
+ * descendo ate um tile, o nivel mais grosso E o preview, e a piramide passa a
+ * bastar sozinha.
+ *
+ * O custo foi orcado antes de gerar: +2,2% de area em 7680 (tres niveis novos,
+ * mais 9 tiles por foto) e +1,5% em 5760 (dois niveis, mais 3 tiles). Em 2048 sao
+ * +31,3%, porque aquele formato tinha um nivel so; sao 828 fotos.
+ *
+ * A condicao de parada e `w > tileSize`, e nao um numero solto: com tile de 512 a
+ * equirretangular 2:1 de 512x256 cabe em um tile exato. Amarrar a parada ao tile
+ * faz a regra continuar certa se o tile mudar de tamanho um dia.
+ */
+
+/**
+ * Largura minima historica da escada, mantida so para leitura de dado antigo.
+ *
+ * Uma piramide gerada antes de 2026-08-18 parou aqui. Quem precisar reproduzir a
+ * escada DAQUELE dado usa este numero; o dado novo nao o usa para nada.
  * @constant {number}
  */
 export const LARGURA_MINIMA_NIVEL = 2048;
@@ -110,13 +127,62 @@ export function montarEscada(width, height, tileSize, razao = RAZAO_PADRAO) {
   const escada = [{ width, height }];
   let w = width;
   let h = height;
-  while (w > LARGURA_MINIMA_NIVEL) {
+  // Desce ate caber em um tile. Ver o bloco sobre a condicao de parada acima.
+  while (w > tileSize) {
     const proximaW = Math.max(1, Math.round(w / r));
     const proximaH = Math.max(1, Math.round(h / r));
     // Guarda contra razao que arredonda para o mesmo numero e nao desce.
     if (proximaW >= w) break;
     w = proximaW;
     h = proximaH;
+    escada.push({ width: w, height: h });
+  }
+  escada.reverse();
+  return escada.map((nivel, level) => ({
+    level,
+    width: nivel.width,
+    height: nivel.height,
+    cols: Math.ceil(nivel.width / tileSize),
+    rows: Math.ceil(nivel.height / tileSize),
+  }));
+}
+
+/**
+ * A escada de uma piramide JA GRAVADA, reconstruida pelo numero de niveis dela.
+ *
+ * ESTA FUNCAO EXISTE POR UM DEFEITO MEDIDO, e o defeito foi meu. Em 2026-08-18 a
+ * condicao de parada de `montarEscada` mudou de `w > 2048` para `w > tileSize`.
+ * A rota calculava o descritor pela regra DE HOJE, e o banco tinha a escada de
+ * ONTEM: o descritor prometia 7 niveis onde havia 4, a numeracao andava tres
+ * casas, e o cliente pedia o nivel 0 e recebia um tile de um nivel oito vezes
+ * maior. Medido no tubarao: 277 respostas 404 numa foto so, e a tela pintando um
+ * oitavo do panorama esticado na esfera inteira. Atingia 98.854 das 99.035 fotos.
+ *
+ * A LICAO E DE CLASSE, e nao deste bug: dado gravado manda em descritor
+ * calculado. Enquanto a regra de parada morar so no codigo, toda mudanca nela
+ * reinterpreta silenciosamente todo o acervo ja escrito.
+ *
+ * `max_level` esta gravado em `tile_pyramids` desde o primeiro dia, entao o
+ * numero de niveis nao precisa ser adivinhado: divide-se `max_level` vezes, e a
+ * escada sai igual a que produziu aquele dado, qualquer que tenha sido a regra
+ * de parada em vigor.
+ *
+ * @param {number} width - Largura nativa em pixels.
+ * @param {number} height - Altura nativa em pixels.
+ * @param {number} tileSize - Lado do tile em pixels.
+ * @param {number} razao - Fator entre um nivel e o proximo.
+ * @param {number} maxLevel - `tile_pyramids.max_level`, o nivel nativo.
+ * @returns {Array<{level:number,width:number,height:number,cols:number,rows:number}>}
+ */
+export function escadaGravada(width, height, tileSize, razao, maxLevel) {
+  const r = Number.isFinite(razao) && razao > 1 ? razao : RAZAO_PADRAO;
+  const n = Number.isFinite(maxLevel) && maxLevel >= 0 ? Math.floor(maxLevel) : 0;
+  const escada = [{ width, height }];
+  let w = width;
+  let h = height;
+  for (let i = 0; i < n; i++) {
+    w = Math.max(1, Math.round(w / r));
+    h = Math.max(1, Math.round(h / r));
     escada.push({ width: w, height: h });
   }
   escada.reverse();

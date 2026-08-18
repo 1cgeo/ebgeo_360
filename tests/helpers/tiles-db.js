@@ -16,16 +16,22 @@
  * modulo que a rota chama, uma mudanca de arredondamento moveria os dois juntos
  * e o teste concordaria com o defeito.
  *
+ * A ESCADA DESCE ATE UM TILE desde 2026-08-18. Antes ela parava em 2048, e o
+ * primeiro quadro vinha do `preview_webp`. Agora o nivel mais grosso E o
+ * preview, entao toda piramide daqui ganhou niveis embaixo e a NUMERACAO
+ * EMPURROU: o que era level 0 virou level 2 ou 3. O contrato de level 0 ser o
+ * mais grosso nao mudou.
+ *
  * As quatro piramides cobrem quatro perguntas diferentes:
  *
- *   TILED   2560x1280, tile 512,  razao 2    a grade normal, com um buraco
- *   DELETED 1024x512,  tile 512,  razao 2    tile gravado sob lapide de exclusao
- *   RAZAO   5376x2688, tile 1024, razao 1,6  a escada fina, de 4 niveis
- *   LEGADO  3072x1536, tile 512,  SEM coluna o arquivo que ja esta no disco
+ *   TILED   2560x1280, tile 512,  razao 2    4 niveis, a grade normal com buraco
+ *   DELETED 1024x512,  tile 512,  razao 2    2 niveis, sob lapide de exclusao
+ *   RAZAO   5376x2688, tile 1024, razao 1,6  5 niveis, a escada fina
+ *   LEGADO  3072x1536, tile 512,  SEM coluna 4 niveis, o arquivo ja no disco
  *
- * O numero de colunas NAO e 2^nivel em nenhuma delas, entao um teste que peca
- * x=3 no nivel 0 (400) e x=3 no nivel 1 (200) reprova qualquer reuso da
- * matematica XYZ.
+ * O numero de colunas NAO e 2^nivel em nenhuma delas: em TILED a escada da
+ * 1, 2, 3 e 5 colunas, e um teste que peca x=3 no nivel 2 (200) e x=3 no nivel 1
+ * (400) reprova qualquer reuso da matematica XYZ.
  */
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -90,26 +96,41 @@ export const TILE_SEEDS = {
   TILES_DB_FILENAME: `${SEEDS.PROJECT_SLUG}_tiles.db`,
 
   // Foto com piramide completa, menos um buraco proposital.
+  //
+  // A escada desce 1280, 640 e 320, e para em 320 porque 320 cabe no tile de
+  // 512. Sao 4 niveis, com 1, 2, 3 e 5 colunas: o mesmo x=3 e 400 no nivel 2 e
+  // 200 no nivel 3, que e o que reprova qualquer teto do tipo 2**level.
   TILED_PHOTO_ID: SEEDS.PHOTO_1_ID,
   TILED_WIDTH: 2560,
   TILED_HEIGHT: 1280,
-  TILED_MAX_LEVEL: 1,
+  TILED_MAX_LEVEL: 3,
   TILED_LEVELS: [
+    { width: 320, height: 160 },
+    { width: 640, height: 320 },
     { width: 1280, height: 640 },
     { width: 2560, height: 1280 },
   ],
   // O buraco existe para provar que tile ausente da tabela responde 404, e nao
   // 200 com corpo vazio nem 500. Fica num nivel/coluna que nenhum outro teste usa.
-  TILED_HOLE: { level: 0, x: 1, y: 1 },
+  //
+  // ELE ANDOU JUNTO COM A ESCADA. Era (0,1,1), no nivel de 1280x640; esse nivel
+  // agora e o 2. Deixa-lo no nivel 0, que hoje tem 1 coluna e 1 linha, poria o
+  // buraco FORA da grade, e o 404 do teste viraria um 400 sem ninguem notar.
+  TILED_HOLE: { level: 2, x: 1, y: 1 },
 
   // Foto COM piramide e COM lapide de exclusao. E a armadilha da implementacao
   // ingenua: os tiles dela existem no banco e um handler que so consulta
   // `tiles` os serve com 200.
+  //
+  // Ela e o formato mais curto do acervo: 1024 desce um degrau para 512, que ja
+  // cabe no tile. Sao 2 niveis, e nao 1, desde que a escada passou a descer ate
+  // o tile.
   DELETED_PHOTO_ID: '00000000-0000-4000-a000-000000000040',
   DELETED_WIDTH: 1024,
   DELETED_HEIGHT: 512,
-  DELETED_MAX_LEVEL: 0,
+  DELETED_MAX_LEVEL: 1,
   DELETED_LEVELS: [
+    { width: 512, height: 256 },
     { width: 1024, height: 512 },
   ],
 
@@ -117,22 +138,28 @@ export const TILE_SEEDS = {
   // gravada na coluna.
   //
   // A geometria e escolhida para DISCRIMINAR, e nao por acaso. Em 5376 de
-  // largura a razao 1,6 desce tres degraus e da 4 niveis; a razao 2 desce dois e
-  // da 3. Uma rota que ignore a coluna e monte a escada com 2 publica 3 niveis,
-  // e o nivel 2 dela e o nativo, de 6 colunas, contra as 4 colunas do nivel 2
-  // real. Entao (level 2, x 4) separa as duas leituras: 200 na errada, 400 na
-  // certa. E o nivel 3 so existe na certa.
+  // largura, com tile de 1024, a razao 1,6 desce quatro degraus e da 5 niveis
+  // (821, 1313, 2100, 3360, 5376); a razao 2 desce tres e da 4 (672, 1344, 2688,
+  // 5376). Uma rota que ignore a coluna e monte a escada com 2 publica 4 niveis,
+  // e o nivel 3 dela e o nativo, de 6 colunas, contra as 4 colunas do nivel 3
+  // real. Entao (level 3, x 4) separa as duas leituras: 200 na errada, 400 na
+  // certa. E o nivel 4 so existe na certa.
   //
-  // O tile_size e 1024, e nao 512, por duas razoes. Ele derruba a geracao de 115
-  // tiles para 34, e prova que a rota le piramide.tile_size em vez do 512 que
-  // todas as outras fixtures usam.
+  // O SEPARADOR MUDOU DE NIVEL com a escada nova. Ele era (level 2, x 4), e o
+  // nivel 2 hoje tem 3 colunas nas DUAS leituras: o teste antigo continuaria
+  // verde sem separar nada.
+  //
+  // O tile_size e 1024, e nao 512, por duas razoes. Ele derruba a geracao de
+  // 120 tiles para 35 (contado, nao estimado), e prova que a rota le
+  // piramide.tile_size em vez do 512 que todas as outras fixtures usam.
   RAZAO_PHOTO_ID: '00000000-0000-4000-a000-000000000060',
   RAZAO_VALOR: 1.6,
   RAZAO_WIDTH: 5376,
   RAZAO_HEIGHT: 2688,
   RAZAO_TILE_SIZE: 1024,
-  RAZAO_MAX_LEVEL: 3,
+  RAZAO_MAX_LEVEL: 4,
   RAZAO_LEVELS: [
+    { width: 821, height: 410 },
     { width: 1313, height: 656 },
     { width: 2100, height: 1050 },
     { width: 3360, height: 1680 },
@@ -143,16 +170,23 @@ export const TILE_SEEDS = {
   // do DDL anterior a coluna `razao`. Ela responde a pergunta operacional: o
   // acervo ja gerado continua servindo depois da migracao?
   //
-  // 3072 tambem discrimina. Sem coluna a escada tem de sair com razao 2 e nivel
-  // 0 de 1536x768 (3 colunas). Ler razao 1,6 daria 1920x960 (4 colunas), entao
-  // x=3 no nivel 0 e 400 na leitura certa e 200 na errada.
+  // 3072 tambem discrimina. Sem coluna a escada tem de sair com razao 2, que
+  // desce 1536, 768 e 384 e da 4 niveis. Ler razao 1,6 desceria 1920, 1200, 750
+  // e 469, e daria 5. Entao o nivel 4 e 400 na leitura certa e 200 na errada.
+  //
+  // O SEPARADOR MUDOU. Ele era x=3 no nivel 0, quando o nivel 0 media 1536x768
+  // (3 colunas) contra 1920x960 (4 colunas) da leitura errada. Hoje o nivel 0
+  // cabe num tile nas duas leituras, e tem 1 coluna nas duas: aquele x=3 segue
+  // dando 400, e nao separa mais nada.
   LEGACY_PROJECT_ID: '00000000-0000-4000-a000-000000000003',
   LEGACY_PROJECT_SLUG: 'legado',
   LEGACY_PHOTO_ID: '00000000-0000-4000-a000-000000000070',
   LEGACY_WIDTH: 3072,
   LEGACY_HEIGHT: 1536,
-  LEGACY_MAX_LEVEL: 1,
+  LEGACY_MAX_LEVEL: 3,
   LEGACY_LEVELS: [
+    { width: 384, height: 192 },
+    { width: 768, height: 384 },
     { width: 1536, height: 768 },
     { width: 3072, height: 1536 },
   ],

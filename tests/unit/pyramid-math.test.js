@@ -10,14 +10,25 @@
  * pedido do navegador e o numero do piloto de uma vez so.
  *
  * Os numeros deste arquivo sao MEDIDOS, e nao deduzidos da formula:
- *   - as duas escadas saem das duas resolucoes reais do acervo, 7680x3840 e
- *     5760x2880, com o tile de 512 que o piloto usa;
+ *   - as tres escadas saem das tres resolucoes reais do acervo, 7680x3840,
+ *     5760x2880 e 2048x1024, com o tile de 512 que o piloto usa;
  *   - os 6119 px e os 4264 px de largura necessaria foram medidos em Chrome, e
  *     ancoram a conta pela fov HORIZONTAL. Uma conta pela vertical daria 4728 na
  *     primeira tela, e escolheria um nivel abaixo do necessario.
  *
  * O teste nao repete a formula que deveria estar conferindo. Onde a conta antiga
  * errava, este arquivo escreve a conta antiga a mao e exige que ela DISCORDE.
+ *
+ * A ESCADA MUDOU EM 2026-08-18, e este arquivo mudou junto. Ate aqui ela parava
+ * em LARGURA_MINIMA_NIVEL, e o primeiro quadro vinha do `preview_webp`, um
+ * segundo dado ao lado da piramide. Agora ela desce ate o nivel caber em UM
+ * TILE, entao o nivel 0 E o preview e a piramide basta sozinha. Os testes que
+ * fixavam 3 e 4 niveis nao estavam errados: eles registravam a decisao antiga.
+ *
+ * O EFEITO COLATERAL QUE ASSUSTA. Niveis novos entram POR BAIXO, entao a
+ * numeracao anda: o que era level 0 em 7680 agora e level 3. O contrato nao
+ * mudou, porque level 0 continua sendo o mais grosso. O que nao pode mudar e a
+ * LARGURA que cada tela escolhe, e ha teste so para isso.
  */
 
 import { describe, it } from 'node:test';
@@ -35,12 +46,51 @@ import {
 
 const TILE = 512;
 
-/** As duas resolucoes reais do acervo, na escada que o piloto gera. */
+/** As tres resolucoes reais do acervo, na escada que o piloto gera. */
 const ESCADA_7680 = montarEscada(7680, 3840, TILE);
 const ESCADA_5760 = montarEscada(5760, 2880, TILE);
+const ESCADA_2048 = montarEscada(2048, 1024, TILE);
 
 /** A escada fina de 7680, que e o conserto do vao entre 3840 e 7680. */
 const ESCADA_7680_R16 = montarEscada(7680, 3840, TILE, 1.6);
+
+/**
+ * A escada que o dado ANTIGO tem, com a condicao de parada de antes.
+ *
+ * Escrita a mao de proposito. Ela e a conta que o gerador rodava ate
+ * 2026-08-18, e o migrador precisa dela para saber quantos niveis entraram por
+ * baixo de cada piramide ja gravada. Se `montarEscada` a reproduzisse, o teste
+ * nao conferiria nada: compararia a funcao com ela mesma.
+ *
+ * @param {number} width - Largura nativa em pixels.
+ * @param {number} height - Altura nativa em pixels.
+ * @param {number} tileSize - Lado do tile em pixels.
+ * @param {number} [razao=2] - Fator entre um nivel e o proximo.
+ * @returns {Array<{level:number,width:number,height:number,cols:number,rows:number}>}
+ */
+function escadaAntiga(width, height, tileSize, razao = 2) {
+  const niveis = [{ width, height }];
+  let w = width;
+  let h = height;
+  // A UNICA diferenca para a escada de hoje: o piso e a largura minima, e nao
+  // o tile. Tudo o mais, inclusive o arredondamento, tem de ser igual.
+  while (w > LARGURA_MINIMA_NIVEL) {
+    const proximaW = Math.max(1, Math.round(w / razao));
+    const proximaH = Math.max(1, Math.round(h / razao));
+    if (proximaW >= w) break;
+    w = proximaW;
+    h = proximaH;
+    niveis.push({ width: w, height: h });
+  }
+  niveis.reverse();
+  return niveis.map((nivel, level) => ({
+    level,
+    width: nivel.width,
+    height: nivel.height,
+    cols: Math.ceil(nivel.width / tileSize),
+    rows: Math.ceil(nivel.height / tileSize),
+  }));
+}
 
 /**
  * As duas telas MEDIDAS em Chrome, que ancoram a escolha de nivel.
@@ -81,37 +131,121 @@ function paresDe(lista) {
 }
 
 describe('montarEscada', () => {
-  it('monta 3 niveis para a panoramica de 7680x3840', () => {
-    // A escada para de descer em 1920 porque 1920 nao passa de 2048. Os numeros
-    // estao escritos inteiros de proposito: o ceil da coluna e da linha e a
-    // conta que o descritor publica, e o teste que a recalcula nao confere nada.
+  it('monta 5 niveis para a panoramica de 7680x3840', () => {
+    // A escada desce ate 480x240, que cabe em um tile de 512. Os numeros estao
+    // escritos inteiros de proposito: o ceil da coluna e da linha e a conta que
+    // o descritor publica, e o teste que a recalcula nao confere nada.
+    //
+    // Os dois primeiros niveis SAO NOVOS. Antes a escada parava em 1920, e o
+    // primeiro quadro vinha do `preview_webp`. Eles custam 9 tiles por foto.
     assert.deepEqual(ESCADA_7680, [
-      { level: 0, width: 1920, height: 960, cols: 4, rows: 2 },
-      { level: 1, width: 3840, height: 1920, cols: 8, rows: 4 },
-      { level: 2, width: 7680, height: 3840, cols: 15, rows: 8 },
+      { level: 0, width: 480, height: 240, cols: 1, rows: 1 },
+      { level: 1, width: 960, height: 480, cols: 2, rows: 1 },
+      { level: 2, width: 1920, height: 960, cols: 4, rows: 2 },
+      { level: 3, width: 3840, height: 1920, cols: 8, rows: 4 },
+      { level: 4, width: 7680, height: 3840, cols: 15, rows: 8 },
     ]);
   });
 
-  it('monta 3 niveis para a panoramica de 5760x2880', () => {
+  it('monta 5 niveis para a panoramica de 5760x2880', () => {
     assert.deepEqual(ESCADA_5760, [
-      { level: 0, width: 1440, height: 720, cols: 3, rows: 2 },
-      { level: 1, width: 2880, height: 1440, cols: 6, rows: 3 },
-      { level: 2, width: 5760, height: 2880, cols: 12, rows: 6 },
+      { level: 0, width: 360, height: 180, cols: 1, rows: 1 },
+      { level: 1, width: 720, height: 360, cols: 2, rows: 1 },
+      { level: 2, width: 1440, height: 720, cols: 3, rows: 2 },
+      { level: 3, width: 2880, height: 1440, cols: 6, rows: 3 },
+      { level: 4, width: 5760, height: 2880, cols: 12, rows: 6 },
     ]);
   });
 
-  it('para de descer no piso de largura, e nunca abaixo dele sem precisar', () => {
-    // O nivel 0 e o unico que pode ficar abaixo do piso, porque ele e o degrau
-    // seguinte ao ultimo que ainda passava de 2048.
-    for (const escada of [ESCADA_7680, ESCADA_5760]) {
-      for (const nivel of escada.slice(1)) {
-        assert.ok(nivel.width > LARGURA_MINIMA_NIVEL, `nivel ${nivel.level} abaixo do piso`);
+  it('monta 3 niveis para a panoramica de 2048x1024', () => {
+    // O TERCEIRO FORMATO do acervo, com 828 fotos. Ele e o caso extremo da
+    // decisao: pela regra antiga ele tinha UM nivel so, e agora tem tres. E
+    // tambem o unico formato cujo nivel 0 mede o tile exato, 512x256.
+    assert.deepEqual(ESCADA_2048, [
+      { level: 0, width: 512, height: 256, cols: 1, rows: 1 },
+      { level: 1, width: 1024, height: 512, cols: 2, rows: 1 },
+      { level: 2, width: 2048, height: 1024, cols: 4, rows: 2 },
+    ]);
+  });
+
+  it('desce ate o nivel 0 caber em UM TILE, em todo formato e toda razao', () => {
+    // O TESTE QUE FIXA A DECISAO NOVA. A piramide tem de bastar sozinha para o
+    // `full_webp` e o `preview_webp` serem apagados, e bastar sozinha quer dizer
+    // ter um nivel que entra numa requisicao so. Nivel 0 com cols 1 e rows 1 e a
+    // definicao disso.
+    //
+    // Ele REPROVA a parada antiga, e o formato que o prova e o 2048: pela regra
+    // de LARGURA_MINIMA_NIVEL a escada de 2048 tinha um nivel so, de 4 por 2
+    // tiles. Oito tiles nao sao um preview.
+    const casos = [
+      ['7680 razao 2', ESCADA_7680],
+      ['5760 razao 2', ESCADA_5760],
+      ['2048 razao 2', ESCADA_2048],
+      ['7680 razao 1,6', ESCADA_7680_R16],
+      ['5760 razao 1,6', montarEscada(5760, 2880, TILE, 1.6)],
+      ['2048 razao 1,6', montarEscada(2048, 1024, TILE, 1.6)],
+    ];
+    for (const [nome, escada] of casos) {
+      assert.equal(escada[0].cols, 1, `${nome}: nivel 0 com ${escada[0].cols} colunas`);
+      assert.equal(escada[0].rows, 1, `${nome}: nivel 0 com ${escada[0].rows} linhas`);
+      assert.ok(escada[0].width <= TILE, `${nome}: nivel 0 mede ${escada[0].width} px`);
+    }
+
+    // A regra antiga, escrita a mao, para o teste REPROVAR ela. Em 2048 ela para
+    // no proprio nativo, que ocupa 8 tiles. Se alguem devolver o piso de largura
+    // ao lugar do tile, esta linha passa a concordar com a de cima e o teste cai.
+    const antiga2048 = escadaAntiga(2048, 1024, TILE);
+    assert.equal(antiga2048.length, 1);
+    assert.equal(antiga2048[0].cols * antiga2048[0].rows, 8, 'a parada antiga cabia em um tile');
+  });
+
+  it('a parada acompanha o TILE, e nao um numero solto', () => {
+    // POR QUE A CONDICAO E `w > tileSize`. Se ela fosse uma constante nova, a
+    // escada continuaria certa hoje e erraria no dia em que o tile mudasse. Com
+    // tile de 256 a escada desce mais, com tile de 1024 desce menos, e isso vale
+    // nos tres formatos. Uma constante escondida daria sempre a mesma escada.
+    const alturas = { 7680: 3840, 5760: 2880, 2048: 1024 };
+    const razoes = { 7680: 1.6, 5760: 2, 2048: 2 };
+
+    for (const largura of [7680, 5760, 2048]) {
+      const altura = alturas[largura];
+      const razao = razoes[largura];
+      const fino = montarEscada(largura, altura, 256, razao);
+      const medio = montarEscada(largura, altura, 512, razao);
+      const grosso = montarEscada(largura, altura, 1024, razao);
+
+      assert.ok(fino.length > medio.length, `tile 256 nao desceu mais em ${largura}`);
+      assert.ok(grosso.length < medio.length, `tile 1024 nao desceu menos em ${largura}`);
+
+      // Quantos degraus entram nao e livre: e o quanto o tile andou, na razao da
+      // escada. Halvar o tile vale um degrau na razao 2 e dois na razao 1,6, e
+      // por isso a contagem exata nao serve de asercao geral.
+      const passos = Math.log(2) / Math.log(razao);
+      assert.equal(fino.length - medio.length, Math.ceil(passos),
+        `tile 256 em ${largura} nao andou os degraus da razao ${razao}`);
+
+      // E o nivel 0 continua cabendo em um tile nos tres tamanhos, que e a
+      // propriedade, e nao a contagem de niveis.
+      for (const [tile, escada] of [[256, fino], [512, medio], [1024, grosso]]) {
+        assert.equal(escada[0].cols, 1, `tile ${tile} em ${largura}: nivel 0 nao coube`);
+        assert.equal(escada[0].rows, 1, `tile ${tile} em ${largura}: nivel 0 nao coube`);
+        assert.ok(escada[0].width <= tile, `tile ${tile} em ${largura}: nivel 0 passou do tile`);
       }
     }
+
+    // Os numeros medidos de 7680 com razao 1,6, para o teste falhar com um
+    // numero na mao em vez de so com uma contagem. A cauda de 1875 para cima e
+    // a MESMA nos tres tiles: mexer no tile so acrescenta degrau por baixo.
+    assert.deepEqual(montarEscada(7680, 3840, 256, 1.6).map(n => n.width),
+      [179, 286, 458, 733, 1172, 1875, 3000, 4800, 7680]);
+    assert.deepEqual(montarEscada(7680, 3840, 512, 1.6).map(n => n.width),
+      [458, 733, 1172, 1875, 3000, 4800, 7680]);
+    assert.deepEqual(montarEscada(7680, 3840, 1024, 1.6).map(n => n.width),
+      [733, 1172, 1875, 3000, 4800, 7680]);
   });
 
   it('numera do mais grosso ao nativo, dobrando a cada degrau', () => {
-    for (const escada of [ESCADA_7680, ESCADA_5760]) {
+    for (const escada of [ESCADA_7680, ESCADA_5760, ESCADA_2048]) {
       escada.forEach((nivel, i) => {
         assert.equal(nivel.level, i);
         if (i > 0) {
@@ -122,9 +256,13 @@ describe('montarEscada', () => {
     }
   });
 
-  it('nao desce quando a nativa ja cabe no piso', () => {
-    const escada = montarEscada(2048, 1024, TILE);
-    assert.deepEqual(escada, [{ level: 0, width: 2048, height: 1024, cols: 4, rows: 2 }]);
+  it('nao desce quando a nativa ja cabe no tile', () => {
+    // O piso continua existindo: uma foto que ja entra num tile nao ganha nivel
+    // nenhum. E o caso degenerado da regra nova, e ele fecha o intervalo.
+    assert.deepEqual(montarEscada(512, 256, TILE),
+      [{ level: 0, width: 512, height: 256, cols: 1, rows: 1 }]);
+    assert.deepEqual(montarEscada(300, 150, TILE),
+      [{ level: 0, width: 300, height: 150, cols: 1, rows: 1 }]);
   });
 
   it('recorta a borda: a ultima coluna de 5760 mede 128 px, e nao 512', () => {
@@ -141,17 +279,28 @@ describe('montarEscada', () => {
 });
 
 describe('montarEscada: a razao', () => {
-  it('monta 4 niveis em 7680 com razao 1,6', () => {
+  it('monta 7 niveis em 7680 com razao 1,6', () => {
     // OS NUMEROS SAO O ORCAMENTO, e nao a formula reescrita. Eles saem de
     // custoDaEscada() rodado antes de gerar um byte, e sao o que decide a razao
     // do acervo. Escrever inteiros aqui e o unico jeito de o teste reprovar uma
     // mudanca de arredondamento.
+    //
+    // Os tres primeiros niveis SAO NOVOS, e custam 9 tiles por foto. A cauda de
+    // 1875 para cima e byte a byte a do piloto ja gerado: acrescentar por baixo
+    // nao pode mexer no que ja esta gravado.
     assert.deepEqual(ESCADA_7680_R16, [
-      { level: 0, width: 1875, height: 938, cols: 4, rows: 2 },
-      { level: 1, width: 3000, height: 1500, cols: 6, rows: 3 },
-      { level: 2, width: 4800, height: 2400, cols: 10, rows: 5 },
-      { level: 3, width: 7680, height: 3840, cols: 15, rows: 8 },
+      { level: 0, width: 458, height: 229, cols: 1, rows: 1 },
+      { level: 1, width: 733, height: 366, cols: 2, rows: 1 },
+      { level: 2, width: 1172, height: 586, cols: 3, rows: 2 },
+      { level: 3, width: 1875, height: 938, cols: 4, rows: 2 },
+      { level: 4, width: 3000, height: 1500, cols: 6, rows: 3 },
+      { level: 5, width: 4800, height: 2400, cols: 10, rows: 5 },
+      { level: 6, width: 7680, height: 3840, cols: 15, rows: 8 },
     ]);
+
+    // Os 9 tiles novos, contados. E o custo do preview embutido, por foto.
+    const novos = ESCADA_7680_R16.slice(0, 3);
+    assert.equal(novos.reduce((soma, n) => soma + n.cols * n.rows, 0), 9);
   });
 
   it('nao regride a razao 2 quando ela vem explicita', () => {
@@ -218,26 +367,118 @@ describe('montarEscada: a razao', () => {
   });
 });
 
+describe('LARGURA_MINIMA_NIVEL: ler o dado ANTIGO', () => {
+  // POR QUE A CONSTANTE SOBREVIVE A DECISAO QUE A APOSENTOU. O acervo tem
+  // piramides gravadas com a parada antiga, e o migrador precisa saber quantos
+  // niveis entram por baixo de cada uma. Sem este numero ele teria de adivinhar,
+  // e adivinhar errado nao da erro: da tile pedido no nivel errado.
+
+  it('continua exportado, com o valor que o dado antigo usou', () => {
+    assert.equal(LARGURA_MINIMA_NIVEL, 2048);
+  });
+
+  it('reproduz a escada velha: 4 niveis em 7680, 3 em 5760, 1 em 2048', () => {
+    // As tres escadas do dado ja gravado, escritas inteiras. Elas sao o ALVO da
+    // migracao, e nao um historico decorativo.
+    assert.deepEqual(escadaAntiga(7680, 3840, TILE, 1.6).map(n => n.width),
+      [1875, 3000, 4800, 7680]);
+    assert.deepEqual(escadaAntiga(5760, 2880, TILE, 2).map(n => n.width),
+      [1440, 2880, 5760]);
+    assert.deepEqual(escadaAntiga(2048, 1024, TILE, 2).map(n => n.width),
+      [2048]);
+
+    // A razao 2 em 7680 tambem existe no acervo, do primeiro piloto.
+    assert.deepEqual(escadaAntiga(7680, 3840, TILE, 2).map(n => n.width),
+      [1920, 3840, 7680]);
+  });
+
+  it('a escada velha e SUFIXO da nova, entao a migracao e so um deslocamento', () => {
+    // O FATO QUE O MIGRADOR USA. Os niveis novos entram por baixo, e nenhum
+    // nivel antigo muda de largura, de cols ou de rows: so muda o NUMERO. Entao
+    // `level novo = level antigo + deslocamento`, e o deslocamento e a diferenca
+    // de tamanho das duas escadas.
+    //
+    // Se a escada nova deixasse de conter a velha, esta asercao cai, e ela tem
+    // de cair: seria uma grade diferente, e o dado gravado viraria lixo.
+    const casos = [
+      ['7680 razao 1,6', 7680, 3840, 1.6, 3],
+      ['5760 razao 2', 5760, 2880, 2, 2],
+      ['2048 razao 2', 2048, 1024, 2, 2],
+      ['7680 razao 2', 7680, 3840, 2, 2],
+    ];
+
+    for (const [nome, w, h, razao, deslocamentoEsperado] of casos) {
+      const velha = escadaAntiga(w, h, TILE, razao);
+      const nova = montarEscada(w, h, TILE, razao);
+      const deslocamento = nova.length - velha.length;
+
+      assert.equal(deslocamento, deslocamentoEsperado, `${nome}: deslocamento ${deslocamento}`);
+
+      velha.forEach((antigo, i) => {
+        const novo = nova[i + deslocamento];
+        assert.equal(novo.level, antigo.level + deslocamento, `${nome}: nivel ${i} nao andou junto`);
+        assert.equal(novo.width, antigo.width, `${nome}: largura mudou no nivel ${i}`);
+        assert.equal(novo.height, antigo.height, `${nome}: altura mudou no nivel ${i}`);
+        assert.equal(novo.cols, antigo.cols, `${nome}: cols mudou no nivel ${i}`);
+        assert.equal(novo.rows, antigo.rows, `${nome}: rows mudou no nivel ${i}`);
+      });
+    }
+  });
+
+  it('o nativo continua sendo o ULTIMO nivel nas duas escadas', () => {
+    // O contrato nao mudou: level 0 e o mais grosso e o ultimo e o nativo. O que
+    // mudou foi quantos degraus existem antes do nativo.
+    for (const [w, h, razao] of [[7680, 3840, 1.6], [5760, 2880, 2], [2048, 1024, 2]]) {
+      const velha = escadaAntiga(w, h, TILE, razao);
+      const nova = montarEscada(w, h, TILE, razao);
+      assert.equal(velha[velha.length - 1].width, w);
+      assert.equal(nova[nova.length - 1].width, w);
+      assert.equal(nova[0].level, 0);
+    }
+  });
+});
+
 describe('custoDaEscada', () => {
   it('da 1 para a escada de um nivel so', () => {
     // Um nivel e o proprio nativo, entao nao ha nada acima do custo de servir a
-    // foto inteira.
-    assert.equal(custoDaEscada(montarEscada(2048, 1024, TILE)), 1);
+    // foto inteira. A foto de um nivel so agora e a que ja cabe num tile: pela
+    // regra antiga era a de 2048, e ela passou a ter tres niveis.
+    assert.equal(custoDaEscada(montarEscada(512, 256, TILE)), 1);
   });
 
   it('bate com a soma de areas dividida pela area nativa', () => {
-    // A definicao, conferida contra a implementacao numa escada de 4 niveis.
+    // A definicao, conferida contra a implementacao na escada de 7 niveis.
     const soma = ESCADA_7680_R16.reduce((total, n) => total + n.width * n.height, 0);
-    assert.equal(soma, 47269950);
+    assert.equal(soma, 48329902);
     assert.equal(custoDaEscada(ESCADA_7680_R16), soma / (7680 * 3840));
   });
 
-  it('cobra 1,31x na razao 2 e 1,60x na razao 1,6', () => {
-    // O 1,3125 e exato: 1/4 + 1/16 + 1 na progressao geometrica de area. O custo
-    // MEDIDO e maior, porque tile pequeno comprime pior por pixel (no museu_cms
-    // a razao 2 deu 1,55 medido contra 1,3125 teorico).
-    assert.equal(custoDaEscada(ESCADA_7680), 1.3125);
-    assert.ok(Math.abs(custoDaEscada(ESCADA_7680_R16) - 1.6028) < 1e-4);
+  it('cobra 1,33x na razao 2 e 1,64x na razao 1,6', () => {
+    // O 1,33203125 e exato: 1 + 1/4 + 1/16 + 1/64 + 1/256 na progressao
+    // geometrica de area. O custo MEDIDO e maior, porque tile pequeno comprime
+    // pior por pixel (no museu_cms a razao 2 deu 1,55 medido contra 1,3125
+    // teorico, na escada de tres niveis).
+    assert.equal(custoDaEscada(ESCADA_7680), 1.33203125);
+    assert.equal(custoDaEscada(ESCADA_5760), 1.33203125);
+    assert.equal(custoDaEscada(ESCADA_2048), 1.3125);
+    assert.ok(Math.abs(custoDaEscada(ESCADA_7680_R16) - 1.63879) < 1e-5);
+  });
+
+  it('cobra o orcamento que autorizou a descida: +2,2%, +1,5% e +31,3%', () => {
+    // O NUMERO QUE O CHEFE APROVOU, medido antes de gerar. Descer ate um tile
+    // custa area a mais, e o orcamento e por formato porque cada um ganha um
+    // numero diferente de degraus. Em 2048 sao 31,3% porque aquele formato tinha
+    // UM nivel so, e o denominador e pequeno; sao 828 fotos.
+    const acrescimo = (w, h, razao) =>
+      custoDaEscada(montarEscada(w, h, TILE, razao))
+      / custoDaEscada(escadaAntiga(w, h, TILE, razao)) - 1;
+
+    assert.ok(Math.abs(acrescimo(7680, 3840, 1.6) - 0.022) < 5e-4,
+      `7680 razao 1,6: ${acrescimo(7680, 3840, 1.6)}`);
+    assert.ok(Math.abs(acrescimo(5760, 2880, 2) - 0.015) < 5e-4,
+      `5760 razao 2: ${acrescimo(5760, 2880, 2)}`);
+    assert.ok(Math.abs(acrescimo(2048, 1024, 2) - 0.3125) < 5e-4,
+      `2048 razao 2: ${acrescimo(2048, 1024, 2)}`);
   });
 
   it('cresce quando a razao encolhe', () => {
@@ -251,13 +492,13 @@ describe('custoDaEscada', () => {
 describe('a escada contra as telas medidas: o defeito do vao', () => {
   it('a razao 2 manda o notebook ao nativo, 80% acima do necessario', () => {
     // O DEFEITO. As duas telas reais pedem 4264 e 6119, e as duas caem no vao
-    // entre 3840 e 7680. Todo viewport satura no nativo, entao a escada de tres
-    // niveis nao economiza nada para quem esta olhando.
+    // entre 3840 e 7680. Todo viewport satura no nativo, entao os degraus
+    // grossos da escada nao economizam nada para quem esta olhando.
     assert.ok(NOTEBOOK > 3840 && NOTEBOOK < 7680, `4264 saiu do vao: ${NOTEBOOK}`);
     assert.ok(MONITOR > 3840 && MONITOR < 7680, `6119 saiu do vao: ${MONITOR}`);
 
     const nivel = escolherNivel(ESCADA_7680, NOTEBOOK);
-    assert.equal(nivel, 2);
+    assert.equal(nivel, 4);
     assert.equal(ESCADA_7680[nivel].width, 7680);
     assert.ok(7680 / NOTEBOOK > 1.8, `desperdicio de largura menor que 80%: ${7680 / NOTEBOOK}`);
   });
@@ -266,19 +507,56 @@ describe('a escada contra as telas medidas: o defeito do vao', () => {
     // O CONSERTO, e este e o teste que o prova. O degrau de 4800 cobre os 4264
     // pedidos com 13% de folga, contra os 80% da escada classica. Em area isso e
     // 2,56 vezes menos pixel para a mesma tela.
+    //
+    // O NIVEL VIROU 5, e antes era 2: os tres degraus novos empurraram a
+    // numeracao. A LARGURA continua 4800, e e ela que decide o que o navegador
+    // baixa. O teste abaixo, "a numeracao anda, a largura nao", guarda isso.
     const nivel = escolherNivel(ESCADA_7680_R16, NOTEBOOK);
-    assert.equal(nivel, 2);
+    assert.equal(nivel, 5);
     assert.equal(ESCADA_7680_R16[nivel].width, 4800);
     assert.notEqual(ESCADA_7680_R16[nivel].width, 7680);
     assert.ok(4800 / NOTEBOOK < 1.13, `folga acima de 13%: ${4800 / NOTEBOOK}`);
   });
 
   it('o monitor de 1904x985 continua no nativo, e esta certo', () => {
-    // 4800 nao cobre 6119, entao a tela grande pede mesmo o nivel 3. A escada
-    // fina conserta o notebook sem mentir para o monitor.
+    // 4800 nao cobre 6119, entao a tela grande pede mesmo o nivel nativo. A
+    // escada fina conserta o notebook sem mentir para o monitor.
     const nivel = escolherNivel(ESCADA_7680_R16, MONITOR);
-    assert.equal(nivel, 3);
+    assert.equal(nivel, 6);
     assert.equal(ESCADA_7680_R16[nivel].width, 7680);
+  });
+
+  it('a numeracao anda, a LARGURA escolhida nao', () => {
+    // O TESTE QUE PROTEGE O CLIENTE. Acrescentar nivel por baixo empurra o
+    // indice, e quem confundir indice com resolucao passa a servir 458 px onde
+    // servia 1875. Aqui a escada antiga e a nova escolhem para as mesmas telas, e
+    // a asercao e sobre a LARGURA, nunca sobre o numero.
+    const casos = [
+      ['7680 razao 1,6', 7680, 3840, 1.6],
+      ['5760 razao 2', 5760, 2880, 2],
+      ['2048 razao 2', 2048, 1024, 2],
+      ['7680 razao 2', 7680, 3840, 2],
+    ];
+
+    for (const [nome, w, h, razao] of casos) {
+      const velha = escadaAntiga(w, h, TILE, razao);
+      const nova = montarEscada(w, h, TILE, razao);
+
+      for (const tela of [NOTEBOOK, MONITOR]) {
+        const larguraVelha = velha[escolherNivel(velha, tela)].width;
+        const larguraNova = nova[escolherNivel(nova, tela)].width;
+        assert.equal(larguraNova, larguraVelha,
+          `${nome}: a tela de ${Math.round(tela)} px mudou de ${larguraVelha} para ${larguraNova}`);
+      }
+    }
+
+    // O caso nomeado, cravado: o notebook pede perto de 4264 px e cai em 4800 na
+    // razao 1,6, antes e depois. So o indice mudou, de 2 para 5.
+    assert.equal(ESCADA_7680_R16[escolherNivel(ESCADA_7680_R16, NOTEBOOK)].width, 4800);
+    const velha7680 = escadaAntiga(7680, 3840, TILE, 1.6);
+    assert.equal(velha7680[escolherNivel(velha7680, NOTEBOOK)].width, 4800);
+    assert.equal(escolherNivel(velha7680, NOTEBOOK), 2);
+    assert.equal(escolherNivel(ESCADA_7680_R16, NOTEBOOK), 5);
   });
 
   it('a razao 1,6 DOMINA a 1,5 e a 1,4: escolhe melhor e custa menos', () => {
@@ -296,11 +574,11 @@ describe('a escada contra as telas medidas: o defeito do vao', () => {
   });
 
   it('nos 5760 do acervo a escada classica ja casa, e nao ha o que consertar', () => {
-    // O problema e SO dos 7680. Em 5760 o nivel 1 mede 2880 e o nativo 5760, e o
+    // O problema e SO dos 7680. Em 5760 o degrau abaixo do nativo mede 2880, e o
     // monitor de 6119 satura no nativo porque a foto acabou, e nao porque a
     // escada e grossa. Mudar a razao aqui so gastaria disco.
-    assert.equal(escolherNivel(ESCADA_5760, MONITOR), 2);
-    assert.equal(ESCADA_5760[2].width, 5760);
+    assert.equal(escolherNivel(ESCADA_5760, MONITOR), 4);
+    assert.equal(ESCADA_5760[4].width, 5760);
     assert.ok(MONITOR > 5760, 'o monitor deixou de pedir mais que a foto inteira');
   });
 });
@@ -378,23 +656,49 @@ describe('escolherNivel', () => {
   });
 
   it('escolhe o nativo quando a tela medida pede 6119 px', () => {
-    // 3840 nao cobre 6119, entao a tela de 1904x985 pede mesmo o nivel 2.
-    assert.equal(escolherNivel(ESCADA_7680, larguraNecessaria(1904, 985, 75)), 2);
+    // 3840 nao cobre 6119, entao a tela de 1904x985 pede mesmo o nivel nativo.
+    // O indice virou 4 com os dois degraus novos; a largura continua 7680.
+    const nivel = escolherNivel(ESCADA_7680, larguraNecessaria(1904, 985, 75));
+    assert.equal(nivel, 4);
+    assert.equal(ESCADA_7680[nivel].width, 7680);
   });
 
   it('escolhe o menor nivel que cobre, e nao o primeiro que passa perto', () => {
-    assert.equal(escolherNivel(ESCADA_7680, 1000), 0);
-    assert.equal(escolherNivel(ESCADA_7680, 1920), 0);
-    assert.equal(escolherNivel(ESCADA_7680, 1921), 1);
-    assert.equal(escolherNivel(ESCADA_7680, 3840), 1);
-    assert.equal(escolherNivel(ESCADA_7680, 3841), 2);
+    // As bordas de cada degrau da escada nova de 7680: 480, 960, 1920, 3840 e
+    // 7680. A asercao anda de um em um pixel em volta de cada borda, porque um
+    // `>` no lugar de `>=` erraria exatamente ali e em lugar nenhum mais.
+    assert.equal(escolherNivel(ESCADA_7680, 1), 0);
+    assert.equal(escolherNivel(ESCADA_7680, 480), 0);
+    assert.equal(escolherNivel(ESCADA_7680, 481), 1);
+    assert.equal(escolherNivel(ESCADA_7680, 960), 1);
+    assert.equal(escolherNivel(ESCADA_7680, 961), 2);
+    assert.equal(escolherNivel(ESCADA_7680, 1000), 2);
+    assert.equal(escolherNivel(ESCADA_7680, 1920), 2);
+    assert.equal(escolherNivel(ESCADA_7680, 1921), 3);
+    assert.equal(escolherNivel(ESCADA_7680, 3840), 3);
+    assert.equal(escolherNivel(ESCADA_7680, 3841), 4);
+  });
+
+  it('o nivel 0 responde a tela pequena, e ele cabe em um tile', () => {
+    // O GANHO DA DECISAO, do lado do cliente. Uma tela minuscula, ou o primeiro
+    // quadro antes de a camera assentar, pede pouco e recebe UM tile. Era isso
+    // que o `preview_webp` fazia, e e por isso que ele pode ser apagado.
+    assert.equal(escolherNivel(ESCADA_7680, 400), 0);
+    assert.equal(escolherNivel(ESCADA_5760, 300), 0);
+    assert.equal(escolherNivel(ESCADA_2048, 500), 0);
+
+    for (const escada of [ESCADA_7680, ESCADA_5760, ESCADA_2048, ESCADA_7680_R16]) {
+      assert.equal(escada[0].cols * escada[0].rows, 1);
+    }
   });
 
   it('satura no nativo em vez de pedir nivel que nao existe', () => {
     // Monitor 5K com fov estreita pede mais pixel do que a foto tem. A resposta
     // e o nativo, nunca um level fora da escada, que viraria 400 na rota.
-    assert.equal(escolherNivel(ESCADA_5760, 99999), 2);
-    assert.equal(escolherNivel(ESCADA_5760, ESCADA_5760[2].width + 1), 2);
+    const nativo = ESCADA_5760.length - 1;
+    assert.equal(escolherNivel(ESCADA_5760, 99999), nativo);
+    assert.equal(escolherNivel(ESCADA_5760, ESCADA_5760[nativo].width + 1), nativo);
+    assert.equal(ESCADA_5760[nativo].width, 5760);
   });
 });
 

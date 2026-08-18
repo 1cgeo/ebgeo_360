@@ -29,7 +29,7 @@
  * gerador e do cliente. Ver montarEscada para o porque.
  */
 
-import { montarEscada } from '../../public/calibration/js/pyramid-math.js';
+import { escadaGravada } from '../../public/calibration/js/pyramid-math.js';
 import {
   getPhotoById,
   getProjectByPhotoId,
@@ -141,7 +141,13 @@ function inteiroNaoNegativo(texto) {
  * @returns {Array<{level:number,width:number,height:number,cols:number,rows:number}>}
  */
 function escadaDaPiramide(piramide) {
-  return montarEscada(piramide.width, piramide.height, piramide.tile_size, piramide.razao);
+  // Pelo `max_level` GRAVADO, e nao pela regra de parada de hoje. Ver
+  // `escadaGravada` em pyramid-math.js: recalcular pela regra corrente
+  // reinterpreta em silencio todo acervo escrito sob a regra anterior, e ja
+  // custou 98.854 fotos servindo descritor que mentia.
+  return escadaGravada(
+    piramide.width, piramide.height, piramide.tile_size, piramide.razao, piramide.max_level,
+  );
 }
 
 export default async function photoTileRoutes(fastify) {
