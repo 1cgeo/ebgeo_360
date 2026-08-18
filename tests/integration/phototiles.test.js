@@ -17,12 +17,17 @@
  *   - a escada sai de (width, height, tileSize, razao), e a RAZAO vem gravada na
  *     piramide. Reconstruir com outra razao nao estoura: produz outra grade, e o
  *     sintoma e tile faltando na tela. Por isso a fixture tem uma piramide de
- *     razao 1,6 e um banco SEM a coluna, e as duas sao conferidas grade a grade.
+ *     razao 1,6 e um banco SEM a coluna, e as duas sao conferidas grade a grade;
+ *   - a URL do tile leva o TOKEN DE GERACAO (`?v=<total_bytes>`), porque o tile
+ *     e servido com immutable de um ano. Sem o token, regerar a piramide muda a
+ *     escada e nao muda a URL de tile nenhum.
  */
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import sharp from 'sharp';
 import { createTestData, destroyTestData, SEEDS } from '../helpers/test-db.js';
 import { createTilesFixture, TILE_SEEDS, chaveTile } from '../helpers/tiles-db.js';
@@ -71,6 +76,12 @@ before(async () => {
 
 after(async () => {
   if (app) await app.close();
+  // As conexoes de tiles que ROTACIONARAM pertencem a tiles-queries.js, e o
+  // closeAll() de destroyTestData nao as alcanca. No Windows um handle aberto
+  // segura o arquivo, e o rmSync do dataDir volta EPERM. server.js fecha as duas
+  // donarias no shutdown pela mesma razao.
+  const { resetTileStatements } = await import('../../src/db/tiles-queries.js');
+  resetTileStatements();
   await destroyTestData(dataDir);
 });
 
@@ -106,7 +117,10 @@ describe('GET /api/v1/photos/:uuid/tiles.json', () => {
       minLevel: 0,
       maxLevel: 1,
       base: 'image?quality=preview',
-      template: 'tiles/{level}/{x}/{y}.webp',
+      // O token de geracao sai do total_bytes MEDIDO nos BLOBs que a fixture
+      // gravou, o mesmo numero que valida o ETag do tile. Escrever o literal
+      // aqui amarraria o teste a um tamanho de WebP que a versao do sharp muda.
+      template: `tiles/{level}/{x}/{y}.webp?v=${fixture.totalBytes}`,
       levels: [
         { level: 0, width: 1280, height: 640, cols: 3, rows: 2 },
         { level: 1, width: 2560, height: 1280, cols: 5, rows: 3 },
@@ -212,6 +226,206 @@ describe('GET /api/v1/photos/:uuid/tiles.json', () => {
 });
 
 // ============================================================================
+// O token de geracao na URL do tile
+// ============================================================================
+
+describe('tiles.json: o token de geracao no template', () => {
+  // POR QUE ESTE BLOCO EXISTE. O tile sai com `immutable` de um ano, entao o
+  // navegador que ja visitou a foto nao pergunta mais nada ao servidor: o ETag
+  // nunca chega a ser consultado. Enquanto o template era
+  // 'tiles/{level}/{x}/{y}.webp', regerar a piramide com outra razao trocava a
+  // ESCADA inteira sem mudar um caractere de URL nenhuma, e o cliente compunha
+  // tiles da escada velha dentro da grade nova, sem erro no console. O museu_cms
+  // e o caso real: saiu com razao 2 e foi regerado com 1,6.
+
+  /**
+   * Extrai o valor de `v` do template publicado.
+   * @param {string} template - O campo `template` do descritor
+   * @returns {string|null} O token, ou null se o template nao tiver query
+   */
+  const tokenDo = (template) => new URL(template, 'https://exemplo.invalid/')
+    .searchParams.get('v');
+
+  it('o template carrega o total_bytes da piramide como token', async () => {
+    // O token E o total_bytes, e nao um numero qualquer: e o MESMO valor que
+    // valida o ETag do tile. Um token proprio deixaria a URL e o validador
+    // discordarem, e uma regeracao poderia mudar so um dos dois.
+    const doc = JSON.parse(
+      (await app.inject({ method: 'GET', url: urlDescritor(T.TILED_PHOTO_ID) })).body,
+    );
+    assert.equal(tokenDo(doc.template), String(fixture.totalBytes));
+
+    const tile = await app.inject({ method: 'GET', url: urlTile(T.TILED_PHOTO_ID, 1, 2, 1) });
+    assert.ok(tile.headers['etag'].includes(String(fixture.totalBytes)),
+      'o ETag do tile deixou de usar o mesmo token que a URL');
+  });
+
+  it('duas piramides com total_bytes diferentes publicam templates diferentes', async () => {
+    // O TESTE QUE REPROVA O DEFEITO ANTIGO. Com o template constante as duas
+    // piramides publicavam a MESMA string, e era exatamente isso que fazia a URL
+    // sobreviver a regeracao.
+    //
+    // As duas piramides sao lidas do banco, e a diferenca de total_bytes e
+    // conferida ANTES: sem ela o resto do caso nao provaria nada.
+    assert.notEqual(fixture.totalBytes, fixture.razaoTotalBytes,
+      'a fixture precisa de duas piramides com total_bytes diferentes');
+
+    const daRazao2 = JSON.parse(
+      (await app.inject({ method: 'GET', url: urlDescritor(T.TILED_PHOTO_ID) })).body,
+    ).template;
+    const daRazao16 = JSON.parse(
+      (await app.inject({ method: 'GET', url: urlDescritor(T.RAZAO_PHOTO_ID) })).body,
+    ).template;
+
+    assert.notEqual(daRazao2, daRazao16);
+    assert.equal(tokenDo(daRazao2), String(fixture.totalBytes));
+    assert.equal(tokenDo(daRazao16), String(fixture.razaoTotalBytes));
+  });
+
+  it('o banco SEM a coluna razao tambem publica o seu token', async () => {
+    // O acervo que ja esta no disco e quem mais precisa disto: ele e o que vai
+    // ser regerado. `total_bytes` existe no DDL anterior a coluna `razao`, entao
+    // o token nao depende da migracao.
+    const doc = JSON.parse(
+      (await app.inject({ method: 'GET', url: urlDescritor(T.LEGACY_PHOTO_ID) })).body,
+    );
+    assert.equal(tokenDo(doc.template), String(fixture.legacyTotalBytes));
+  });
+
+  it('a query do template sobrevive a resolucao relativa do cliente', async () => {
+    // O CLIENTE USA O TEMPLATE VERBATIM. tile-loader.js resolve com
+    // `new URL(relativa, urlDescritor)`, e a URL do documento termina em
+    // "tiles.json". Se a query se perdesse nessa resolucao, o token sumiria da
+    // rede e o immutable de um ano voltaria a colar escada velha em grade nova.
+    // O `base` ja provava que uma query relativa resolve; aqui prova-se para o
+    // template, que e o campo que passou a ter uma.
+    const { template } = JSON.parse(
+      (await app.inject({ method: 'GET', url: urlDescritor(T.TILED_PHOTO_ID) })).body,
+    );
+    assert.ok(!/^https?:\/\//.test(template), `URL absoluta no descritor: ${template}`);
+    assert.ok(!template.startsWith('/'), `caminho absoluto no descritor: ${template}`);
+
+    const doc = new URL(urlDescritor(T.TILED_PHOTO_ID), 'https://exemplo.invalid');
+    const resolvida = new URL(
+      template.replace('{level}', '1').replace('{x}', '2').replace('{y}', '1'), doc,
+    );
+    assert.equal(resolvida.pathname, urlTile(T.TILED_PHOTO_ID, 1, 2, 1));
+    assert.equal(resolvida.search, `?v=${fixture.totalBytes}`);
+  });
+
+  it('a rota do tile responde 200 com o token, e devolve os mesmos bytes', async () => {
+    // O CUIDADO DO CONSERTO. O tile passa a chegar com query string, e a rota
+    // nao pode responder 400 por causa dela. A URL sai do TEMPLATE PUBLICADO,
+    // montada como o cliente monta, e nao escrita a mao aqui.
+    const { template } = JSON.parse(
+      (await app.inject({ method: 'GET', url: urlDescritor(T.TILED_PHOTO_ID) })).body,
+    );
+    const doc = new URL(urlDescritor(T.TILED_PHOTO_ID), 'https://exemplo.invalid');
+    const alvo = new URL(
+      template.replace('{level}', '1').replace('{x}', '2').replace('{y}', '1'), doc,
+    );
+
+    const comToken = await app.inject({ method: 'GET', url: alvo.pathname + alvo.search });
+    const semToken = await app.inject({ method: 'GET', url: urlTile(T.TILED_PHOTO_ID, 1, 2, 1) });
+
+    assert.equal(comToken.statusCode, 200, `a rota recusou a propria URL que publicou: ${alvo.search}`);
+    assert.deepEqual(comToken.rawPayload, fixture.tiles.get(chaveTile(1, 2, 1)));
+    assert.ok(comToken.headers['content-type']?.includes('image/webp'));
+
+    // O TOKEN NAO ENTRA NO VALIDADOR nem no corpo: ele so separa a entrada de
+    // cache. Duas URLs da mesma geracao tem de responder identico.
+    assert.deepEqual(comToken.rawPayload, semToken.rawPayload);
+    assert.equal(comToken.headers['etag'], semToken.headers['etag']);
+  });
+
+  it('a rota do tile nao valida a query, nem o token velho nem o desconhecido', async () => {
+    // A ROTA SEGUE SEM SCHEMA DE QUERY, de proposito. Um `querystring` no schema
+    // com additionalProperties: false responderia 400 no tile por causa do
+    // proprio token que o descritor publicou.
+    //
+    // E o token VELHO tambem passa. No instante da regeracao o cliente ainda
+    // segura o descritor antigo: recusa-lo pintaria buraco na parede em vez de
+    // servir o tile bom. A resposta certa e sempre o tile de hoje.
+    const casos = [
+      `${urlTile(T.TILED_PHOTO_ID, 1, 2, 1)}?v=1`,
+      `${urlTile(T.TILED_PHOTO_ID, 1, 2, 1)}?v=${fixture.totalBytes}&nada=disso`,
+      `${urlTile(T.TILED_PHOTO_ID, 1, 2, 1)}?desconhecido=1`,
+      `${urlTile(T.TILED_PHOTO_ID, 1, 2, 1)}?v=`,
+    ];
+    for (const url of casos) {
+      const res = await app.inject({ method: 'GET', url });
+      assert.equal(res.statusCode, 200, `a query derrubou o tile em ${url}`);
+      assert.deepEqual(res.rawPayload, fixture.tiles.get(chaveTile(1, 2, 1)),
+        `corpo trocado em ${url}`);
+    }
+  });
+
+  it('a mesma foto publica outra URL de tile depois de regerada', async () => {
+    // O CASO museu_cms, REPRODUZIDO. Ele saiu com razao 2 e foi regerado com
+    // 1,6: a escada mudou, e a URL de todo tile continuou a mesma. Aqui a
+    // piramide de uma foto e reescrita no banco com outro total_bytes, que e o
+    // que toda regeracao faz, e o descritor tem de publicar outra URL.
+    //
+    // A COMPARACAO E DA MESMA FOTO, e nao de duas. Duas fotos ja tinham URLs
+    // diferentes pelo caminho, e isso nunca foi o defeito.
+    const antes = JSON.parse(
+      (await app.inject({ method: 'GET', url: urlDescritor(T.RAZAO_PHOTO_ID) })).body,
+    );
+
+    /**
+     * A URL de um tile, montada como o cliente monta.
+     * @param {string} template - O campo `template` do descritor
+     * @returns {URL} A URL resolvida contra o documento
+     */
+    const urlDoTile = (template) => new URL(
+      template.replace('{level}', '3').replace('{x}', '5').replace('{y}', '2'),
+      new URL(urlDescritor(T.RAZAO_PHOTO_ID), 'https://exemplo.invalid'),
+    );
+
+    // A escrita vai por uma conexao PROPRIA. A rota le o arquivo readonly, e o
+    // WAL absorve este UPDATE sem mexer no mtime do .db, entao a leitura
+    // seguinte ja enxerga o valor novo (ver tiles-queries.js).
+    const caminho = join(dataDir, 'projects', T.TILES_DB_FILENAME);
+    const escrita = new Database(caminho);
+    const ler = escrita.prepare('SELECT total_bytes FROM tile_pyramids WHERE photo_id = ?');
+    const gravar = escrita.prepare('UPDATE tile_pyramids SET total_bytes = ? WHERE photo_id = ?');
+    const original = ler.get(T.RAZAO_PHOTO_ID).total_bytes;
+
+    try {
+      gravar.run(original + 4096, T.RAZAO_PHOTO_ID);
+
+      const depois = JSON.parse(
+        (await app.inject({ method: 'GET', url: urlDescritor(T.RAZAO_PHOTO_ID) })).body,
+      );
+      assert.notEqual(depois.template, antes.template,
+        'a piramide foi regerada e a URL do tile nao mudou: o cache immutable serve a escada velha');
+      assert.notEqual(urlDoTile(depois.template).href, urlDoTile(antes.template).href);
+
+      // SO O TOKEN MUDA. O caminho continua o mesmo, o que mostra que a URL
+      // velha nao some do cache: ela e que deixa de ser pedida.
+      assert.equal(urlDoTile(depois.template).pathname, urlDoTile(antes.template).pathname);
+      assert.equal(tokenDo(depois.template), String(original + 4096));
+
+      // E a URL nova serve o tile, com os bytes gravados.
+      const alvo = urlDoTile(depois.template);
+      const res = await app.inject({ method: 'GET', url: alvo.pathname + alvo.search });
+      assert.equal(res.statusCode, 200);
+      assert.deepEqual(res.rawPayload, fixture.razaoTiles.get(chaveTile(3, 5, 2)));
+    } finally {
+      gravar.run(original, T.RAZAO_PHOTO_ID);
+      escrita.close();
+    }
+
+    // A fixture volta ao estado de origem, senao os casos seguintes mediriam o
+    // banco que ESTE caso deixou para tras.
+    const voltou = JSON.parse(
+      (await app.inject({ method: 'GET', url: urlDescritor(T.RAZAO_PHOTO_ID) })).body,
+    );
+    assert.deepEqual(voltou, antes);
+  });
+});
+
+// ============================================================================
 // A coluna razao: a escada fina e o banco velho
 // ============================================================================
 
@@ -243,7 +457,7 @@ describe('tiles.json: a piramide de razao 1,6', () => {
       minLevel: 0,
       maxLevel: 3,
       base: 'image?quality=preview',
-      template: 'tiles/{level}/{x}/{y}.webp',
+      template: `tiles/{level}/{x}/{y}.webp?v=${fixture.razaoTotalBytes}`,
       levels: [
         { level: 0, width: 1313, height: 656, cols: 2, rows: 1 },
         { level: 1, width: 2100, height: 1050, cols: 3, rows: 2 },

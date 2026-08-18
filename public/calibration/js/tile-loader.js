@@ -441,14 +441,31 @@ export function createTileLoader({
      * alocar, repintar o cache e subir tudo de novo. Com o passo, a janela anda
      * bastante antes de trocar de degrau.
      *
+     * TELA SEM AREA NAO PEDE O CANVAS MAIOR. `larguraNecessaria` devolve 0
+     * quando o painel esta recolhido, a aba trocada ou o container tem altura
+     * zero. A versao antiga caia no TETO nesse caso, ou seja no nivel nativo:
+     * 7680x3840, 118 MB de textura reconstruidos para quem nao esta vendo nada.
+     * Era o pior caso escolhido justamente no estado mais barato. No ebgeo_web o
+     * gatilho e direto, porque o resize chama `setSize` sem piso.
+     *
+     * Agora o canvas em uso SEGURA o tamanho, e sem canvas vale o menor degrau.
+     * E a mesma politica de `nivelDesejado`, que ja segurava o nivel em uso pelo
+     * mesmo motivo: as duas contas agora concordam. Antes uma descia e a outra
+     * subia no mesmo estado, e quem mandava era a errada.
+     *
      * @param {{width:number,height:number}} info - O nivel escolhido.
      * @returns {number} Largura do canvas, em pixels.
      */
     function larguraDoCanvas(info) {
         const teto = Math.min(info.width, maxTextura);
-        const pedida = larguraNecessaria(camera.largura, camera.altura, camera.fov);
-        if (!(pedida > 0)) return teto;
         const passo = 1024;
+        const pedida = larguraNecessaria(camera.largura, camera.altura, camera.fov);
+        if (!(pedida > 0)) {
+            // Devolver a largura do canvas atual tambem evita a reconstrucao:
+            // `reavaliar` compara esta conta com `canvas.width`, e igual nao
+            // reconstroi. Quem nao esta vendo nada nao paga textura nenhuma.
+            return canvas ? Math.min(teto, canvas.width) : Math.min(teto, passo);
+        }
         const quantizada = Math.ceil(pedida / passo) * passo;
         return Math.max(passo, Math.min(teto, quantizada));
     }

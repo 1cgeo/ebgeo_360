@@ -21,6 +21,9 @@
  *   - origem no canto superior esquerdo da equirretangular. Nunca TMS.
  *   - a borda e RECORTADA: a ultima coluna e a ultima linha podem medir menos
  *     que tile_size, e o cliente toma a largura do proprio bitmap.
+ *   - a URL do tile leva `?v=<total_bytes>`, o token de geracao. Ele existe
+ *     porque o tile e servido com `immutable` de um ano: sem o token, regerar a
+ *     piramide mudava a escada e nao mudava a URL. Ver o `template` abaixo.
  *
  * A GEOMETRIA NAO SE CALCULA AQUI. Ela sai de pyramid-math.js, o mesmo modulo do
  * gerador e do cliente. Ver montarEscada para o porque.
@@ -229,7 +232,25 @@ export default async function photoTileRoutes(fastify) {
       // `location /ebgeo_360/` o servico nao enxerga o prefixo publico e
       // publicaria um caminho que da 404 do lado de fora.
       base: 'image?quality=preview',
-      template: 'tiles/{level}/{x}/{y}.webp',
+      // O TOKEN DE GERACAO VAI NA URL, e nao so no ETag. O tile sai com
+      // `immutable` de um ano (middleware/cache.js), entao o navegador que ja
+      // visitou a foto nao pergunta mais nada ao servidor. Regerar a piramide
+      // com outra razao troca a ESCADA inteira e nao mudava um caractere de
+      // "tiles/{level}/{x}/{y}.webp": o cliente compunha tiles da escada velha
+      // dentro da grade nova, sem um erro no console. Nao e hipotese: o
+      // museu_cms saiu com razao 2 e foi regerado com 1,6.
+      //
+      // O TOKEN E `total_bytes`, o MESMO que ja valida o ETag do tile. Um token
+      // so mantem URL e validador sempre de acordo: a regeracao que muda bytes
+      // move os dois juntos, e a que devolve bytes identicos segura os dois, em
+      // vez de mandar o acervo inteiro descer de novo. Ele nao e mais fraco que
+      // o ETag de hoje, porque e o mesmo numero.
+      //
+      // `built_at` FOI DESCARTADO. Ele muda a cada rodada mesmo quando os tiles
+      // saem iguais, o que joga fora o cache de graca, e o ISO do gerador leva
+      // ':' e '.' para dentro da query. `total_bytes` e INTEGER NOT NULL, entao
+      // ele entra na URL como digito puro, sem escape nenhum.
+      template: `tiles/{level}/{x}/{y}.webp?v=${piramide.total_bytes}`,
       // Redundante de proposito. Sem esta lista o cliente repetiria o ceil, e um
       // arredondamento divergente viraria tile faltando em vez de erro visivel.
       levels,
@@ -244,6 +265,19 @@ export default async function photoTileRoutes(fastify) {
   //
   // SEM Accept-Ranges e sem 206, pela razao de tamanho: Range serve para retomar
   // um download de megabytes, nao para um objeto que cabe em um pacote.
+  //
+  // O `?v=` DO TEMPLATE CHEGA AQUI, e esta rota o IGNORA de proposito. Ele nao e
+  // um parametro: e o token de geracao que separa a URL do tile velho da do
+  // novo, e quem o consome e o CACHE, nunca o handler. Por isso a rota segue sem
+  // schema de query. Um `querystring` no schema faria o Fastify validar contra
+  // ele, e `additionalProperties: false` responderia 400 no tile inteiro por
+  // causa do proprio token que o descritor publicou. Sem schema o Fastify so
+  // decodifica a query em request.query e passa adiante.
+  //
+  // E NAO SE COMPARA o token com a piramide de agora. No instante da regeracao o
+  // cliente ainda segura o descritor velho: recusar o token velho pintaria a
+  // parede de buraco em vez de servir o tile bom. A resposta certa e sempre o
+  // tile de hoje, com o ETag de hoje.
   fastify.get('/api/v1/photos/:uuid/tiles/:level/:x/:y', async (request, reply) => {
     const { uuid } = request.params;
 
