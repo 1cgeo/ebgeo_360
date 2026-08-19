@@ -63,6 +63,11 @@
  *   --perfis nome,...    mesa | ebnet | movel  (mesa)
  *   --cenarios lista     abertura,caminhada,giro,zoom,ocioso (todos)
  *   --web <caminho>      raiz do ebgeo_web (../ebgeo_web)
+ *   --dist <caminho>     mede ESTE pacote em vez de <web>/dist. E o que permite
+ *                        medir o antes e o depois na mesma forma de rodada, que
+ *                        e a unica comparacao justa: a carga da maquina muda com
+ *                        o numero de combinacoes, e comparar rodadas de formatos
+ *                        diferentes ja fez um ganho de 19% parecer perda de 26%
  *   --construir          reconstroi o dist antes de medir
  *   --aceitar-dist-velho mede mesmo com o dist mais velho que o fonte
  *   --render always      liga o desenho a cada quadro, para comparar
@@ -149,6 +154,7 @@ function lerArgs(argv) {
     perfis: ['mesa'],
     cenarios: [...CENARIOS_PADRAO],
     web: null,
+    dist: null,
     construir: false,
     aceitarDistVelho: false,
     render: null,
@@ -168,6 +174,7 @@ function lerArgs(argv) {
       case '--perfis': a.perfis = v.split(','); i++; break;
       case '--cenarios': a.cenarios = v.split(','); i++; break;
       case '--web': a.web = v; i++; break;
+      case '--dist': a.dist = v; i++; break;
       case '--construir': a.construir = true; break;
       case '--aceitar-dist-velho': a.aceitarDistVelho = true; break;
       case '--render': a.render = v; i++; break;
@@ -203,7 +210,7 @@ for (const p of args.perfis) {
 }
 
 const raizWeb = resolve(args.web || join(config.dataDir, '..', '..', 'ebgeo_web'));
-const raizDist = join(raizWeb, 'dist');
+const raizDist = args.dist ? resolve(args.dist) : join(raizWeb, 'dist');
 
 // ---------------------------------------------------------------- o dist
 
@@ -218,6 +225,13 @@ const raizDist = join(raizWeb, 'dist');
  * resposta era de ontem.
  */
 function conferirDist() {
+  // Com `--dist` apontado a mao, a guarda de frescor nao se aplica: o pacote e
+  // deliberadamente antigo, e e isso que se quer medir.
+  if (args.dist) {
+    if (!existsSync(raizDist)) { console.error(`nao existe: ${raizDist}`); process.exit(1); }
+    console.warn(`AVISO: medindo o pacote apontado em ${raizDist}, sem conferir se ele e o do fonte atual.`);
+    return;
+  }
   if (!existsSync(raizDist)) {
     if (!args.construir) {
       console.error(`Nao ha ${raizDist}. Rode com --construir, ou construa o ebgeo_web antes.`);
@@ -483,6 +497,22 @@ async function assentar(cdp, rede, tela, limite = MS_LIMITE_ASSENTAR) {
   };
 }
 
+/**
+ * Deixa a cena parar ANTES de o cenario comecar a contar.
+ *
+ * SEM ISTO O CENARIO MEDE O ANTERIOR. O giro que roda logo depois de uma troca
+ * de foto pega os tiles dela ainda chegando, e o numero sai do vizinho: medido
+ * 318 ms de bloqueio e 216 MB de textura num giro que, isolado, da ZERO dos
+ * dois. Eu quase escrevi no relatorio que girar trava em maquina fraca.
+ *
+ * O teto e curto de proposito. Se a cena nao assentar em cinco segundos, o
+ * cenario roda assim mesmo e o `estourou` do proprio cenario denuncia depois:
+ * esperar mais esconderia uma cena que nunca para, que e defeito de verdade.
+ */
+async function assentarAntes(ctx) {
+  return assentar(ctx.cdp, ctx.rede, null, 5000);
+}
+
 // ---------------------------------------------------------------- cenarios
 
 /**
@@ -565,6 +595,7 @@ async function cenarioAbertura(ctx, uuid) {
  */
 async function cenarioCaminhada(ctx, fotos) {
   const { cdp, rede, tela } = ctx;
+  await assentarAntes(ctx);
   const saltos = [];
 
   for (let i = 1; i < fotos.length; i++) {
@@ -605,6 +636,7 @@ async function cenarioGiro(ctx, graus = 360) {
   const { cdp, rede, tela } = ctx;
   const ret = await cdp.avaliar('JSON.stringify(window.__sonda.retangulo())').then(JSON.parse);
   if (!ret) return { ok: false, motivo: 'sem canvas de panoramica' };
+  await assentarAntes(ctx);
 
   rede.zerar();
   tela.zerar();
@@ -642,6 +674,7 @@ async function cenarioZoom(ctx) {
   const { cdp, rede, tela } = ctx;
   const ret = await cdp.avaliar('JSON.stringify(window.__sonda.retangulo())').then(JSON.parse);
   if (!ret) return { ok: false, motivo: 'sem canvas de panoramica' };
+  await assentarAntes(ctx);
 
   rede.zerar();
   tela.zerar();
@@ -680,6 +713,7 @@ async function cenarioZoom(ctx) {
  */
 async function cenarioOcioso(ctx, segundos = 3) {
   const { cdp, rede, tela } = ctx;
+  await assentarAntes(ctx);
   rede.zerar();
   tela.zerar();
   await tela.ligar();
@@ -725,8 +759,10 @@ function resumoDaSonda(sonda) {
   const somaDe = (grupo) => {
     let alocBytes = 0, subidoBytes = 0, chamadas = 0, ms = 0, maior = 0, quadros = 0, draws = 0, mip = 0, rp = 0;
     const tamanhos = [];
+    const pilhas = [];
     for (const [, c] of grupo) {
       for (const t of c.tamanhos || []) tamanhos.push(t);
+      for (const t of c.pilhas || []) pilhas.push(t);
       alocBytes += c.texStorage2D.bytes || 0;
       subidoBytes += (c.texImage2D.bytes || 0) + (c.texSubImage2D.bytes || 0) + (c.compressedTexImage2D.bytes || 0);
       chamadas += c.texImage2D.n + c.texSubImage2D.n + c.compressedTexImage2D.n;
@@ -738,7 +774,7 @@ function resumoDaSonda(sonda) {
       rp += c.readPixels.n;
     }
     tamanhos.sort((a, b) => a.t - b.t);
-    return { alocBytes, subidoBytes, chamadas, ms, maior, quadros, draws, mip, rp, tamanhos };
+    return { alocBytes, subidoBytes, chamadas, ms, maior, quadros, draws, mip, rp, tamanhos, pilhas };
   };
 
   const p = somaDe(daPanoramica);
@@ -763,6 +799,7 @@ function resumoDaSonda(sonda) {
     mipmaps: p.mip,
     readPixels: p.rp,
     tamanhos: p.tamanhos,
+    pilhas: p.pilhas,
     // Os tamanhos DISTINTOS de textura que a panoramica alocou, do menor para o
     // maior. Cada um e um canvas refeito por inteiro.
     canvasRefeitos: [...new Set(p.tamanhos.filter(t => t.chamada !== 'texSubImage2D').map(t => `${t.w}x${t.h}`))],

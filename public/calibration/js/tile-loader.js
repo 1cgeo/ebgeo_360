@@ -30,8 +30,10 @@
  * contra o full, e `viewer.js`, a interface de calibracao. O que os dois
  * precisam saber e a POSSE DA TEXTURA, porque descartar em dobro mata a esfera
  * em silencio:
- *   - `onTextura` entrega a textura nova. A anterior DESTE carregador ja foi
- *     descartada aqui dentro, em `reconstruirCanvas`. Quem recebe nao a descarta.
+ *   - `onTextura` entrega a textura nova. A anterior NAO foi descartada: ela
+ *     ainda pode estar na esfera, e quem a tirar de la e quem a descarta. O
+ *     carregador descartar por conta propria fazia o three recriar a textura no
+ *     quadro seguinte, do zero, com o canvas inteiro subindo de novo.
  *   - `soltarFoto()` devolve a posse: ele para tudo, esquece o descritor e
  *     entrega a ultima textura viva. Dali em diante quem descarta e o chamador.
  *   - `dispose()` descarta a textura que ainda for dele.
@@ -118,6 +120,25 @@ const DEBOUNCE_MS = 120;
 const HISTERESE = 1.3;
 
 /**
+ * Quanto a largura util precisa crescer para valer um canvas novo.
+ *
+ * Os degraus de canvas sao de 1024 px, entao entre degraus vizinhos a razao vai
+ * de 1,07x (7168 para 7680) a 1,25x (4096 para 5120). Com 1,5 nenhum degrau
+ * sozinho refaz a textura, e so um salto real de tela ou de campo refaz. E a
+ * diferenca entre atravessar um zoom sem alocar nada e alocar quatro vezes.
+ */
+const CRESCE_CANVAS = 1.5;
+
+/**
+ * Quanto a largura util precisa ENCOLHER para valer devolver memoria.
+ *
+ * Maior que o de crescer, e de proposito: a textura grande ja esta paga, e
+ * encolher no meio de um gesto troca memoria por uma pausa justamente quando a
+ * mao esta na tela. Com 2,0 so um afastamento franco devolve o canvas.
+ */
+const ENCOLHE_CANVAS = 2.0;
+
+/**
  * Requisicoes de tile simultaneas.
  *
  * VINTE E QUATRO, e nao doze, porque 24 e o numero que o piloto esta medindo. A
@@ -132,10 +153,20 @@ const MAX_PARALELO = 24;
 /**
  * Janela minima entre duas subidas de textura, em milissegundos.
  *
+ * SO VALE NO CAMINHO SEM `renderer`. Quem passa o renderer sobe o retangulo do
+ * tile (ver `subirSoOPedaco`) e nao agrupa nada: o custo ja e proporcional ao
+ * que mudou, e o tile aparece assim que chega.
+ *
  * O `needsUpdate` do three re-especifica a textura INTEIRA, entao subir por
  * tile que chega custa o canvas inteiro por tile. Com 120 ms uma rajada de
  * tiles vira poucos uploads, e o olho nao distingue a diferenca: 120 ms sao
  * cerca de sete frames, e a foto leva bem mais que isso para completar.
+ *
+ * O DEFEITO QUE ELE TEM, e que motivou a subida parcial: a conta cresce com a
+ * LENTIDAO da maquina. Uma maquina lenta espalha a chegada dos tiles por mais
+ * janelas e paga mais subidas do canvas inteiro. Medido: 3 lotes e 216 MB na
+ * estacao, 6 lotes e 432 MB no perfil de CPU seis vezes mais lenta, para a
+ * mesma foto.
  *
  * Nao suba este numero achando que economiza mais: acima de uns 200 ms a
  * chegada dos tiles comeca a parecer travada, que e o defeito oposto.
@@ -151,6 +182,38 @@ const MAX_TILES_EM_CACHE = 256;
  * um canvas em branco, sem lancar excecao. Entra junto do MAX_TEXTURE_SIZE.
  */
 const LIMITE_CANVAS = 16384;
+
+/**
+ * Teto de lado de textura que ESTA maquina merece, independente do driver.
+ *
+ * POR QUE UM TETO DE MAQUINA. A textura da panoramica e uma so, e o lado dela
+ * decide tudo: 6144 custam 72 MB, 7680 custam 113 MB, e o canvas de origem custa
+ * o mesmo de novo. Numa estacao isso e ruido; num equipamento com 4 GB e video
+ * integrado, que divide memoria com o sistema, sao dois blocos de 113 MB que
+ * disputam com o navegador inteiro. Medido no perfil de maquina fraca: 432 MB de
+ * textura subidos por troca de foto, contra 216 MB na estacao, para a mesma
+ * cena.
+ *
+ * O QUE SE PERDE E POUCO, e vale dizer quanto. A 1904x985 e campo de 75 graus a
+ * tela resolve 5.816 px de panoramica, entao 4096 mostram 70% do detalhe que ela
+ * poderia mostrar. E menos nitidez ao aproximar, e nao imagem faltando: os tiles
+ * continuam vindo do mesmo nivel, so desenhados numa escala menor.
+ *
+ * AS DUAS PISTAS SAO IMPERFEITAS, e por isso a regra e conservadora. `deviceMemory`
+ * vem arredondada para baixo em degraus (4 significa "4 ou menos") e nao existe
+ * no Firefox nem no Safari; `hardwareConcurrency` conta nucleos logicos e nao diz
+ * nada sobre o video. Na ausencia das duas, o teto NAO se aplica: e melhor pagar
+ * memoria numa maquina boa do que borrar a foto numa maquina que ninguem mediu.
+ *
+ * @returns {number} lado maximo, em pixels
+ */
+export function tetoDaMaquina(navegador = globalThis.navigator) {
+    const memoriaGB = navegador?.deviceMemory;
+    const nucleos = navegador?.hardwareConcurrency;
+    const poucaMemoria = typeof memoriaGB === 'number' && memoriaGB <= 4;
+    const poucosNucleos = typeof nucleos === 'number' && nucleos <= 4;
+    return poucaMemoria || poucosNucleos ? 4096 : LIMITE_CANVAS;
+}
 
 /**
  * Bytes que a REDE entregou nesta resposta.
@@ -200,6 +263,10 @@ export function raizDaApi(caminho = location.pathname) {
  * @param {Object} opcoes
  * @param {WebGLRenderingContext|WebGL2RenderingContext} opcoes.gl - contexto do
  *   renderer, usado so para ler MAX_TEXTURE_SIZE
+ * @param {THREE.WebGLRenderer} [opcoes.renderer] - o renderer inteiro. Sem ele,
+ *   cada tile que chega faz a textura INTEIRA subir de novo; com ele, sobe so o
+ *   retangulo do tile (ver `subirSoOPedaco`). E opcional para o demo e a pagina
+ *   de calibracao, que so tem o contexto a mao
  * @param {string} [opcoes.base] - raiz da API. Sem ela, sai de `raizDaApi()`
  * @param {(textura: THREE.CanvasTexture) => void} [opcoes.onTextura] - chamado
  *   quando o canvas e recriado e a textura anterior deixa de valer
@@ -211,6 +278,7 @@ export function raizDaApi(caminho = location.pathname) {
  */
 export function createTileLoader({
     gl,
+    renderer,
     base,
     onTextura,
     onEstatisticas,
@@ -222,13 +290,26 @@ export function createTileLoader({
     // console), entao o canvas nunca pode passar desse valor: quando o nivel
     // escolhido for maior, o tile e desenhado reduzido pela mesma escala e a
     // panoramica continua inteira, so com menos detalhe.
+    //
+    // O QUE O DRIVER PERMITE NAO E O QUE A MAQUINA AGUENTA. Video integrado
+    // anuncia 16384 sem pestanejar, e a textura de 7680x3840 que cabe nesse
+    // teto custa 113 MB de memoria compartilhada com o sistema, mais o mesmo
+    // tanto no canvas de origem. Por isso entra um teto de MAQUINA por cima do
+    // teto de driver.
     const maxTextura = Math.min(
         gl ? gl.getParameter(gl.MAX_TEXTURE_SIZE) : LIMITE_CANVAS,
         LIMITE_CANVAS,
+        tetoDaMaquina(),
     );
 
     /** Raiz da API desta instancia, fixada na criacao. */
     const raizApi = base || raizDaApi();
+
+    // Sem renderer, a subida parcial nao existe e tudo segue pelo caminho de
+    // sempre. E o caso da pagina de calibracao e do demo, que criam o
+    // carregador so com o contexto. Nao e degradacao escondida: a coluna
+    // `uploadsParciais` fica em zero e denuncia.
+    let renderizador = renderer || null;
 
     let descritor = null;
     let niveis = [];
@@ -240,6 +321,32 @@ export function createTileLoader({
     let ctx = null;
     let textura = null;
     let texturaSuja = false;
+    /**
+     * O canvas pequeno de onde sai cada retangulo, e a textura que o embrulha.
+     * Um so por carregador: as subidas sao sequenciais, e alocar um por tile
+     * jogaria fora justamente o que a subida parcial economiza.
+     */
+    let recorte = null;
+    /**
+     * A textura ainda nao existe na GPU, ou o canvas acabou de ser refeito.
+     * Enquanto isto vale, cada tile so pinta no canvas: quem sobe e a primeira
+     * subida INTEIRA, que ja carrega tudo que foi pintado ate ali.
+     */
+    let precisaSubirTudo = true;
+    /**
+     * Um pedaco subiu e a tela ainda nao redesenhou.
+     *
+     * A subida parcial acontece na volta da rede, e nao no laco de quadro, entao
+     * quem desenha precisa saber que ha o que mostrar. Sem este aviso o tile
+     * chegaria a GPU e ficaria invisivel ate o operador encostar no mouse: o
+     * visualizador so desenha quando esta sujo.
+     */
+    let pedeQuadro = false;
+    /**
+     * A caixa que envolve tudo que mudou no canvas desde o ultimo quadro, em
+     * pixels do canvas. Nula quando nao ha nada a subir.
+     */
+    let pedaco = null;
     // Relogio do agrupamento de uploads. Zero significa que ainda nao houve
     // upload nesta foto, e o primeiro sempre passa direto: e ele que tira a
     // tela do preview borrado.
@@ -331,6 +438,13 @@ export function createTileLoader({
             // painel do demo nao perder a coluna que separa fundo de descritor.
             bytesPreview: 0,
             bytesFundo: 0,
+            // `uploads` conta as subidas da textura INTEIRA e `uploadsParciais`
+            // as de um retangulo so. `bytesParaGpu` soma as duas em bytes, que e
+            // a unica medida comparavel entre os dois caminhos: 55 tiles custam
+            // 216 MB pelo caminho inteiro e 38 MB pelo parcial.
+            uploads: 0,
+            uploadsParciais: 0,
+            bytesParaGpu: 0,
             msPrimeiraPintura: null,
             msNivelCompleto: null,
             pendentes: 0,
@@ -421,18 +535,26 @@ export function createTileLoader({
     }
 
     /**
-     * Os tiles de nivel 0 que a estrategia de fundo em vigor manda baixar.
+     * Pede os tiles do nivel, em UMA onda.
      *
-     * A GRADE INTEIRA, e nao o conjunto visivel. Na escada nova ela e UM tile,
-     * entao "inteira" e o pedido mais barato que existe. O `cols` e o `rows` vem
-     * do descritor, e nao de uma suposicao: uma piramide gerada antes de
-     * 2026-08-18 tem nivel 0 de 8 ou 6 tiles, e ela continua abrindo certo aqui
-     * enquanto o acervo nao termina de ser regerado.
+     * AQUI ESTEVE UMA SEGUNDA ONDA, e ela foi medida e desfeita. A ideia era
+     * pedir primeiro o que a camera enxerga (32 tiles no formato 7680 a
+     * 1904x985) e so depois a folga de vizinhanca (os outros 28), para a foto
+     * ficar nitida depois de metade das decodificacoes. O numero reprovou:
      *
-     * `preview` devolve lista vazia de proposito: naquela estrategia o fundo e o
-     * `descritor.base`, e nao tile nenhum.
+     *   troca de foto, perfil de maquina fraca:  1.255 ms -> 2.276 ms  (+81%)
+     *   giro de 360 graus, mesma maquina:        1.496 ms -> 2.618 ms  (+75%)
      *
-     * @returns {Array<{x: number, y: number}>}
+     * Duas causas, e as duas sao do desenho e nao do ajuste. A onda seguinte so
+     * comeca quando a anterior TERMINA, entao a fila de 24 requisicoes esvazia
+     * antes de encher de novo, e numa maquina lenta esse vao e longo. E pior:
+     * durante um arrasto a reavaliacao dispara a cada 120 ms, cada uma deixando
+     * uma continuacao pendente, e todas elas acordam depois pedindo a margem de
+     * um azimute que ja passou.
+     *
+     * Fica registrado para nao ser reinventado. Quem tentar de novo precisa de
+     * uma fila com PRIORIDADE, e nao de duas ondas em serie: a margem entra no
+     * fim da mesma fila, e a reavaliacao seguinte a descarta.
      */
     function tilesDeFundo() {
         if (fundoAtual === 'preview') return [];
@@ -444,46 +566,6 @@ export function createTileLoader({
         return todos;
     }
 
-    // ========================================================================
-    // CANVAS E TEXTURA
-    // ========================================================================
-
-    /**
-     * O tamanho do canvas de textura, que NAO e o tamanho do nivel.
-     *
-     * ESTA E A CONTA QUE CONSERTOU O TRAVAMENTO. O canvas nascia com a largura
-     * do nivel, entao um nivel nativo de 7680 dava textura de 7680x3840, ou
-     * 118 MB. Cada `needsUpdate` do three re-especifica a textura INTEIRA, e a
-     * conta medida foi 1.013,5 MB enviados a GPU para abrir uma foto, contra
-     * 127,1 MB do caminho antigo. O sintoma na mao do operador era engasgo na
-     * primeira vez que ele girava, que e quando os tiles finos chegam.
-     *
-     * A textura nao precisa carregar mais pixel do que a TELA resolve. Numa
-     * janela de 1584 px a panoramica util tem 5346 px, entao os 7680 do nivel
-     * viram 2.334 colunas que nenhum monitor mostra. Cortar por
-     * `larguraNecessaria` nao perde nada visivel: perderia, sim, se a camera
-     * desse zoom, e ai a propria demanda cresce e o canvas se refaz maior.
-     *
-     * QUANTIZADO em passos de 1024 e para cima. Sem isso, cada pixel de
-     * redimensionamento da janela pediria canvas novo, e reconstruir custa
-     * alocar, repintar o cache e subir tudo de novo. Com o passo, a janela anda
-     * bastante antes de trocar de degrau.
-     *
-     * TELA SEM AREA NAO PEDE O CANVAS MAIOR. `larguraNecessaria` devolve 0
-     * quando o painel esta recolhido, a aba trocada ou o container tem altura
-     * zero. A versao antiga caia no TETO nesse caso, ou seja no nivel nativo:
-     * 7680x3840, 118 MB de textura reconstruidos para quem nao esta vendo nada.
-     * Era o pior caso escolhido justamente no estado mais barato. No ebgeo_web o
-     * gatilho e direto, porque o resize chama `setSize` sem piso.
-     *
-     * Agora o canvas em uso SEGURA o tamanho, e sem canvas vale o menor degrau.
-     * E a mesma politica de `nivelDesejado`, que ja segurava o nivel em uso pelo
-     * mesmo motivo: as duas contas agora concordam. Antes uma descia e a outra
-     * subia no mesmo estado, e quem mandava era a errada.
-     *
-     * @param {{width:number,height:number}} info - O nivel escolhido.
-     * @returns {number} Largura do canvas, em pixels.
-     */
     function larguraDoCanvas(info) {
         const teto = Math.min(info.width, maxTextura);
         const passo = 1024;
@@ -503,6 +585,38 @@ export function createTileLoader({
      * que ja esta em cache (preview, nivel 0 e tiles do proprio nivel).
      * @param {number} nivel
      */
+    /**
+     * Arma a textura para receber pedacos, e o canvas de onde eles saem.
+     *
+     * `flipY` desligado E a condicao para o retangulo cair no lugar certo, e a
+     * UV invertida desfaz o efeito na amostragem. As duas linhas andam juntas:
+     * mexer numa sem a outra poe a panoramica de cabeca para baixo, e o unico
+     * jeito honesto de saber e comparar pixel contra a versao anterior.
+     *
+     * Sem `renderizador` nada disto vale, e a textura fica como sempre foi.
+     */
+    function prepararSubidaParcial() {
+        precisaSubirTudo = true;
+        // O retangulo pendente e do canvas ANTIGO. Aplicado no novo, subiria
+        // pixel de outro tamanho para a coordenada errada.
+        pedaco = null;
+        if (!renderizador) return;
+
+        textura.flipY = false;
+        textura.repeat.set(1, -1);
+        textura.offset.set(0, 1);
+
+        if (!recorte) {
+            const pequeno = document.createElement('canvas');
+            const ctxPequeno = pequeno.getContext('2d', { alpha: false });
+            const texturaPequena = new THREE.CanvasTexture(pequeno);
+            texturaPequena.flipY = false;
+            texturaPequena.colorSpace = THREE.SRGBColorSpace;
+            texturaPequena.generateMipmaps = false;
+            recorte = { canvas: pequeno, ctx: ctxPequeno, textura: texturaPequena };
+        }
+    }
+
     function reconstruirCanvas(nivel) {
         const info = niveis[nivel];
         const largura = larguraDoCanvas(info);
@@ -516,12 +630,30 @@ export function createTileLoader({
         nivelAtual = nivel;
         estat.nivel = nivel;
 
-        if (textura) textura.dispose();
+        // A TEXTURA ANTERIOR NAO E DESCARTADA AQUI, e a mudanca nao e de estilo.
+        //
+        // Ela ainda esta na esfera: o consumidor so troca o `map` do material
+        // quando o primeiro tile pinta, que e dezenas ou centenas de
+        // milissegundos depois. Descartar agora deixa o material apontando para
+        // uma textura morta, e o three.js, ao desenhar o quadro seguinte,
+        // RECRIA a textura do zero: uma alocacao nova e o canvas inteiro subindo
+        // de novo para a GPU.
+        //
+        // Medido numa troca de foto a 1904x985 no perfil de maquina fraca: DUAS
+        // alocacoes de 6144x3072 no mesmo salto, a 56 ms uma da outra, com as
+        // pilhas de chamada apontando as duas para o mesmo caminho interno do
+        // three (`setTexture2D` durante o render). Sao 72 MB de alocacao e 72 MB
+        // de subida jogados fora por foto, e nada na tela denuncia: a foto
+        // anterior continua correta enquanto isso acontece.
+        //
+        // Quem descarta passa a ser QUEM TIRA A TEXTURA DA ESFERA, que e o unico
+        // ponto do sistema que sabe que ela nao esta mais em uso.
         // Canvas novo e textura nova: o agrupamento recomeca, para o primeiro
         // upload da foto (ou do nivel) nao esperar a janela.
         ultimoUpload = 0;
         textura = new THREE.CanvasTexture(canvas);
         textura.colorSpace = THREE.SRGBColorSpace;
+        prepararSubidaParcial();
         // Sem mipmap: a piramide ja E o mipmap, e gerar niveis de uma textura de
         // 7680x3840 a cada needsUpdate custaria mais que a propria composicao.
         textura.generateMipmaps = false;
@@ -563,6 +695,100 @@ export function createTileLoader({
      * @param {number} y
      * @param {ImageBitmap} bitmap
      */
+    /**
+     * Sobe para a GPU SO O RETANGULO que acabou de mudar.
+     *
+     * O PROBLEMA. `textura.needsUpdate = true` faz o three re-especificar a
+     * textura INTEIRA. Um tile de 512 px muda 0,64 MB do canvas e custava 72 MB
+     * de subida. Para nao pagar isso por tile, o carregador agrupava as subidas
+     * numa janela de 120 ms, e o agrupamento tinha um defeito perverso: a conta
+     * cresce com a LENTIDAO da maquina. Medido numa troca de foto a 1904x985,
+     * 55 tiles: 3 lotes e 216 MB na estacao, 6 lotes e 432 MB no perfil de CPU
+     * seis vezes mais lenta. Quanto mais fraco o equipamento, mais ele pagava.
+     *
+     * A SAIDA. `renderer.copyTextureToTexture` do three chama `texSubImage2D`,
+     * que escreve um retangulo dentro da textura ja alocada. Com ele o custo
+     * passa a ser proporcional ao que mudou: os mesmos 55 tiles somam cerca de
+     * 38 MB, e a janela de agrupamento deixa de existir. O tile aparece no
+     * instante em que chega, em vez de esperar o proximo lote.
+     *
+     * A FONTE E O PROPRIO CANVAS, e nao o bitmap do tile. Copiar do canvas ja
+     * composto garante que o pedaco subido e EXATAMENTE o que a subida inteira
+     * poria ali: mesma reamostragem, mesma borda, mesmo antisserrilhado entre
+     * tiles vizinhos. Subir o bitmap direto exigiria alinhar o canvas ao grid de
+     * tiles, e uma costura de um pixel numa panoramica vira grade visivel.
+     *
+     * `flipY` E FALSO, e a UV compensa. O `texSubImage2D` grava a partir do
+     * canto de cima, e com `flipY` ligado o pedaco entraria espelhado dentro do
+     * proprio retangulo. Desligar inverte a imagem toda, e `repeat.y = -1` com
+     * `offset.y = 1` desfaz a inversao na amostragem: a esfera ve o mesmo de
+     * antes, provado por comparacao de pixel contra a versao anterior.
+     *
+     * @returns {boolean} true se o pedaco subiu, false se cabe a subida inteira
+     */
+    function marcarPedaco(dx, dy, dw, dh) {
+        if (!renderizador || !textura || precisaSubirTudo) return false;
+
+        // Inteiros para FORA: `texSubImage2D` nao aceita fracao, e arredondar
+        // para dentro deixaria de fora a coluna de pixels da borda, que e
+        // justamente onde dois tiles se encontram.
+        const x0 = Math.max(0, Math.floor(dx));
+        const y0 = Math.max(0, Math.floor(dy));
+        const x1 = Math.min(canvas.width, Math.ceil(dx + dw));
+        const y1 = Math.min(canvas.height, Math.ceil(dy + dh));
+        if (x1 <= x0 || y1 <= y0) return true;
+
+        pedaco = pedaco
+            ? {
+                x0: Math.min(pedaco.x0, x0), y0: Math.min(pedaco.y0, y0),
+                x1: Math.max(pedaco.x1, x1), y1: Math.max(pedaco.y1, y1),
+            }
+            : { x0, y0, x1, y1 };
+        return true;
+    }
+
+    /**
+     * Sobe o retangulo acumulado, uma vez por quadro.
+     *
+     * UM POR QUADRO, E NAO UM POR TILE, e a diferenca foi medida. A primeira
+     * versao subia cada tile na hora, e cada subida exige LER DE VOLTA um pedaco
+     * do canvas grande, que mora na GPU. Cinquenta e cinco leituras por foto
+     * custaram 117 ms de `drawImage` no perfil de maquina fraca, contra 10 ms
+     * antes: a economia de banda voltava como custo de leitura.
+     *
+     * Juntar por quadro reduz as leituras a um punhado, e a caixa que envolve os
+     * tiles de uma rajada e apertada porque eles chegam do centro da tela para
+     * fora, um ao lado do outro. No pior caso a caixa e o canvas inteiro, que e
+     * exatamente o que a versao anterior a esta fazia sempre.
+     *
+     * @returns {boolean} true se algo subiu
+     */
+    function subirPedacoAcumulado() {
+        if (!pedaco || !renderizador || !textura || !recorte) return false;
+        const { x0, y0, x1, y1 } = pedaco;
+        pedaco = null;
+        const w = x1 - x0;
+        const h = y1 - y0;
+
+        try {
+            recorte.canvas.width = w;
+            recorte.canvas.height = h;
+            recorte.ctx.drawImage(canvas, x0, y0, w, h, 0, 0, w, h);
+            recorte.textura.needsUpdate = true;
+            renderizador.copyTextureToTexture(new THREE.Vector2(x0, y0), recorte.textura, textura);
+            estat.uploadsParciais++;
+            estat.bytesParaGpu += w * h * 4;
+            return true;
+        } catch (erro) {
+            // Uma falha aqui nao pode deixar o tile invisivel: volta para a
+            // subida inteira, que e o caminho de sempre, e o log diz o que houve.
+            log(`subida parcial falhou (${erro.message}); voltando para a inteira`);
+            renderizador = null;
+            texturaSuja = true;
+            return false;
+        }
+    }
+
     function desenharTile(nivel, x, y, bitmap) {
         if (!ctx || nivelAtual === null) return;
         // So dois niveis chegam ao canvas: o alvo e o nivel 0 do fundo.
@@ -572,16 +798,15 @@ export function createTileLoader({
         const info = niveis[nivel];
         const escala = canvas.width / info.width;
         const tam = descritor.tileSize;
-        ctx.drawImage(
-            bitmap,
-            x * tam * escala,
-            y * tam * escala,
-            bitmap.width * escala,
-            bitmap.height * escala,
-        );
+        const dx = x * tam * escala;
+        const dy = y * tam * escala;
+        const dw = bitmap.width * escala;
+        const dh = bitmap.height * escala;
+        ctx.drawImage(bitmap, dx, dy, dw, dh);
 
         desenhados.add(`${nivel}/${x}/${y}`);
-        texturaSuja = true;
+        if (marcarPedaco(dx, dy, dw, dh)) pedeQuadro = true;
+        else texturaSuja = true;
         estat.tilesDesenhados++;
         if (estat.msPrimeiraPintura === null) {
             estat.msPrimeiraPintura = Math.round(performance.now() - estat.inicio);
@@ -776,17 +1001,43 @@ export function createTileLoader({
      * arrastar dispara dezenas de eventos por segundo e cada recalculo pediria
      * o mesmo conjunto de novo.
      */
+    /**
+     * O canvas vale a pena ser refeito para esta largura?
+     *
+     * REFAZER NAO E DE GRACA, e a versao anterior refazia a qualquer diferenca
+     * de um degrau de 1024 px. Como a largura pedida cresce com o inverso do
+     * campo de visao, uma aproximacao comum passeia por varios degraus, e cada
+     * um custa uma textura nova inteira. Medido num ciclo de zoom de 75 a 10
+     * graus e de volta, a 1904x985: quatro canvas alocados, 369 MB subidos,
+     * 184 MB alocados e pior quadro de 622 ms, sem BAIXAR UM TILE NOVO. Todo
+     * aquele trabalho era o mesmo pixel subindo de novo, maior.
+     *
+     * A banda e assimetrica de proposito. Crescer exige ganho grande, porque o
+     * detalhe que se ganha e sublinear (a tela ja mostra menos do que o canvas
+     * tem) e o preco e uma textura inteira. Encolher exige ganho ainda maior,
+     * porque a memoria devolvida so importa se for muita, e encolher no meio de
+     * um gesto e o pior momento possivel.
+     */
+    function valeRefazerCanvas(alvo, atual) {
+        if (alvo > atual * CRESCE_CANVAS) return true;
+        if (alvo * ENCOLHE_CANVAS < atual) return true;
+        return false;
+    }
+
     function reavaliar() {
         if (!descritor) return;
         const nivel = nivelDesejado();
         // O canvas se refaz por DOIS motivos, e nao so por troca de nivel: a
         // largura util da tela tambem muda com zoom e com redimensionamento da
-        // janela, e ela e quem dita o tamanho da textura. Sem esta segunda
-        // condicao, dar zoom dentro do mesmo nivel deixaria a textura no
-        // degrau antigo, e o detalhe que os tiles trazem morreria na
-        // reamostragem do canvas.
+        // janela, e ela e quem dita o tamanho da textura.
+        //
+        // Trocar de nivel obriga: o desenho do tile usa `canvas.width /
+        // info.width` como escala, e um canvas de outro nivel poria o tile no
+        // lugar errado. Mudar so a largura util NAO obriga, e passa pela banda
+        // de `valeRefazerCanvas`.
         const trocouNivel = nivel !== nivelAtual;
-        const trocouCanvas = canvas !== null && larguraDoCanvas(niveis[nivel]) !== canvas.width;
+        const trocouCanvas = canvas !== null
+            && valeRefazerCanvas(larguraDoCanvas(niveis[nivel]), canvas.width);
         if (trocouNivel || trocouCanvas) reconstruirCanvas(nivel);
         pedirTiles(nivel, visiveis(nivel), true);
     }
@@ -989,7 +1240,31 @@ export function createTileLoader({
          * @returns {boolean} se houve upload
          */
         aplicarAtualizacoes() {
-            if (!texturaSuja || !textura) return false;
+            if (!textura) return false;
+
+            // A PRIMEIRA SUBIDA E SEMPRE INTEIRA. Ela leva o fundo de nivel 0 e
+            // o que ja tiver sido repintado do cache, e e ela que da existencia
+            // a textura na GPU: sem uma textura alocada, `texSubImage2D` nao tem
+            // onde escrever.
+            if (texturaSuja && precisaSubirTudo) {
+                textura.needsUpdate = true;
+                texturaSuja = false;
+                precisaSubirTudo = false;
+                ultimoUpload = performance.now();
+                estat.uploads++;
+                estat.bytesParaGpu += canvas.width * canvas.height * 4;
+                return true;
+            }
+
+            // O retangulo acumulado sobe AQUI, no laco de quadro, e nao na
+            // volta da rede: uma leitura por quadro em vez de uma por tile.
+            if (pedeQuadro) {
+                pedeQuadro = false;
+                subirPedacoAcumulado();
+                return true;
+            }
+
+            if (!texturaSuja) return false;
 
             // AGRUPA NO TEMPO, e nao so por frame. Uma vez por frame ainda era
             // uma vez por tile que chega: medidos 12 uploads e 1.013,5 MB para
@@ -1008,7 +1283,8 @@ export function createTileLoader({
             textura.needsUpdate = true;
             texturaSuja = false;
             ultimoUpload = agora;
-            estat.uploads = (estat.uploads || 0) + 1;
+            estat.uploads++;
+            estat.bytesParaGpu += canvas.width * canvas.height * 4;
             return true;
         },
 

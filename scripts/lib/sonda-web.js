@@ -87,6 +87,12 @@ export const SONDA_WEB = String.raw`
       texStorage2D: zeroChamada(),
       compressedTexImage2D: zeroChamada(),
       generateMipmap: { n: 0, ms: 0, msMax: 0 },
+      // A PILHA DE QUEM ALOCOU. Alocar textura e raro (uma por canvas novo),
+      // entao guardar a pilha das primeiras custa nada e responde a pergunta
+      // que nenhuma contagem responde: QUEM pediu esta textura. Sem ela, duas
+      // alocacoes do mesmo tamanho no mesmo salto viram deducao, e deducao
+      // sobre codigo empacotado erra.
+      pilhas: [],
       // A SEQUENCIA DE TAMANHOS DA TEXTURA, e nao so o total de bytes. E ela
       // que responde "o canvas foi refeito quantas vezes, e de que tamanho para
       // que tamanho". Sem isso, 369 MB num zoom podem ser uma textura enorme ou
@@ -182,6 +188,17 @@ export const SONDA_WEB = String.raw`
         // Mipmap completo custa 1/3 a mais que o nivel base.
         if (niveis > 1) bytes = Math.round(bytes * 1.34);
         anotarTamanho(contas, 'texStorage2D', arguments[3] | 0, arguments[4] | 0);
+        if (contas.pilhas.length < 8) {
+          // fromCharCode(10) em vez da sequencia de escape: este arquivo passa
+          // por heredoc e por script de edicao, e a barra-n ja virou quebra de
+          // linha de verdade uma vez, truncando a sonda inteira.
+          var linhas = (new Error().stack || '').split(String.fromCharCode(10)).slice(1, 7);
+          contas.pilhas.push({
+            t: Math.round(performance.now() - inicio),
+            wh: (arguments[3] | 0) + 'x' + (arguments[4] | 0),
+            pilha: linhas.map(function (l) { return l.trim(); })
+          });
+        }
         return cronometrar(contas, 'texStorage2D', oTexStorage, this, arguments, bytes);
       };
     }
@@ -302,6 +319,23 @@ export const SONDA_WEB = String.raw`
   var temLoaf = !!observar('long-animation-frame', loaf, function (e, reg) {
     reg.bloqueio = e.blockingDuration || 0;
     reg.render = e.renderStart ? (e.startTime + e.duration - e.renderStart) : 0;
+    // QUEM gastou o quadro, e nao so quanto. O LoAF atribui o tempo a scripts,
+    // com o tipo de invocacao e a posicao no arquivo. Em pacote empacotado o
+    // nome da funcao vem embaralhado, mas o TIPO de invocacao nao: ele separa
+    // um laco de animacao de um ouvinte de ponteiro de um temporizador, que e
+    // exatamente a divisao que decide onde mexer.
+    reg.scripts = [];
+    var lista = e.scripts || [];
+    for (var s = 0; s < lista.length && s < 4; s++) {
+      reg.scripts.push({
+        tipo: lista[s].invokerType || '?',
+        quem: String(lista[s].invoker || '').slice(0, 60),
+        fonte: String(lista[s].sourceURL || '').split('/').pop().slice(0, 40),
+        funcao: String(lista[s].sourceFunctionName || '').slice(0, 40),
+        ms: Math.round(lista[s].duration || 0),
+        estiloMs: Math.round(lista[s].forcedStyleAndLayoutDuration || 0)
+      });
+    }
   });
   observar('longtask', longtask);
   observar('event', eventos, function (e, reg) {
@@ -497,7 +531,14 @@ export const SONDA_WEB = String.raw`
           piorTarefaMs: piorTarefa,
           piorEventoMs: piorEvento,
           piorFilaMs: piorFila,
-          eventos: ev.length
+          eventos: ev.length,
+          // Os tres piores quadros do periodo, com quem os gastou. E o unico
+          // canal que responde "onde mexer" quando o total ja disse "doi".
+          piores: lo.slice().sort(function (a, b) { return b.dur - a.dur; }).slice(0, 3)
+            .map(function (q) {
+              return { ms: Math.round(q.dur), bloqueio: Math.round(q.bloqueio || 0),
+                render: Math.round(q.render || 0), scripts: q.scripts || [] };
+            })
         },
         memoria: mem
       };
@@ -506,14 +547,26 @@ export const SONDA_WEB = String.raw`
 })();
 `;
 
-// A CRASE E VENENO AQUI DENTRO. O corpo da sonda mora num literal delimitado por
-// crase, entao uma unica crase num comentario encerra o literal e o resto do
-// arquivo vira codigo. Aconteceu duas vezes, e nas duas o erro apareceu como
-// SyntaxError num identificador aleatorio, longe da causa. Esta guarda fala a
-// verdade na hora de importar o modulo.
-if (!SONDA_WEB.includes('window.__sonda = {') || !SONDA_WEB.trimEnd().endsWith('})();')) {
+// A SONDA E COMPILADA AQUI, na importacao do modulo, e nao la na pagina.
+//
+// A primeira versao desta guarda conferia MARCADOR: procurava a abertura de
+// `window.__sonda` e o fecho da funcao. Ela passou com a sonda quebrada, porque
+// um `.split()` teve a barra-n virada em quebra de linha de verdade por um
+// script de edicao, e os dois marcadores continuavam la. A pagina recebeu um
+// programa que nao compila, `window.__sonda` nunca existiu, e o medidor morreu
+// em "Cannot read properties of undefined" quatro camadas adiante.
+//
+// Verificacao que nao pode reprovar nao e verificacao. `new Function` compila o
+// texto de verdade, custa menos de um milissegundo, roda uma vez por processo, e
+// reprova exatamente o que precisa reprovar. As duas maneiras conhecidas de
+// quebrar este literal sao a crase num comentario e a sequencia de escape
+// mastigada por heredoc; ambas caem aqui.
+try {
+  new Function(SONDA_WEB); // eslint-disable-line no-new-func
+} catch (err) {
   throw new Error(
-    'A sonda saiu truncada. Quase sempre e uma crase dentro do literal: '
-    + 'troque por aspas ou tire a marcacao do comentario.',
+    `A sonda nao compila: ${err.message}. As duas causas conhecidas sao crase `
+    + 'dentro do literal e barra-n virada em quebra de linha por script de edicao. '
+    + 'Use String.fromCharCode(10) em vez da sequencia de escape.',
   );
 }

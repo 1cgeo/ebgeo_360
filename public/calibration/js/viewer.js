@@ -242,17 +242,22 @@ export function loadPanorama(url, isPreview = false, generation = loadGeneration
 }
 
 /**
- * Descarta a textura que esta na esfera, se ela for do viewer.
+ * Descarta a textura que ACABOU de sair da esfera, seja de quem for.
  *
- * A textura de TILES nao cai aqui. Enquanto o carregador a compoe o dono e ele,
- * que ja descarta a anterior sozinho a cada troca de nivel; descartar dos dois
- * lados mataria a mesma textura duas vezes. `soltarFoto` devolve a posse e
- * limpa a marca, e ai a orfa passa por este caminho como qualquer outra.
+ * A DE TILES CAI AQUI TAMBEM, e essa e a regra nova. Antes o carregador
+ * descartava a dele sozinho, dentro de `reconstruirCanvas`. So que entre a
+ * reconstrucao e a troca do `map` passam dezenas ou centenas de milissegundos,
+ * e nesse vao o material aponta para uma textura ja morta: o three a RECRIA no
+ * quadro seguinte e sobe o canvas inteiro de novo. Medido no ebgeo_web, numa
+ * troca de foto a 1904x985 em maquina lenta, sao 72 MB de alocacao e 72 MB de
+ * subida jogados fora por foto, sem nada errado na tela.
+ *
+ * Agora quem descarta e quem TIRA a textura da esfera, que e o unico ponto que
+ * sabe que ela nao esta mais em uso.
  */
 function descartarTexturaAtual() {
     const antiga = material?.map;
     if (!antiga) return;
-    if (antiga.userData?.deTiles) return;
     antiga.dispose();
 }
 
@@ -270,6 +275,9 @@ function garantirCarregadorTiles() {
 
     carregadorTiles = createTileLoader({
         gl: renderer.getContext(),
+        // O renderer inteiro liga a subida parcial: so o retangulo do tile sobe
+        // para a GPU, em vez da textura toda a cada lote.
+        renderer,
         onTextura: (textura) => {
             // A textura NAO entra na esfera aqui. O canvas acaba de nascer em
             // branco, e aplica-lo agora apagaria a foto anterior por um quadro
@@ -283,6 +291,10 @@ function garantirCarregadorTiles() {
             // `isFull` verdadeiro porque a esfera composta por tiles vale pelo
             // full: sem esta marca, um preview atrasado da foto anterior
             // rebaixaria a imagem ja detalhada.
+            // A PENDENTE ANTERIOR MORRE AQUI: se ainda esta pendente, nunca
+            // chegou a esfera, e dois canvas seguidos sem pintura no meio
+            // deixariam uma textura de dezenas de MB sem dono.
+            if (texturaTilesPendente) texturaTilesPendente.dispose();
             textura.userData = { isFull: true, deTiles: true };
             texturaTilesPendente = textura;
         },
@@ -310,8 +322,10 @@ function garantirCarregadorTiles() {
  */
 function aplicarTexturaDeTiles() {
     const nova = texturaTilesPendente;
-    texturaTilesPendente = null;
     if (!material || !nova) return;
+    // A pendencia so se limpa QUANDO A TROCA ACONTECE: desistindo antes, a
+    // textura ficaria sem dono nenhum, porque o carregador ja a entregou.
+    texturaTilesPendente = null;
 
     descartarTexturaAtual();
     material.map = nova;
@@ -325,6 +339,8 @@ function aplicarTexturaDeTiles() {
  * Chamado quando a piramide nao existe, ou falhou, e a esfera volta ao full.
  */
 function largarTiles() {
+    // A pendente nunca chegou a esfera, entao ninguem mais a tem.
+    if (texturaTilesPendente) texturaTilesPendente.dispose();
     texturaTilesPendente = null;
     if (!carregadorTiles) return;
 
