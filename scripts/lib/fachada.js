@@ -24,7 +24,8 @@
  */
 
 import { createServer } from 'node:http';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
+import { deflateSync } from 'node:zlib';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 
 const TIPOS = {
@@ -58,9 +59,11 @@ const TIPOS = {
  * @param {string} opcoes.destino base do servico, por exemplo 'http://127.0.0.1:8199/api/v1'
  * @param {number} opcoes.porta 0 pede porta efemera
  * @param {boolean} [opcoes.comprimir] responder gzip no estatico, como o nginx
+ * @param {boolean} [opcoes.substituirExterno] serve um substituto local para o
+ *   recurso que sai da maquina. Ver `REMENDO_EXTERNO`
  * @returns {Promise<{porta: number, url: string, fechar: Function, erros: Array}>}
  */
-export async function subirFachada({ raiz, prefixo, destino, porta = 0 }) {
+export async function subirFachada({ raiz, prefixo, destino, porta = 0, substituirExterno = false }) {
   const raizAbs = resolve(raiz);
   if (!existsSync(raizAbs)) throw new Error(`raiz da fachada nao existe: ${raizAbs}`);
 
@@ -82,7 +85,11 @@ export async function subirFachada({ raiz, prefixo, destino, porta = 0 }) {
         await repassar(req, res, prefixo, destino);
         return;
       }
-      servirEstatico(req, res, raizAbs);
+      if (substituirExterno && req.url.startsWith(CAMINHO_EXTERNO)) {
+        servirSubstituto(req, res);
+        return;
+      }
+      servirEstatico(req, res, raizAbs, substituirExterno);
     } catch (err) {
       if (err?.name !== 'AbortError') erros.push({ url: req.url, erro: err.message });
       try {
@@ -146,7 +153,127 @@ async function repassar(req, res, prefixo, destino) {
   res.end(buf);
 }
 
-function servirEstatico(req, res, raizAbs) {
+/** Prefixo por onde a fachada entrega os substitutos de recurso externo. */
+const CAMINHO_EXTERNO = '/__substituto/';
+
+/**
+ * O remendo que faz a aplicacao SUBIR numa maquina sem saida para a internet.
+ *
+ * POR QUE ELE PRECISA EXISTIR. O `map_sig.js` pendura toda a inicializacao no
+ * evento `load` do MapLibre, e o estilo inicial e uma camada raster do
+ * OpenStreetMap. Sem internet o pedido nao falha, fica PENDURADO: nao ha `load`,
+ * a tela de carregamento nunca sai, e o 360 nunca abre. Nao ha erro no console.
+ *
+ * O QUE ELE FAZ. Injetado antes de qualquer codigo da aplicacao, ele desvia para
+ * a propria fachada tudo que apontaria para fora. Tile de imagem vira um
+ * quadrado cinza; glifo vira corpo vazio; o resto vira 404, que o MapLibre trata
+ * como camada faltando e segue adiante.
+ *
+ * ISTO E FERRAMENTA DE INSPECAO, e nunca vai para producao: ele so entra quando
+ * quem sobe a fachada pede `substituirExterno`. O que se ve com ele e o 360 de
+ * verdade sobre um mapa de fundo falso, e nao o sistema inteiro.
+ */
+const REMENDO_EXTERNO = `<script>
+(function () {
+  var LOCAL = ${JSON.stringify(CAMINHO_EXTERNO)};
+  function desviar(u) {
+    var s = String(u);
+    if (s.indexOf('http') !== 0) return null;
+    if (s.indexOf(location.origin) === 0) return null;
+    return LOCAL + (s.indexOf('.pbf') >= 0 ? 'vazio.pbf' : 'tile.png');
+  }
+  var fetchOriginal = window.fetch;
+  window.fetch = function (entrada, opcoes) {
+    var url = typeof entrada === 'string' ? entrada : (entrada && entrada.url);
+    var novo = desviar(url);
+    return fetchOriginal.call(this, novo || entrada, novo ? undefined : opcoes);
+  };
+  var descritor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+  Object.defineProperty(HTMLImageElement.prototype, 'src', {
+    configurable: true,
+    get: function () { return descritor.get.call(this); },
+    set: function (v) { descritor.set.call(this, desviar(v) || v); }
+  });
+})();
+</script>`;
+
+/** Um PNG cinza de 256x256, o menor que o zlib deixa. Gerado uma vez. */
+let pngCinza = null;
+
+function servirSubstituto(req, res) {
+  if (req.url.endsWith('.pbf')) {
+    // Corpo VAZIO e um protobuf valido sem glifo. Um 404 aqui faria o MapLibre
+    // repetir o pedido, e a repeticao apareceria como pedido em dobro.
+    res.writeHead(200, { 'content-type': 'application/x-protobuf', 'content-length': 0 });
+    res.end();
+    return;
+  }
+  if (!pngCinza) pngCinza = tileCinza();
+  res.writeHead(200, {
+    'content-type': 'image/png',
+    'content-length': pngCinza.length,
+    'cache-control': 'public, max-age=31536000, immutable',
+  });
+  res.end(pngCinza);
+}
+
+/**
+ * Um PNG 256x256 cinza chapado, montado a mao.
+ *
+ * CHAPADO DE PROPOSITO: um mapa de fundo com desenho competiria com a
+ * panoramica pela atencao de quem esta olhando, e o que se quer ver aqui e o
+ * 360.
+ */
+function tileCinza() {
+  const lado = 256;
+  const linhas = Buffer.alloc((lado * 3 + 1) * lado);
+  for (let y = 0; y < lado; y++) {
+    const base = y * (lado * 3 + 1);
+    linhas[base] = 0;
+    for (let x = 0; x < lado; x++) {
+      linhas[base + 1 + x * 3] = 214;
+      linhas[base + 2 + x * 3] = 214;
+      linhas[base + 3 + x * 3] = 210;
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(lado, 0);
+  ihdr.writeUInt32BE(lado, 4);
+  ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+    pedaco('IHDR', ihdr),
+    pedaco('IDAT', deflateSync(linhas)),
+    pedaco('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+function pedaco(tipo, dados) {
+  const cabeca = Buffer.alloc(4);
+  cabeca.writeUInt32BE(dados.length, 0);
+  const corpo = Buffer.concat([Buffer.from(tipo, 'ascii'), dados]);
+  const cauda = Buffer.alloc(4);
+  cauda.writeUInt32BE(crc32(corpo) >>> 0, 0);
+  return Buffer.concat([cabeca, corpo, cauda]);
+}
+
+const TABELA_CRC = (() => {
+  const t = new Int32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c;
+  }
+  return t;
+})();
+
+function crc32(buf) {
+  let c = -1;
+  for (let i = 0; i < buf.length; i++) c = TABELA_CRC[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return c ^ -1;
+}
+
+function servirEstatico(req, res, raizAbs, substituirExterno = false) {
   const semQuery = req.url.split('?')[0];
   // `normalize` mais a checagem de prefixo barram `..` saindo da raiz.
   const relativo = normalize(decodeURIComponent(semQuery)).replace(/^[\\/]+/, '');
@@ -163,6 +290,17 @@ function servirEstatico(req, res, raizAbs) {
     if (!existsSync(caminho)) { res.writeHead(404); res.end('nao achei'); return; }
   }
   const tipo = TIPOS[extname(caminho).toLowerCase()] || 'application/octet-stream';
+
+  // O remendo entra no `index.html`, e no primeiro lugar possivel: ele precisa
+  // valer ANTES de qualquer modulo da aplicacao pedir alguma coisa.
+  if (substituirExterno && caminho.endsWith('index.html')) {
+    const html = readFileSync(caminho, 'utf8').replace('<head>', `<head>${REMENDO_EXTERNO}`);
+    const corpo = Buffer.from(html, 'utf8');
+    res.writeHead(200, { 'content-type': tipo, 'content-length': corpo.length, 'cache-control': 'no-cache' });
+    res.end(corpo);
+    return;
+  }
+
   res.writeHead(200, {
     'content-type': tipo,
     'content-length': statSync(caminho).size,
