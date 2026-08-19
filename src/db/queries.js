@@ -480,8 +480,21 @@ export function getImageBlob(dbFilename, photoId, column) {
     _imageStmts.set(dbFilename, entry);
   }
   let stmt = entry[column];
+  if (stmt === null) return null; // banco ja sem a coluna, ver abaixo
   if (!stmt) {
-    stmt = db.prepare(`SELECT ${column} FROM images WHERE photo_id = ?`);
+    try {
+      stmt = db.prepare(`SELECT ${column} FROM images WHERE photo_id = ?`);
+    } catch {
+      // A COLUNA PODE NAO EXISTIR MAIS, e isso e estado esperado, nao defeito.
+      // Desde 2026-08-19 o `full_webp` e o `preview_webp` sao aposentados a
+      // medida que a piramide de tiles cobre o projeto: a piramide desce ate um
+      // tile e faz sozinha os dois papeis, de detalhe e de fundo. Sem esta
+      // guarda o `db.prepare` estoura e a rota de imagem devolve 500, quando o
+      // certo e 404: o dado nao existe, e o servico nao esta doente.
+      // O `null` fica cacheado para nao repetir o prepare a cada pedido.
+      entry[column] = null;
+      return null;
+    }
     entry[column] = stmt;
   }
 
