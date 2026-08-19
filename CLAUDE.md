@@ -69,10 +69,25 @@ src/
 
 scripts/
 ├── migrate.js             # JSON+JPG → SQLite migration (7-phase)
+├── generate-tiles.js      # Gera a pirâmide de tiles de um projeto
+├── gerar-acervo.js        # Orquestra a geração no acervo inteiro (piloto, cota de disco, prazo)
+├── migrar-escada.js       # Renumera níveis quando a escada da pirâmide muda
+├── aposentar-full.js      # Derruba full_webp/preview_webp depois da pirâmide provada
+├── bench-tiles.js         # Soma bytes lidos do SQLite (orçamento de armazenamento)
+├── medir-parede.js        # Mede a pirâmide no navegador, na página de calibração
+├── medir-web.js           # Mede a navegação 360 DENTRO do ebgeo_web (ver abaixo)
 ├── generate-pmtiles.js    # PMTiles generation for mapping
 ├── cleanup-wal.js         # Checkpoint/clean SQLite WAL files
 └── lib/
-    └── orientation.js     # Quaternion pose -> viewer Euler angles (ZXY)
+    ├── orientation.js     # Quaternion pose -> viewer Euler angles (ZXY)
+    ├── capture-runs.js    # Faixa de coleta a partir do nome de origem
+    ├── floors.js          # Rótulo de andar -> nível ordenado
+    ├── cdp.js             # Cliente CDP e lançador de Chrome headless
+    ├── fachada.js         # Servidor de frente que imita o nginx de produção
+    ├── rede-cdp.js        # Gravador de tráfego, classificado por papel
+    ├── sonda-web.js       # Sonda injetada na página (WebGL, quadro, travada)
+    ├── tela.js            # Grava a tela e mede aparecer/ficar nítido por pixel
+    └── externo.js         # Política para recurso que sai da máquina
 
 public/calibration/        # Calibration web interface
 ├── index.html
@@ -638,6 +653,36 @@ Migration (`scripts/migrate.js`) processes source data in 7 phases:
 5. Adaptive spatial analysis — navigation graph (sector-based, per-project adaptive radius)
 6. Populate metadata + targets in index.db
 7. Process images into per-project databases (JPG → WebP conversion)
+
+## Medida de performance
+
+Três instrumentos, três perguntas diferentes. Escolher errado dá um número certo para a pergunta errada.
+
+| script | pergunta | onde mede |
+|---|---|---|
+| `bench-tiles.js` | quanto a pirâmide custa em disco e em bytes | lê o SQLite direto |
+| `medir-parede.js` | quanto a pirâmide custa no navegador | página de calibração, HTML nu |
+| `medir-web.js` | quanto ela custa DENTRO da aplicação | `ebgeo_web` construído, com MapLibre e tudo |
+
+O `medir-web.js` sobe a topologia de produção (fachada estática + reescrita `/ebgeo_360` → `/api/v1`) e dirige o Chrome por CDP em cinco cenários: `abertura`, `caminhada`, `giro`, `zoom` e `ocioso`.
+
+```bash
+node scripts/medir-web.js --project museu_cms --fotos 6 --repeticoes 3 \
+  --viewports 1904x985,1350x673 --perfis mesa,ebnet --json medida.json
+
+# depois de mexer no código, mede de novo e compara coluna a coluna
+node scripts/medir-web.js --project museu_cms --json depois.json --comparar medida.json
+```
+
+Três coisas a saber antes de ler qualquer número dele:
+
+**Nada sai de variável da aplicação.** Rede vem do CDP, textura e quadro vêm de embrulho em WebGL, "apareceu" e "ficou nítido" vêm dos pixels da tela gravada.
+
+**Ele recusa `dist` mais velho que o fonte.** Medir pacote velho produz número plausível sobre código que não existe mais.
+
+**Ele se reprova.** Sete afirmações que têm de ser verdade se a medida estiver acontecendo. Falhando uma bloqueante, ele diz que os números não valem em vez de imprimir a tabela.
+
+A partida do `ebgeo_web` depende de um raster do OpenStreetMap na internet: sem saída, o pedido não falha, fica pendurado, e a aplicação inteira para na tela de carregamento sem um erro no console. Por isso `--externo local` é o padrão (`scripts/lib/externo.js`). Use `--externo passa` numa máquina com internet para incluir o custo real do mapa de fundo.
 
 ## Deployment
 

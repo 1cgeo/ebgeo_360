@@ -32,6 +32,7 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { setTimeout as esperar } from 'node:timers/promises';
 import Database from 'better-sqlite3';
 import config from '../src/config.js';
+import { acharChrome, caminhosChromeTentados, esperarPorta, subirChrome } from './lib/cdp.js';
 
 // ------------------------------------------------------------------ argumentos
 
@@ -67,92 +68,12 @@ if (!args.project) {
   process.exit(1);
 }
 
-// ------------------------------------------------------------------ Chrome
+// ------------------------------------------------------------------ Chrome e CDP
 
-const CAMINHOS_CHROME = [
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-  `${process.env.LOCALAPPDATA}\\Google\\Chrome\\Application\\chrome.exe`,
-  '/usr/bin/google-chrome',
-  '/usr/bin/chromium',
-];
-
-function acharChrome() {
-  for (const c of CAMINHOS_CHROME) {
-    if (c && existsSync(c)) return c;
-  }
-  return null;
-}
-
-// ------------------------------------------------------------------ CDP cru
-
-/**
- * Cliente CDP minimo sobre o WebSocket global do Node.
- *
- * Nao vale trazer puppeteer para tres chamadas de Runtime.evaluate: seriam
- * centenas de MB de dependencia num repositorio que hoje tem sete.
- */
-class Cdp {
-  constructor(ws) {
-    this.ws = ws;
-    this.id = 0;
-    this.pendentes = new Map();
-    ws.addEventListener('message', (ev) => {
-      const msg = JSON.parse(ev.data);
-      const p = this.pendentes.get(msg.id);
-      if (!p) return;
-      this.pendentes.delete(msg.id);
-      if (msg.error) p.rejeitar(new Error(JSON.stringify(msg.error)));
-      else p.resolver(msg.result);
-    });
-  }
-
-  static async conectar(url) {
-    const ws = new WebSocket(url);
-    await new Promise((res, rej) => {
-      ws.addEventListener('open', res, { once: true });
-      ws.addEventListener('error', () => rej(new Error('WebSocket CDP nao abriu')), { once: true });
-    });
-    return new Cdp(ws);
-  }
-
-  enviar(method, params = {}) {
-    const id = ++this.id;
-    this.ws.send(JSON.stringify({ id, method, params }));
-    return new Promise((resolver, rejeitar) => this.pendentes.set(id, { resolver, rejeitar }));
-  }
-
-  /**
-   * Avalia uma expressao na pagina e devolve o valor ja desempacotado.
-   * `awaitPromise` faz o CDP esperar a Promise da pagina, que e como a medida
-   * de parede chega inteira em vez de vir pela metade.
-   */
-  async avaliar(expressao, msLimite = 120000) {
-    const r = await this.enviar('Runtime.evaluate', {
-      expression: expressao,
-      awaitPromise: true,
-      returnByValue: true,
-      timeout: msLimite,
-    });
-    if (r.exceptionDetails) {
-      throw new Error(r.exceptionDetails.exception?.description || JSON.stringify(r.exceptionDetails));
-    }
-    return r.result.value;
-  }
-
-  fechar() { try { this.ws.close(); } catch { /* ja fechado */ } }
-}
-
-async function esperarPorta(url, tentativas = 60) {
-  for (let i = 0; i < tentativas; i++) {
-    try {
-      const r = await fetch(url);
-      if (r.ok) return await r.json();
-    } catch { /* ainda subindo */ }
-    await esperar(500);
-  }
-  throw new Error(`nao respondeu: ${url}`);
-}
+// O cliente CDP e o lancador de Chrome moram em `scripts/lib/cdp.js`, e nao
+// aqui. Eles nasceram neste arquivo e sairam quando o `medir-web.js` passou a
+// precisar dos mesmos: duas copias do mesmo protocolo divergem em silencio, e a
+// que ganhar um conserto deixa a outra medindo errado sem avisar.
 
 // ------------------------------------------------------------------ estatistica
 
@@ -175,9 +96,8 @@ function resumir(amostras, campo) {
 
 // ------------------------------------------------------------------ principal
 
-const chrome = acharChrome();
-if (!chrome) {
-  console.error('Chrome nao encontrado. Caminhos tentados:\n  ' + CAMINHOS_CHROME.join('\n  '));
+if (!acharChrome()) {
+  console.error(`Chrome nao encontrado. Caminhos tentados:\n  ${caminhosChromeTentados()}`);
   process.exit(1);
 }
 
@@ -211,7 +131,7 @@ servidor.stderr.on('data', d => { saidaServidor += d; });
 
 const linhas = [];
 let cdp = null;
-let navegador = null;
+let chrome = null;
 
 try {
   const saude = await esperarPorta(`http://127.0.0.1:${args.porta}/health`);
@@ -220,37 +140,13 @@ try {
   for (const viewport of args.viewports) {
     const [larg, alt] = viewport.split('x').map(Number);
 
-    // Um Chrome POR VIEWPORT: --window-size so vale na criacao, e mudar o
-    // tamanho depois nao muda o devicePixelRatio nem o layout inicial.
-    navegador = spawn(chrome, [
-      '--headless=new',
-      '--enable-gpu',
-      '--use-angle=d3d11',
-      '--ignore-gpu-blocklist',
-      '--remote-debugging-port=0',
-      '--remote-allow-origins=*',
-      `--window-size=${larg},${alt}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--user-data-dir=' + (process.env.TEMP || '/tmp') + '/piloto-tiles-chrome-' + larg,
-      'about:blank',
-    ], { stdio: ['ignore', 'pipe', 'pipe'] });
-
-    // A porta real sai no stderr do Chrome, porque pedimos 0 (efemera).
-    const urlDevtools = await new Promise((res, rej) => {
-      let buf = '';
-      const t = setTimeout(() => rej(new Error('Chrome nao anunciou a porta de depuracao')), 30000);
-      navegador.stderr.on('data', (d) => {
-        buf += d;
-        const m = buf.match(/ws:\/\/[^\s]+/);
-        if (m) { clearTimeout(t); res(m[0]); }
-      });
+    // Um Chrome POR VIEWPORT: `--window-size` so vale na criacao, e mudar o
+    // tamanho depois nao muda o `devicePixelRatio` nem o layout inicial.
+    chrome = await subirChrome({
+      largura: larg, altura: alt,
+      perfil: `${process.env.TEMP || '/tmp'}/piloto-tiles-chrome-${process.pid}-${larg}`,
     });
-
-    // O alvo da pagina, e nao o do navegador: Runtime.evaluate precisa do alvo.
-    const alvos = await (await fetch(urlDevtools.replace(/^ws:\/\/([^/]+).*/, 'http://$1/json/list'))).json();
-    const pagina = alvos.find(t => t.type === 'page');
-    cdp = await Cdp.conectar(pagina.webSocketDebuggerUrl);
+    cdp = chrome.cdp;
     await cdp.enviar('Page.enable');
     await cdp.enviar('Runtime.enable');
 
@@ -293,8 +189,7 @@ try {
       }
     }
 
-    cdp.fechar(); cdp = null;
-    navegador.kill(); navegador = null;
+    await chrome.fechar(); chrome = null; cdp = null;
   }
 
   // ------------------------------------------------------------- consolidado
@@ -342,7 +237,6 @@ try {
   if (saidaServidor) console.error('Saida do servico:\n' + saidaServidor.slice(-2000));
   process.exitCode = 1;
 } finally {
-  if (cdp) cdp.fechar();
-  if (navegador) navegador.kill();
+  if (chrome) await chrome.fechar();
   servidor.kill();
 }
