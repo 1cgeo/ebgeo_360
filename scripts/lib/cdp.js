@@ -161,7 +161,7 @@ export class Cdp {
  * @param {string[]} [opcoes.extras] argumentos adicionais
  * @returns {Promise<{navegador: Object, cdp: Cdp, fechar: Function}>}
  */
-export async function subirChrome({ largura, altura, perfil, extras = [] }) {
+export async function subirChrome({ largura, altura, perfil, extras = [], semGpu = false }) {
   const chrome = acharChrome();
   if (!chrome) {
     throw new Error(`Chrome nao encontrado. Caminhos tentados:\n  ${caminhosChromeTentados()}`);
@@ -171,11 +171,15 @@ export async function subirChrome({ largura, altura, perfil, extras = [] }) {
   // entre execucoes e a medida "fria" mede um cache quente da rodada anterior.
   try { rmSync(perfil, { recursive: true, force: true }); } catch { /* nao existia */ }
 
+  const aceleracao = semGpu
+    // SwiftShader: WebGL na CPU. O substituto que existe para video integrado
+    // fraco, ja que o CDP nao sabe estrangular GPU como estrangula CPU e rede.
+    ? ['--disable-gpu', '--use-gl=swiftshader', '--enable-unsafe-swiftshader']
+    : ['--enable-gpu', '--use-angle=d3d11', '--ignore-gpu-blocklist'];
+
   const navegador = spawn(chrome, [
     '--headless=new',
-    '--enable-gpu',
-    '--use-angle=d3d11',
-    '--ignore-gpu-blocklist',
+    ...aceleracao,
     '--enable-precise-memory-info',
     '--remote-debugging-port=0',
     '--remote-allow-origins=*',

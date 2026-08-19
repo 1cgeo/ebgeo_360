@@ -99,6 +99,13 @@ export const SONDA_WEB = String.raw`
   }
 
   var contextos = [];   // { ctx, contas }
+  // Decodificar e compor sao dois trabalhos diferentes, e num PC fraco o tempo
+  // total nao diz qual dos dois manda. O createImageBitmap decodifica o WebP
+  // (fora da thread principal, mas gastando CPU da maquina), e o drawImage
+  // compoe o tile no canvas (na thread principal). Sem separar, a unica saida
+  // seria adivinhar onde mexer.
+  var decodifica = { n: 0, ms: 0, msMax: 0, emVoo: 0 };
+  var compoe = { n: 0, ms: 0, msMax: 0, pixels: 0 };
   var loaf = [];
   var longtask = [];
   var eventos = [];
@@ -221,6 +228,39 @@ export const SONDA_WEB = String.raw`
     ctx.drawArrays = function () { contas.draws++; return oDrawA.apply(this, arguments); };
   }
 
+  if (typeof createImageBitmap === 'function') {
+    var oCriar = createImageBitmap;
+    window.createImageBitmap = function () {
+      var t = performance.now();
+      decodifica.emVoo++;
+      return oCriar.apply(this, arguments).then(function (r) {
+        var d = performance.now() - t;
+        decodifica.n++;
+        decodifica.ms += d;
+        decodifica.emVoo--;
+        if (d > decodifica.msMax) decodifica.msMax = d;
+        return r;
+      }, function (e) { decodifica.emVoo--; throw e; });
+    };
+  }
+
+  if (typeof CanvasRenderingContext2D !== 'undefined') {
+    var oDraw = CanvasRenderingContext2D.prototype.drawImage;
+    CanvasRenderingContext2D.prototype.drawImage = function () {
+      var t = performance.now();
+      var r = oDraw.apply(this, arguments);
+      var d = performance.now() - t;
+      compoe.n++;
+      compoe.ms += d;
+      if (d > compoe.msMax) compoe.msMax = d;
+      // Area de DESTINO, que e a que custa preenchimento. Com 8 argumentos ela
+      // vem explicita; com menos, e o tamanho da fonte.
+      if (arguments.length >= 8) compoe.pixels += (arguments[6] || 0) * (arguments[7] || 0);
+      else if (arguments.length >= 5) compoe.pixels += (arguments[3] || 0) * (arguments[4] || 0);
+      return r;
+    };
+  }
+
   var oGetContext = HTMLCanvasElement.prototype.getContext;
   HTMLCanvasElement.prototype.getContext = function (tipo) {
     var ctx = oGetContext.apply(this, arguments);
@@ -324,6 +364,8 @@ export const SONDA_WEB = String.raw`
     zerar: function () {
       inicio = performance.now();
       marcas = [];
+      decodifica = { n: 0, ms: 0, msMax: 0, emVoo: decodifica.emVoo };
+      compoe = { n: 0, ms: 0, msMax: 0, pixels: 0 };
       // ZERA POR DENTRO, e nunca troca o objeto. Os embrulhos de WebGL guardam
       // a referencia da conta na closure: trocar o objeto os deixa escrevendo
       // num orfao, e a partir do primeiro zerar TODA medida de textura e de
@@ -432,6 +474,18 @@ export const SONDA_WEB = String.raw`
         marcas: marcas,
         contextos: porContexto,
         textura: total,
+        decodifica: {
+          n: decodifica.n,
+          ms: Math.round(decodifica.ms),
+          msMax: Math.round(decodifica.msMax),
+          emVoo: decodifica.emVoo
+        },
+        compoe: {
+          n: compoe.n,
+          ms: Math.round(compoe.ms),
+          msMax: Math.round(compoe.msMax),
+          megapixels: Math.round(compoe.pixels / 1048576)
+        },
         travada: {
           quadrosLoaf: lo.length,
           quadrosLentos: quadrosLentos,
@@ -451,3 +505,15 @@ export const SONDA_WEB = String.raw`
   };
 })();
 `;
+
+// A CRASE E VENENO AQUI DENTRO. O corpo da sonda mora num literal delimitado por
+// crase, entao uma unica crase num comentario encerra o literal e o resto do
+// arquivo vira codigo. Aconteceu duas vezes, e nas duas o erro apareceu como
+// SyntaxError num identificador aleatorio, longe da causa. Esta guarda fala a
+// verdade na hora de importar o modulo.
+if (!SONDA_WEB.includes('window.__sonda = {') || !SONDA_WEB.trimEnd().endsWith('})();')) {
+  throw new Error(
+    'A sonda saiu truncada. Quase sempre e uma crase dentro do literal: '
+    + 'troque por aspas ou tire a marcacao do comentario.',
+  );
+}

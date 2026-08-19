@@ -68,6 +68,9 @@
  *   --render always      liga o desenho a cada quadro, para comparar
  *   --externo <modo>     local | passa | bloqueia  (local): o que fazer com o
  *                        recurso que sai da maquina, como o mapa de fundo
+ *   --gpu <modo>         hardware | software (hardware): 'software' roda o WebGL
+ *                        no SwiftShader, que e o substituto disponivel para
+ *                        video integrado fraco
  *   --json <arquivo>     grava a medida crua
  *   --comparar <arquivo> imprime esta medida contra uma anterior, coluna a coluna
  *   --porta N            porta do ebgeo_360 (8199)
@@ -104,6 +107,9 @@ const PREFIXO_360 = '/ebgeo_360';
 const PERFIS = {
   mesa: { cpu: 1, rede: null },
   ebnet: { cpu: 2, rede: { downloadThroughput: 20e6 / 8, uploadThroughput: 5e6 / 8, latency: 40 } },
+  // A maquina velha do quartel na rede do quartel. O fator 6 de CPU e o que
+  // separa esta estacao de um i5 de escritorio com uns cinco anos.
+  fraco: { cpu: 6, rede: { downloadThroughput: 20e6 / 8, uploadThroughput: 5e6 / 8, latency: 40 } },
   movel: { cpu: 4, rede: { downloadThroughput: 4e6 / 8, uploadThroughput: 1e6 / 8, latency: 150 } },
 };
 
@@ -147,6 +153,7 @@ function lerArgs(argv) {
     aceitarDistVelho: false,
     render: null,
     externo: 'local',
+    gpu: 'hardware',
     json: null,
     comparar: null,
     porta: 8199,
@@ -165,6 +172,7 @@ function lerArgs(argv) {
       case '--aceitar-dist-velho': a.aceitarDistVelho = true; break;
       case '--render': a.render = v; i++; break;
       case '--externo': a.externo = v; i++; break;
+      case '--gpu': a.gpu = v; i++; break;
       case '--json': a.json = v; i++; break;
       case '--comparar': a.comparar = v; i++; break;
       case '--porta': a.porta = parseInt(v, 10); i++; break;
@@ -747,6 +755,11 @@ function resumoDaSonda(sonda) {
     maiorUploadMB: mb(p.maior),
     mapaMB: mb(m.subidoBytes),
     mapaUploads: m.chamadas,
+    decodifica: sonda.decodifica?.n ?? null,
+    decodificaMs: sonda.decodifica?.ms ?? null,
+    compoe: sonda.compoe?.n ?? null,
+    compoeMs: sonda.compoe?.ms ?? null,
+    compoeMpx: sonda.compoe?.megapixels ?? null,
     mipmaps: p.mip,
     readPixels: p.rp,
     tamanhos: p.tamanhos,
@@ -848,6 +861,11 @@ try {
       const perfil = PERFIS[nomePerfil];
       chrome = await subirChrome({
         largura: larg, altura: alt,
+        // SEM GPU, o Chrome cai no SwiftShader, que desenha WebGL na CPU. Nao e
+        // um video integrado de verdade, e e o que da para emular: ele paga
+        // caro em BANDA DE TEXTURA e em preenchimento, que sao exatamente os
+        // dois lugares onde a panoramica gasta. Leia como piso pessimista.
+        semGpu: args.gpu === 'software',
         // O PID entra no nome: duas medidas ao mesmo tempo travariam o mesmo
         // diretorio de perfil, e o Chrome sai com codigo 21 sem explicar nada.
         perfil: `${process.env.TEMP || '/tmp'}/medir-web-${process.pid}-${larg}-${nomePerfil}`,
@@ -1091,6 +1109,10 @@ function consolidar(linhas) {
         'tiles p50': ms(mediana(saltos.map(s => resumoDaRede(s.rede).tiles))),
         'KB p50': ms(mediana(saltos.map(s => kb(s.rede.bytes)))),
         'do cache p50': ms(mediana(saltos.map(s => s.rede.doCache))),
+        'decode n p50': ms(mediana(saltos.map(s => resumoDaSonda(s.sonda).decodifica))),
+        'decode ms p50': ms(mediana(saltos.map(s => resumoDaSonda(s.sonda).decodificaMs))),
+        'compoe ms p50': ms(mediana(saltos.map(s => resumoDaSonda(s.sonda).compoeMs))),
+        'compoe Mpx p50': ms(mediana(saltos.map(s => resumoDaSonda(s.sonda).compoeMpx))),
         'GPU subido MB p50': mediana(saltos.map(s => resumoDaSonda(s.sonda).subidoMB)),
         'GPU alocado MB p50': mediana(saltos.map(s => resumoDaSonda(s.sonda).alocadoMB)),
         'quadros p50': ms(mediana(saltos.map(s => resumoDaSonda(s.sonda).quadrosPanorama))),
