@@ -72,6 +72,26 @@ function parseArgs() {
 // ============================================================
 
 const PROJECTS = [
+  // === Lote 2026-08: Serra Dourada, entrega do 2º CGEO ===
+  //
+  // 150 panorâmicas do entorno do Estádio Serra Dourada, em Goiânia. Metadados
+  // e imagens na MESMA pasta, que é PREPARADA e não a da entrega.
+  //
+  // A fonte veio em 16384x8192 (80 fotos) e 13312x6656 (70), e o WebP PARA em
+  // 16383 px: as 80 maiores estouram o formato na Fase 7 ("Processed image is
+  // too large for the WebP format") e virariam foto no mapa sem imagem. Por
+  // isso as 150 foram reamostradas para 7680x3840, o maior formato que o
+  // acervo já serve. O JSON sem JPG fica de fora: ver `_descartados.txt` na
+  // pasta preparada.
+  //
+  // RODAR COM skipTargets. O grafo entregue já fecha UM componente com as 150
+  // (340 alvos, 6 deles `ponte` entre campanhas). A Fase 5, com raio de 50 m,
+  // ligaria foto de 2015 a foto de 2019 por proximidade, sem critério de época.
+  //
+  // O lote mistura CINCO campanhas: 2015-08 (3), 2017-02 (6), 2018-10 (12),
+  // 2018-11 (49) e 2019-04 (80). O `capture_date` traz a mais recente.
+  { name: 'Estádio Serra Dourada', slug: 'serra_dourada', description: 'Imagens panorâmicas do entorno do Estádio Serra Dourada', capture_date: '2019-04-01', location: 'Goiânia, GO', lat: -16.698887, lon: -49.234559, entryPhoto: 'goiania-goias_2018-11_z5_LeUhNMDBpvH3', skipTargets: true },
+
   // === Lote 2026-08: Beira-Rio, o primeiro projeto COM ANDARES ===
   //
   // 350 fotos em 6 andares mais duas areas externas, com metadados e imagens na
