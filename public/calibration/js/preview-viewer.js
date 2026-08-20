@@ -5,10 +5,34 @@
  *   camera slaved to main viewer (opposite direction), markers rendered on overlay
  * - Target view: shows the selected target's photo, orange border, action buttons,
  *   independent camera orbit
+ *
+ * O PAINEL COMPOE POR TILES, e nao mais por `preview` mais `full`. Ele media
+ * 576x396 CSS e mesmo assim baixava a imagem inteira, de 500 KB a 2,5 MB, duas
+ * vezes: uma na visao traseira e outra a cada alvo aberto. Era o emissor mais
+ * caro de `image?quality=full` da interface.
+ *
+ * A CONTA E A MESMA DO VISUALIZADOR PRINCIPAL, so que sobre o buffer DESTE
+ * canvas. `larguraNecessaria` sai de `renderer.domElement.width/height`, que ja
+ * inclui o devicePixelRatio, e `escolherNivel` desce a escada com ela. Num
+ * painel de 576x396 a dpr 1 a demanda e 2.154 px, entao a foto de 7680 para no
+ * nivel 4 (3.000 px) e o carregador pede so os tiles que a camera enxerga.
+ *
+ * O CARREGADOR E OUTRA INSTANCIA, e nao a do viewer.js. `createTileLoader` e
+ * fabrica justamente por isso: cada instancia guarda camera, canvas, fila e
+ * cache proprios, e o painel olha para outro lado (a visao traseira) e num
+ * tamanho diferente. Reaproveitar a instancia do principal faria as duas
+ * cameras brigarem pelo mesmo nivel a cada frame.
+ *
+ * SEM PIRAMIDE, o caminho de hoje continua inteiro: preview e depois full. A
+ * sonda do `tiles.json` e ESPERADA antes do preview, ao contrario do viewer.js,
+ * que as dispara juntas. O painel nao pode emitir `image?quality=preview` na
+ * foto que tem piramide, porque o `preview_webp` vai ser apagado do disco; uma
+ * volta de rede a mais no caminho de excecao e o preco disso.
  */
 
 import * as THREE from 'three';
 import { getPhotoImageUrl } from './api.js';
+import { createTileLoader } from './tile-loader.js';
 import { StreetViewProjector } from './projector.js';
 import { state, isTargetHidden, onChange } from './state.js';
 import { drawArmillarySphere, rankOpacity } from './renderer.js';
@@ -79,6 +103,27 @@ let rearCameraConfig = null;
 // Reusable Vector3
 const _lookAtTarget = new THREE.Vector3();
 const textureLoader = new THREE.TextureLoader();
+
+// ── Piramide de tiles do painel ─────────────────────────────────────────────
+
+/**
+ * O carregador de tiles DESTE painel. Um so, criado na primeira foto com
+ * piramide e reaproveitado pelas outras: ele guarda bitmaps, fila e requisicoes
+ * em voo, e um por foto vazaria tudo isso a cada alvo aberto.
+ */
+let carregadorTiles = null;
+
+/**
+ * Textura de tiles esperando a primeira pintura para entrar na esfera.
+ * Ver aplicarTexturaDeTiles: o canvas do carregador nasce em branco.
+ */
+let texturaTilesPendente = null;
+
+// Reaproveitados a cada frame para converter a direcao da camera do painel em
+// coordenada da IMAGEM. Alocar no laco de render geraria lixo 60 vezes por
+// segundo.
+const _dirImagem = new THREE.Vector3();
+const _rotacaoInversa = new THREE.Quaternion();
 
 // Token de geracao para descartar carregamentos de textura obsoletos quando
 // showRearView/showPreview/hidePreview sao chamados em sequencia rapida.
@@ -429,23 +474,7 @@ export async function showRearView(photoId, meshRotationY, meshRotationX = 0, me
         rearPhotoId = photoId;
         currentSpherePhotoId = photoId;
 
-        const generation = ++loadGeneration;
-        const previewUrl = getPhotoImageUrl(photoId, 'preview');
-        const fullUrl = getPhotoImageUrl(photoId, 'full');
-
-        try {
-            await loadTexture(previewUrl, true, generation);
-        } catch {
-            // Preview failed
-        }
-
-        if (currentMode === 'rear' && rearPhotoId === photoId) {
-            try {
-                await loadTexture(fullUrl, false, generation);
-            } catch (err) {
-                console.error('Preview viewer: failed to load full image:', err);
-            }
-        }
+        await carregarPanorama(photoId, ++loadGeneration);
     }
 }
 
@@ -553,26 +582,9 @@ export async function showPreview(targetId, displayName, meshRotationY = 180, me
     // Start animation if not running
     if (!animationFrameId) animate();
 
-    // Load panorama (preview first for speed, then full)
+    // Panoramica do alvo: tiles, ou preview e full quando nao ha piramide.
     currentSpherePhotoId = targetId;
-    const generation = ++loadGeneration;
-    const previewUrl = getPhotoImageUrl(targetId, 'preview');
-    const fullUrl = getPhotoImageUrl(targetId, 'full');
-
-    try {
-        await loadTexture(previewUrl, true, generation);
-    } catch {
-        // Preview failed
-    }
-
-    // Only load full if still showing same target
-    if (currentTargetId === targetId) {
-        try {
-            await loadTexture(fullUrl, false, generation);
-        } catch (err) {
-            console.error('Preview viewer: failed to load full image:', err);
-        }
-    }
+    await carregarPanorama(targetId, ++loadGeneration);
 }
 
 /**
@@ -615,11 +627,10 @@ export function hidePreview() {
         // decode/upload de GPU redundante.
         if (currentSpherePhotoId !== rearPhotoId) {
             currentSpherePhotoId = rearPhotoId;
-            const generation = ++loadGeneration;
-            const previewUrl = getPhotoImageUrl(rearPhotoId, 'preview');
-            const fullUrl = getPhotoImageUrl(rearPhotoId, 'full');
-            loadTexture(previewUrl, true, generation).catch(() => {});
-            loadTexture(fullUrl, false, generation).catch(() => {});
+            // Sem `await` porque `hidePreview` e sincrono para quem chama. O
+            // `catch` esta aqui e nao la dentro porque `carregarPanorama` ja
+            // trata cada falha; este so impede a promessa rejeitada solta.
+            carregarPanorama(rearPhotoId, ++loadGeneration).catch(() => {});
         }
 
         if (!animationFrameId) animate();
@@ -699,6 +710,228 @@ function clearMarkerOverlay() {
 // TEXTURE LOADING
 // ============================================================================
 
+/**
+ * Descarta a textura que esta na esfera, se ela for DO PAINEL.
+ *
+ * A textura de tiles nao cai aqui. Enquanto o carregador a compoe o dono e ele,
+ * que ja descarta a anterior sozinho a cada troca de nivel; descartar dos dois
+ * lados mataria a mesma textura duas vezes, e o sintoma e esfera preta sem erro
+ * no console. `soltarFoto` devolve a posse e limpa a marca, e ai a orfa passa
+ * por este caminho como qualquer outra.
+ */
+function descartarTexturaAtual() {
+    const antiga = material?.map;
+    if (!antiga) return;
+    if (antiga.userData?.deTiles) return;
+    antiga.dispose();
+}
+
+/**
+ * Cria, uma unica vez, o carregador de tiles do painel.
+ *
+ * Tardio de proposito: ele le MAX_TEXTURE_SIZE do contexto WebGL, que so existe
+ * depois de initPreviewViewer montar o renderer.
+ *
+ * @returns {Object|null} o carregador, ou null se o painel ainda nao subiu
+ */
+function garantirCarregadorTiles() {
+    if (carregadorTiles) return carregadorTiles;
+    if (!renderer) return null;
+
+    carregadorTiles = createTileLoader({
+        gl: renderer.getContext(),
+        onTextura: (textura) => {
+            // A textura NAO entra na esfera aqui. O canvas acaba de nascer em
+            // branco, e aplica-lo agora piscaria branco ate o primeiro tile
+            // pintar, justo onde hoje a foto anterior segura o painel.
+            //
+            // `isFull` verdadeiro porque a esfera composta por tiles vale pelo
+            // full: sem esta marca, um preview atrasado do caminho legado
+            // rebaixaria a imagem ja detalhada.
+            textura.userData = { isFull: true, deTiles: true };
+            texturaTilesPendente = textura;
+        },
+        onEstatisticas: (estat) => {
+            // Ha pintura no canvas: agora ele pode substituir a esfera. O
+            // carregador publica estatistica depois de cada tile, entao este e o
+            // primeiro instante seguro.
+            if (texturaTilesPendente && estat.msPrimeiraPintura !== null) {
+                aplicarTexturaDeTiles();
+            }
+        },
+    });
+
+    // Cache HTTP normal, e nao o `no-store` com que o carregador nasce. Aquele
+    // existe para o piloto medir rede; aqui o tile sai `immutable` por um ano, e
+    // reler do disco e o ganho maior do painel: a visao traseira volta a mesma
+    // foto o tempo todo, ao fechar cada alvo.
+    carregadorTiles.ignorarCache('default');
+    return carregadorTiles;
+}
+
+/**
+ * Poe a textura de tiles na esfera, no lugar da anterior.
+ * Herda o que o caminho do full ja acertou: descarta a antiga, acende o
+ * material com branco (ele nasce 0x111111) e suja a cena uma vez.
+ */
+function aplicarTexturaDeTiles() {
+    const nova = texturaTilesPendente;
+    texturaTilesPendente = null;
+    if (!material || !nova) return;
+
+    descartarTexturaAtual();
+    material.map = nova;
+    material.color.set(0xffffff);
+    material.needsUpdate = true;
+    markPreviewNeedsRender();
+}
+
+/**
+ * Larga a foto do carregador de tiles e recolhe a textura que ele renuncia.
+ * Chamado quando a piramide nao existe, ou falhou, e o painel volta ao full.
+ */
+function largarTiles() {
+    texturaTilesPendente = null;
+    if (!carregadorTiles) return;
+
+    const orfa = carregadorTiles.soltarFoto();
+    if (!orfa) return;
+    if (material && material.map === orfa) {
+        // Ainda na esfera: a posse volta para o painel, e quem a descarta e o
+        // `loadTexture` ao tomar o lugar dela. Descartar agora deixaria uma
+        // textura morta na tela durante a carga inteira do full.
+        //
+        // `isFull` CAI JUNTO, e nao so `deTiles`. A orfa e da foto ANTERIOR, e
+        // `loadTexture` recusa preview quando a esfera ja tem um full: deixar a
+        // marca de pe faria o preview da foto nova ser descartado, e o painel
+        // ficaria na imagem velha ate o full inteiro chegar. Contra preview
+        // atrasado quem protege e a geracao, que ja cobre o caso.
+        orfa.userData = { isFull: false, deTiles: false };
+        return;
+    }
+    orfa.dispose();
+}
+
+/**
+ * Informa ao carregador para onde o painel olha, na coordenada da IMAGEM.
+ *
+ * A CONVERSAO E OBRIGATORIA, e nao um detalhe. O `lon` do painel e o angulo da
+ * camera dentro da CENA, e a esfera da visao traseira carrega +180 graus em Y
+ * mais as correcoes de X e Z. Alimentar o carregador com o `lon` cru pediria os
+ * tiles do lado oposto da equirretangular: o painel mostraria a frente enquanto
+ * baixava a traseira. Girar a direcao pelo inverso do quaternion da esfera
+ * resolve os tres angulos de uma vez, e continua certo se a calibracao mudar.
+ *
+ * Chamado a cada frame: a comparacao dentro do carregador e barata e o
+ * recalculo pesado fica no debounce dele.
+ */
+function informarCameraAoTiles() {
+    if (!carregadorTiles || !sphere || !renderer) return;
+
+    const phi = THREE.MathUtils.degToRad(90 - lat);
+    const theta = THREE.MathUtils.degToRad(lon);
+    _dirImagem.set(
+        Math.sin(phi) * Math.cos(theta),
+        Math.cos(phi),
+        Math.sin(phi) * Math.sin(theta),
+    );
+    _rotacaoInversa.copy(sphere.quaternion).invert();
+    _dirImagem.applyQuaternion(_rotacaoInversa);
+
+    // O acos pede o argumento preso em [-1, 1]: erro de ponto flutuante devolve
+    // 1.0000000000000002 no zenite, e o NaN sai daqui contaminando a escolha.
+    const y = Math.min(1, Math.max(-1, _dirImagem.y));
+    const latImagem = 90 - THREE.MathUtils.radToDeg(Math.acos(y));
+    const lonImagem = THREE.MathUtils.radToDeg(Math.atan2(_dirImagem.z, _dirImagem.x));
+
+    // A largura do BUFFER, e nao a do container: ela ja inclui o
+    // devicePixelRatio, que e o numero que a conta de largura necessaria pede.
+    // E daqui que sai a economia do painel: 576x396 CSS pedem um nivel bem
+    // abaixo do nativo, e o principal, maior, continua pedindo o dele.
+    carregadorTiles.atualizarCamera({
+        lon: lonImagem,
+        lat: latImagem,
+        fov,
+        largura: renderer.domElement.width,
+        altura: renderer.domElement.height,
+    });
+}
+
+/**
+ * Tenta compor a panoramica do painel pela piramide de tiles.
+ *
+ * @param {string} photoId - uuid da foto
+ * @param {number} generation - token da carga que pediu
+ * @returns {Promise<boolean>} true quando o caminho legado NAO deve rodar, ou
+ *   porque os tiles assumiram, ou porque uma carga mais nova mandou
+ */
+async function tentarTiles(photoId, generation) {
+    const carregador = garantirCarregadorTiles();
+    if (!carregador || !photoId) return false;
+
+    // A camera vai ANTES do descritor. O carregador nasce supondo 1920x1080, e
+    // com essa suposicao ele escolheria o nivel do monitor inteiro para um
+    // painel de 576 px. Quem informa por frame e o `animate`, e ele nao roda
+    // enquanto o painel esta escondido.
+    informarCameraAoTiles();
+
+    try {
+        // Devolve o descritor, ou null quando outra foto tomou o lugar desta no
+        // meio do caminho. Os dois casos mandam a mesma coisa aqui: o caminho
+        // legado desta carga nao entra, ou desenharia a foto velha por cima.
+        await carregador.carregarFoto(photoId);
+        return true;
+    } catch (err) {
+        // Carga obsoleta: o carregador ja e de outra foto, e mexer nele agora
+        // atrapalharia quem chegou depois. O abort da foto anterior tambem cai
+        // aqui, e e este o ramo certo para ele.
+        if (generation !== loadGeneration) return true;
+
+        // 404 e um caminho NORMAL, e nao excecao: foto sem piramide gerada ainda
+        // existe no acervo. So o que nao for 404 merece barulho no console.
+        if (err?.status !== 404) {
+            console.warn('Preview viewer: falha ao carregar tiles, caindo no full:', err);
+        }
+        largarTiles();
+        return false;
+    }
+}
+
+/**
+ * Poe uma foto na esfera do painel: tiles quando ha piramide, senao preview e
+ * depois full.
+ *
+ * EXISTE UMA VEZ SO de proposito. As tres entradas do painel (visao traseira,
+ * alvo aberto e volta do alvo) repetiam o mesmo par de chamadas, e a terceira
+ * ainda disparava as duas em paralelo. Tres copias da mesma decisao e como uma
+ * delas fica para tras quando a decisao muda.
+ *
+ * A GUARDA E A GERACAO, e nao o modo nem o id. Todo caminho que troca a foto do
+ * painel incrementa `loadGeneration`, entao um unico teste cobre "trocou de
+ * alvo", "voltou para a traseira" e "fechou o painel".
+ *
+ * @param {string} photoId - uuid da foto
+ * @param {number} generation - token da carga que pediu
+ * @returns {Promise<void>}
+ */
+async function carregarPanorama(photoId, generation) {
+    if (await tentarTiles(photoId, generation)) return;
+
+    try {
+        await loadTexture(getPhotoImageUrl(photoId, 'preview'), true, generation);
+    } catch {
+        // Preview failed
+    }
+
+    if (generation !== loadGeneration) return;
+
+    try {
+        await loadTexture(getPhotoImageUrl(photoId, 'full'), false, generation);
+    } catch (err) {
+        console.error('Preview viewer: failed to load full image:', err);
+    }
+}
+
 function loadTexture(url, isPreview, generation = loadGeneration) {
     return new Promise((resolve, reject) => {
         textureLoader.load(
@@ -719,9 +952,7 @@ function loadTexture(url, isPreview, generation = loadGeneration) {
                     return;
                 }
 
-                if (material.map) {
-                    material.map.dispose();
-                }
+                descartarTexturaAtual();
 
                 texture.userData = { isFull: !isPreview };
                 material.map = texture;
@@ -899,6 +1130,19 @@ function animate() {
     // ninguem. O loop continua para retomar sozinho quando ele reabrir.
     if (containerEl && containerEl.style.display === 'none') return;
 
+    // Painel escondido nao chega aqui, e isso e proposital: o carregador so
+    // ouve a camera quando alguem esta olhando, e nao troca de nivel nem pede
+    // tile para uma tela que ninguem ve.
+    informarCameraAoTiles();
+
+    // Uma unica subida de textura por frame: por tile, cada needsUpdate
+    // reenviaria o canvas inteiro para a GPU. Ela suja a cena porque o render
+    // so acontece quando a camera mexe, e tile que chega com a camera parada
+    // ficaria invisivel ate o operador encostar no mouse.
+    if (carregadorTiles?.aplicarAtualizacoes()) {
+        previewNeedsRender = true;
+    }
+
     const cameraMoved = lon !== _lastRenderLon || lat !== _lastRenderLat;
     if (previewNeedsRender || cameraMoved) {
         const phi = THREE.MathUtils.degToRad(90 - lat);
@@ -948,7 +1192,15 @@ export function disposePreviewViewer() {
         unsubscribeStateChange = null;
     }
 
-    if (material?.map) {
+    // O carregador vem PRIMEIRO, e ele descarta a textura que ainda e dele.
+    // Descartar a esfera antes deixaria a mesma textura morrer duas vezes.
+    if (carregadorTiles) {
+        carregadorTiles.dispose();
+        carregadorTiles = null;
+    }
+    texturaTilesPendente = null;
+
+    if (material?.map && !material.map.userData?.deTiles) {
         material.map.dispose();
     }
     material?.dispose();

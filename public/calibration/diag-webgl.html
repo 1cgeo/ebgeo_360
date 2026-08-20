@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnostico WebGL 360</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 16px; background: #111; color: #eee; }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  table { border-collapse: collapse; width: 100%; max-width: 900px; margin-bottom: 16px; }
+  td, th { border: 1px solid #333; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #1c1c1c; width: 44%; }
+  .ok { color: #6c6; } .fail { color: #f66; } .warn { color: #fc6; }
+  pre { background: #000; padding: 10px; overflow-x: auto; max-width: 900px; font-size: 12px; }
+  #veredito { font-size: 16px; font-weight: 600; padding: 10px; border: 1px solid #444; max-width: 900px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<h1>Diagnostico WebGL para o visualizador 360</h1>
+<div id="veredito">medindo...</div>
+<table id="tabela"></table>
+<p>Copie o bloco abaixo e mande para a DGEO.</p>
+<pre id="json">medindo...</pre>
+
+<script>
+/*
+ * Mede o que o visualizador 360 precisa do aparelho, e NAO o que a especificacao
+ * promete. Duas medidas separadas, de proposito:
+ *
+ *  1. MAX_TEXTURE_SIZE, que e a promessa do driver.
+ *  2. Alocacao real de uma textura do tamanho das nossas panoramicas, que e o
+ *     que de fato acontece quando a foto abre.
+ *
+ * O acervo tem panoramicas de 5760x2880 e 7680x3840. As duas passam de 4096, o
+ * limite que muita GPU movel declara. Se a alocacao reprovar aqui, ela reprova
+ * no visualizador.
+ */
+const PANORAMAS = [
+  { nome: '5760x2880 (GoPro Fusion)', w: 5760, h: 2880 },
+  { nome: '7680x3840 (Insta360 Pro2)', w: 7680, h: 3840 },
+];
+
+function medirContexto(tipo) {
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext(tipo, { failIfMajorPerformanceCaveat: false });
+  if (!gl) return { disponivel: false };
+
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  const out = {
+    disponivel: true,
+    maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+    maxRenderbufferSize: gl.getParameter(gl.MAX_RENDERBUFFER_SIZE),
+    maxViewportDims: Array.from(gl.getParameter(gl.MAX_VIEWPORT_DIMS)),
+    vendor: gl.getParameter(gl.VENDOR),
+    renderer: gl.getParameter(gl.RENDERER),
+    vendorReal: dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : null,
+    rendererReal: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : null,
+    versao: gl.getParameter(gl.VERSION),
+    alocacao: {},
+  };
+
+  // Alocacao real. texImage2D com data null reserva a memoria sem transferir
+  // pixel, que e o suficiente para o driver aceitar ou recusar o tamanho.
+  for (const p of PANORAMAS) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    while (gl.getError() !== gl.NO_ERROR) { /* limpa erro pendente */ }
+    const t0 = performance.now();
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, p.w, p.h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    const erro = gl.getError();
+    const ms = performance.now() - t0;
+    out.alocacao[p.nome] = {
+      ok: erro === gl.NO_ERROR,
+      codigoErro: erro,
+      ms: Math.round(ms),
+      vramMB: Math.round(p.w * p.h * 4 / 1048576),
+    };
+    gl.deleteTexture(tex);
+  }
+
+  const perda = gl.getExtension('WEBGL_lose_context');
+  if (perda) perda.loseContext();
+  return out;
+}
+
+const r = {
+  quando: new Date().toISOString(),
+  userAgent: navigator.userAgent,
+  plataforma: navigator.platform,
+  memoriaGB: navigator.deviceMemory ?? null,
+  nucleos: navigator.hardwareConcurrency ?? null,
+  devicePixelRatio: window.devicePixelRatio,
+  telaCss: `${screen.width}x${screen.height}`,
+  telaFisica: `${Math.round(screen.width * devicePixelRatio)}x${Math.round(screen.height * devicePixelRatio)}`,
+  janela: `${innerWidth}x${innerHeight}`,
+  webgl2: medirContexto('webgl2'),
+  webgl1: medirContexto('webgl'),
+};
+
+// A largura de panoramica que ESTA tela realmente consegue mostrar a 1 pixel por
+// pixel, no FOV padrao de 75 graus vertical do visualizador. E o numero que diz
+// qual nivel da piramide de tiles basta para este aparelho.
+const fovV = 75;
+const aspecto = innerWidth / Math.max(innerHeight, 1);
+const fovH = 2 * Math.atan(Math.tan(fovV * Math.PI / 360) * aspecto) * 180 / Math.PI;
+r.fovHorizontalGraus = Math.round(fovH * 10) / 10;
+r.larguraPanoramicaUtil = Math.round(innerWidth * devicePixelRatio * 360 / fovH);
+
+const gl2 = r.webgl2.disponivel ? r.webgl2 : r.webgl1;
+const max = gl2.disponivel ? gl2.maxTextureSize : 0;
+const passa5760 = gl2.disponivel && gl2.alocacao['5760x2880 (GoPro Fusion)'].ok;
+const passa7680 = gl2.disponivel && gl2.alocacao['7680x3840 (Insta360 Pro2)'].ok;
+r.veredito = !gl2.disponivel ? 'SEM WEBGL: o visualizador 360 nao abre'
+  : (passa5760 && passa7680) ? 'APROVADO: as duas resolucoes do acervo cabem'
+  : passa5760 ? 'PARCIAL: 5760 cabe, 7680 NAO. As fotos da Insta360 falham hoje'
+  : 'REPROVADO: nenhuma panoramica do acervo cabe nesta GPU';
+
+const v = document.getElementById('veredito');
+v.textContent = r.veredito + '  (MAX_TEXTURE_SIZE = ' + max + ')';
+v.className = r.veredito.startsWith('APROVADO') ? 'ok' : r.veredito.startsWith('PARCIAL') ? 'warn' : 'fail';
+
+const linhas = [
+  ['Veredito', r.veredito],
+  ['MAX_TEXTURE_SIZE (webgl2)', r.webgl2.disponivel ? r.webgl2.maxTextureSize : 'sem webgl2'],
+  ['MAX_TEXTURE_SIZE (webgl1)', r.webgl1.disponivel ? r.webgl1.maxTextureSize : 'sem webgl1'],
+  ['GPU', gl2.disponivel ? (gl2.rendererReal || gl2.renderer) : '-'],
+  ['Aloca 5760x2880 (66 MB VRAM)', passa5760 ? 'SIM' : 'NAO'],
+  ['Aloca 7680x3840 (118 MB VRAM)', passa7680 ? 'SIM' : 'NAO'],
+  ['devicePixelRatio', r.devicePixelRatio],
+  ['Janela (CSS px)', r.janela],
+  ['FOV horizontal a 75 graus vertical', r.fovHorizontalGraus + ' graus'],
+  ['Largura de panoramica util nesta tela', r.larguraPanoramicaUtil + ' px'],
+  ['User agent', r.userAgent],
+];
+document.getElementById('tabela').innerHTML = linhas
+  .map(([k, val]) => `<tr><th>${k}</th><td>${String(val)}</td></tr>`).join('');
+document.getElementById('json').textContent = JSON.stringify(r, null, 2);
+document.title = 'DIAG:' + JSON.stringify(r);
+</script>
+</body>
+</html>

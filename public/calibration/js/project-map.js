@@ -492,7 +492,7 @@ function renderCard() {
     cardEl.hidden = false;
     cardEl.innerHTML = `
         <button class="pmap__card-close" data-acao="fechar" title="Fechar">&times;</button>
-        <img class="pmap__card-img" src="${getPhotoImageUrl(f.id, 'preview')}" alt="Pr&eacute;via de ${f.name}" />
+        <img class="pmap__card-img" alt="Pr&eacute;via de ${f.name}" />
         <div class="pmap__card-head">
             <span class="pmap__card-name">${f.name}</span>
             ${f.reviewed ? '<span class="pmap__badge pmap__badge--ok">REVISADA</span>' : '<span class="pmap__badge">PENDENTE</span>'}
@@ -508,10 +508,49 @@ function renderCard() {
         </button>
     `;
 
+    pintarMiniatura(cardEl.querySelector('.pmap__card-img'), f.id);
+
     cardEl.querySelector('[data-acao="fechar"]').addEventListener('click', () => selecionar(null));
     const btn = cardEl.querySelector('[data-acao="abrir"]');
     if (btn && !ehAtual) {
         btn.addEventListener('click', () => onOpenPhotoCallback?.(f.id));
+    }
+}
+
+/**
+ * Poe no cartao a miniatura da foto, tirada do NIVEL 0 da piramide.
+ *
+ * POR QUE NAO O `image?quality=preview`. O `preview_webp` vai ser apagado do
+ * acervo: com a escada descendo ate caber em um tile, o nivel 0 e um tile so, de
+ * 11 a 17 KB medidos, e faz o mesmo papel. Este era o terceiro emissor de
+ * `preview` da interface, e o unico que sobreviveria a poda como imagem
+ * quebrada, porque ele nao passa pelo carregador de tiles.
+ *
+ * O TOKEN VEM DO DESCRITOR, e nao montado a mao. O tile sai com `immutable` de
+ * um ano, entao uma URL sem token deixaria a miniatura velha na tela ate um ano
+ * depois de uma regeracao. E um pedido a mais, e ele so acontece quando o
+ * operador abre um cartao.
+ *
+ * Sem piramide, cai no preview de sempre. Isso vale enquanto houver foto sem
+ * piramide, e some junto com o `preview_webp`.
+ *
+ * @param {HTMLImageElement|null} img - A tag do cartao.
+ * @param {string} photoId - UUID da foto.
+ */
+async function pintarMiniatura(img, photoId) {
+    if (!img) return;
+    const base = getPhotoImageUrl(photoId, 'preview').replace(/\/image\?.*$/, '');
+    try {
+        const r = await fetch(`${base}/tiles.json`);
+        if (!r.ok) throw new Error(String(r.status));
+        const d = await r.json();
+        // O nivel 0 e sempre o mais grosso, e desde a escada de um tile ele e
+        // sempre (0,0). Monta pelo template publicado, com o token.
+        const rel = d.template.replace('{level}', '0').replace('{x}', '0').replace('{y}', '0');
+        img.src = new URL(rel, `${base}/tiles.json`).href;
+    } catch {
+        // Foto sem piramide: o caminho de sempre.
+        img.src = getPhotoImageUrl(photoId, 'preview');
     }
 }
 

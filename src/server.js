@@ -12,11 +12,13 @@ import fastifyStatic from '@fastify/static';
 import fastifyCompress from '@fastify/compress';
 import config from './config.js';
 import { getIndexDb, closeAll } from './db/connection.js';
+import { resetTileStatements } from './db/tiles-queries.js';
 import healthRoutes from './routes/health.js';
 import projectRoutes from './routes/projects.js';
 import photoRoutes from './routes/photos.js';
 import calibrationRoutes from './routes/calibration.js';
 import tileRoutes from './routes/tiles.js';
+import photoTileRoutes from './routes/phototiles.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -31,7 +33,7 @@ const fastify = Fastify({
   bodyLimit: BODY_LIMIT_BYTES,
 });
 
-// Error handler global — padroniza o envelope { error: "..." } do contrato da API.
+// Error handler global: padroniza o envelope { error: "..." } do contrato da API.
 // Erros de validação/runtime caem aqui e são normalizados para { error }.
 fastify.setErrorHandler((err, request, reply) => {
   const statusCode = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
@@ -44,12 +46,12 @@ fastify.setErrorHandler((err, request, reply) => {
   return reply.code(statusCode).send({ error: err.message });
 });
 
-// 404 uniforme — rotas inexistentes também retornam { error }.
+// 404 uniforme: rotas inexistentes também retornam { error }.
 fastify.setNotFoundHandler((request, reply) => {
   reply.code(404).send({ error: 'Not Found' });
 });
 
-// Compressão HTTP — apenas para respostas compressíveis (text/*, application/json).
+// Compressão HTTP: apenas para respostas compressíveis (text/*, application/json).
 // Imagens WebP (image/webp) NÃO são recomprimidas: o customTypes restringe os
 // content-types elegíveis para compressão, deixando image/* de fora. O regex
 // casa com o content-type completo (inclui parâmetros como "; charset=utf-8").
@@ -65,7 +67,7 @@ await fastify.register(fastifyCompress, {
 // CORS
 await fastify.register(cors, { origin: config.corsOrigin });
 
-// Static files — calibration interface
+// Static files: calibration interface
 // prefix sem barra final + redirect: true faz o @fastify/static registrar um
 // redirect 301 de /calibration para /calibration/ (senão cai no 404 handler).
 await fastify.register(fastifyStatic, {
@@ -75,7 +77,7 @@ await fastify.register(fastifyStatic, {
   redirect: true,
 });
 
-// Static files — project thumbnails ({slug}.webp in /data/thumbnails/)
+// Static files: project thumbnails ({slug}.webp in /data/thumbnails/)
 await fastify.register(fastifyStatic, {
   root: config.thumbnailsDir,
   prefix: '/api/v1/thumbnails/',
@@ -91,11 +93,27 @@ await fastify.register(projectRoutes);
 await fastify.register(photoRoutes);
 await fastify.register(calibrationRoutes);
 await fastify.register(tileRoutes);
+// A piramide da panoramica. Sem este register o piloto responde 404 no servico
+// vivo: os testes montam o app pelo build-app.js e nao cobrem esta linha.
+await fastify.register(photoTileRoutes);
 
-// Graceful shutdown — idempotente e com timeout de segurança.
+// Graceful shutdown: idempotente e com timeout de segurança.
 // Tempo máximo (ms) para fastify.close() antes de forçar a saída.
 const SHUTDOWN_TIMEOUT_MS = 10000;
 let isShuttingDown = false;
+
+/**
+ * Fecha os bancos das duas donarias.
+ *
+ * closeAll() fecha o que connection.js abriu. As conexoes de tiles que
+ * rotacionaram por troca de arquivo pertencem a tiles-queries.js, e so ele as
+ * fecha. No Windows um handle aberto ainda segura o arquivo, entao deixar uma de
+ * fora atrapalha ate quem for regerar a piramide depois.
+ */
+const fecharBancos = () => {
+  resetTileStatements();
+  closeAll();
+};
 
 const shutdown = async (exitCode = 0) => {
   // Guarda de reentrância: ignora sinais/erros subsequentes durante o shutdown.
@@ -108,7 +126,7 @@ const shutdown = async (exitCode = 0) => {
   // conexões keep-alive), força a saída em vez de depender do grace do orquestrador.
   const forceExit = setTimeout(() => {
     fastify.log.error('Shutdown timeout exceeded, forcing exit');
-    closeAll();
+    fecharBancos();
     process.exit(exitCode || 1);
   }, SHUTDOWN_TIMEOUT_MS);
   forceExit.unref();
@@ -119,7 +137,7 @@ const shutdown = async (exitCode = 0) => {
     fastify.log.error(err, 'Error closing server');
   } finally {
     clearTimeout(forceExit);
-    closeAll();
+    fecharBancos();
     process.exit(exitCode);
   }
 };
