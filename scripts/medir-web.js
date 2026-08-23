@@ -79,6 +79,9 @@
  *   --json <arquivo>     grava a medida crua
  *   --comparar <arquivo> imprime esta medida contra uma anterior, coluna a coluna
  *   --porta N            porta do ebgeo_360 (8199)
+ *   --porta3d N          porta do ebgeo_3d ja no ar. Sem ela, o catalogo 3D
+ *                        responde 404 e a prova de console acusa o erro que a
+ *                        aplicacao grita ao nao achar o vizinho
  */
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -97,6 +100,16 @@ import { gravarTela } from './lib/tela.js';
 // ---------------------------------------------------------------- constantes
 
 const PREFIXO_360 = '/ebgeo_360';
+
+/**
+ * Prefixo do servico VIZINHO de modelos 3D.
+ *
+ * O ebgeo_web pergunta o catalogo 3D na partida, em `/ebgeo_3d/api/v1/models`
+ * (ver `src/js/config.js` daquele repo). Sem alguem atendendo, a prova de
+ * console reprova a rodada inteira, e a mensagem que chega e "JSON invalido",
+ * nunca "servico ausente". Com `--porta3d` a fachada repassa de verdade.
+ */
+const PREFIXO_3D = '/ebgeo_3d';
 
 /**
  * Perfis de maquina e de rede.
@@ -163,6 +176,7 @@ function lerArgs(argv) {
     json: null,
     comparar: null,
     porta: 8199,
+    porta3d: null,
   };
   for (let i = 2; i < argv.length; i++) {
     const v = argv[i + 1];
@@ -183,6 +197,7 @@ function lerArgs(argv) {
       case '--json': a.json = v; i++; break;
       case '--comparar': a.comparar = v; i++; break;
       case '--porta': a.porta = parseInt(v, 10); i++; break;
+      case '--porta3d': a.porta3d = parseInt(v, 10); i++; break;
       default:
         if (argv[i].startsWith('--')) {
           console.error(`argumento desconhecido: ${argv[i]}`);
@@ -879,6 +894,9 @@ try {
     raiz: raizDist,
     prefixo: PREFIXO_360,
     destino: `http://127.0.0.1:${args.porta}/api/v1`,
+    rotas: args.porta3d
+      ? [{ prefixo: PREFIXO_3D, destino: `http://127.0.0.1:${args.porta3d}/api/v1` }]
+      : [],
   });
   console.log(`  fachada no ar:   ${fachada.url}  (${PREFIXO_360} -> /api/v1)`);
 

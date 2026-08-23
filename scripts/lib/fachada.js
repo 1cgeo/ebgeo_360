@@ -61,9 +61,17 @@ const TIPOS = {
  * @param {boolean} [opcoes.comprimir] responder gzip no estatico, como o nginx
  * @param {boolean} [opcoes.substituirExterno] serve um substituto local para o
  *   recurso que sai da maquina. Ver `REMENDO_EXTERNO`
+ * @param {Array<{prefixo:string,destino:string}>} [opcoes.rotas] prefixos EXTRA,
+ *   um por servico vizinho. O ebgeo_web fala com o ebgeo_3d em `/ebgeo_3d`, do
+ *   mesmo jeito que fala com o 360 em `/ebgeo_360`. Sem esta lista o pedido do
+ *   vizinho caia no fallback de pagina unica e voltava `index.html`: o cliente
+ *   entao reportava "JSON invalido" onde o defeito era "servico ausente", e a
+ *   prova de console reprovava a rodada por uma causa que ela nao nomeava.
  * @returns {Promise<{porta: number, url: string, fechar: Function, erros: Array}>}
  */
-export async function subirFachada({ raiz, prefixo, destino, porta = 0, substituirExterno = false }) {
+export async function subirFachada({
+  raiz, prefixo, destino, porta = 0, substituirExterno = false, rotas = [],
+}) {
   const raizAbs = resolve(raiz);
   if (!existsSync(raizAbs)) throw new Error(`raiz da fachada nao existe: ${raizAbs}`);
 
@@ -83,6 +91,14 @@ export async function subirFachada({ raiz, prefixo, destino, porta = 0, substitu
     try {
       if (req.url.startsWith(`${prefixo}/`) || req.url === prefixo) {
         await repassar(req, res, prefixo, destino);
+        return;
+      }
+      // As rotas extra entram DEPOIS do prefixo principal e ANTES do estatico.
+      // A ordem importa: um prefixo extra que engolisse o do 360 tiraria a
+      // medida do ar sem dizer por que.
+      const extra = rotas.find(r => req.url.startsWith(`${r.prefixo}/`) || req.url === r.prefixo);
+      if (extra) {
+        await repassar(req, res, extra.prefixo, extra.destino);
         return;
       }
       if (substituirExterno && req.url.startsWith(CAMINHO_EXTERNO)) {
@@ -284,6 +300,16 @@ function servirEstatico(req, res, raizAbs, substituirExterno = false) {
   if (res.destroyed) return;
   if (existsSync(caminho) && statSync(caminho).isDirectory()) caminho = join(caminho, 'index.html');
   if (!existsSync(caminho)) {
+    // CAMINHO DE API NUNCA CAI NO index.html. O `try_files` do nginx serve para
+    // rota de pagina, e devolver HTML a quem pediu JSON troca a mensagem do
+    // defeito: o cliente reporta "Unexpected token '<'" e quem le procura erro
+    // de parser onde o que ha e servico fora do ar. Medido: foi assim que a
+    // prova de console reprovou uma rodada inteira.
+    if (/^\/(?:api|ebgeo_)/.test(semQuery)) {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'servico vizinho ausente na bancada', caminho: semQuery }));
+      return;
+    }
     // A aplicacao e uma pagina so: qualquer caminho desconhecido cai no
     // index.html, como o `try_files` do nginx.
     caminho = join(raizAbs, 'index.html');
