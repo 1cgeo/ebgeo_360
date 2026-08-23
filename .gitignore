@@ -51,5 +51,13 @@ Desktop.ini
 IMG/
 METADATA/
 
-# Lock file
-package-lock.json
+# Lock file: VERSIONADO de proposito.
+#
+# O Dockerfile faz `npm ci`, e esse comando EXIGE o lock: sem ele a imagem nao
+# constroi. Enquanto o arquivo esteve ignorado, o lock local ficou fora de
+# sincronia com o package.json sem ninguem perceber, e as duas coisas
+# quebraram juntas: `npm ci` recusou a build da imagem, e 206 testes foram
+# cancelados por dependencia ausente.
+#
+# Quem versiona o lock tambem fixa a versao de cada dependencia transitiva, que
+# e o que faz a imagem de hoje ser igual a de amanha.

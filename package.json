@@ -17,7 +17,10 @@
     "lint:calibration": "eslint --no-ignore -c eslint-calibration.config.mjs public/calibration/js/*.js",
     "import-tracks": "node scripts/import-tracks.js",
     "derive-runs": "node scripts/derive-runs.js",
-    "import-captured-at": "node scripts/import-captured-at.js"
+    "import-captured-at": "node scripts/import-captured-at.js",
+    "bench": "node --env-file-if-exists=.env --expose-gc bench/banco.js",
+    "bench:http": "node --env-file-if-exists=.env bench/http.js",
+    "bench:cliente": "node --env-file-if-exists=.env bench/cliente.js"
   },
   "dependencies": {
     "@fastify/compress": "^8.3.1",
