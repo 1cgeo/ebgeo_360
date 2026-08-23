@@ -18,7 +18,7 @@ import projectRoutes from './routes/projects.js';
 import photoRoutes from './routes/photos.js';
 import calibrationRoutes from './routes/calibration.js';
 import tileRoutes from './routes/tiles.js';
-import photoTileRoutes from './routes/phototiles.js';
+import photoTileRoutes, { resetContextoFoto } from './routes/phototiles.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -30,6 +30,20 @@ const fastify = Fastify({
   logger: {
     level: config.logLevel,
   },
+  // SEM LOG AUTOMATICO DE REQUEST, e a razao mudou de escala com a piramide.
+  //
+  // No nivel `info` o Fastify grava duas linhas por requisicao, "incoming
+  // request" e "request completed". Quando uma foto era UM pedido isso custava
+  // duas linhas. Hoje um quadro do frustum sao 54 pedidos, e a mesma foto gera
+  // 108 linhas. Medido na bancada, com 4.000 requisicoes de tile: `info` custa
+  // 25,6% da vazao contra `warn`, e despeja 5.387 KiB de log. Sob Docker o pino
+  // escreve no pipe de stdout, que e mais caro que o arquivo da medida.
+  //
+  // NADA DE DIAGNOSTICO SE PERDE. O `setErrorHandler` abaixo ja registra erro e
+  // aviso por conta propria, com a excecao inteira, e o `request.log` continua
+  // disponivel para quem quiser logar de proposito. O que sai e a linha
+  // automatica por pedido, que em rota de tile e ruido de alto custo.
+  disableRequestLogging: true,
   bodyLimit: BODY_LIMIT_BYTES,
 });
 
@@ -112,6 +126,9 @@ let isShuttingDown = false;
  */
 const fecharBancos = () => {
   resetTileStatements();
+  // O contexto de foto guarda linha de banco: ele sai junto das conexoes, senao
+  // sobreviveria a uma troca de dataDir dentro da janela de um segundo.
+  resetContextoFoto();
   closeAll();
 };
 

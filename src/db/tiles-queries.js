@@ -17,7 +17,7 @@ import Database from 'better-sqlite3';
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import config from '../config.js';
-import { getProjectDb } from './connection.js';
+import { getProjectDb, mmapPara } from './connection.js';
 // A razao padrao vem de pyramid-math.js, o mesmo modulo do gerador e do cliente.
 // Ela e o valor que o banco anterior a coluna `razao` carrega implicitamente.
 import { RAZAO_PADRAO } from '../../public/calibration/js/pyramid-math.js';
@@ -38,6 +38,16 @@ const _tileStmts = new Map();
  * Ver `abrirConexao` para o motivo de nao voltar ao getProjectDb.
  */
 const _rotacionados = new Set();
+
+/**
+ * Prazo entre duas conferencias de mtime do MESMO arquivo, em milissegundos.
+ *
+ * UM SEGUNDO, e nao zero, porque o stat custava mais que o dado. Ver o bloco em
+ * `tileStmts` para a medida. E nao e maior porque a janela de tile velho depois
+ * de uma troca de arquivo precisa caber no tempo em que ninguem repara.
+ * @constant {number}
+ */
+const MS_ENTRE_CONFERENCIAS = 1000;
 
 /**
  * Deriva o nome do banco de tiles a partir do banco de imagens do projeto.
@@ -77,9 +87,9 @@ function abrirConexao(dbFilename, caminho) {
   // Os mesmos pragmas de getProjectDb: a rotacao nao pode servir mais devagar
   // que a primeira abertura.
   db.pragma('query_only = true');
-  db.pragma('cache_size = -32000');
+  db.pragma('cache_size = -2000');
   db.pragma('busy_timeout = 5000');
-  db.pragma('mmap_size = 268435456');
+  db.pragma(`mmap_size = ${mmapPara(caminho)}`);
   return { db, propria: true };
 }
 
@@ -106,17 +116,36 @@ function abrirConexao(dbFilename, caminho) {
  */
 function tileStmts(dbFilename) {
   const caminho = join(config.projectsDbDir, dbFilename);
-  // Projeto sem piramide gerada nao tem arquivo. Este e o caminho normal
-  // enquanto o piloto cobre um projeto so: quem nao tem tiles continua servindo
-  // o full pela rota /image.
+
+  // O STAT TEM PRAZO, e o prazo nasceu de uma medida. A conferencia rodava a
+  // CADA acesso, e a rota chama este modulo duas vezes por tile: uma em
+  // getTilePyramid e outra em getTileBlob. Medido nesta maquina, no banco de
+  // 1124 MiB: o statSync custa 13,45 us e o seek do tile custa 18,99 us, entao
+  // o par cobrava 142% do proprio dado. Numa rajada de 54 tiles isso da 1,45 ms
+  // de stat contra 0,38 ms de leitura de verdade.
+  //
+  // O PRAZO NAO AFROUXA O CONTRATO. A conferencia existe para pegar a TROCA do
+  // arquivo pelo gerador com o servico no ar (grava ao lado e substitui), e o
+  // custo de perder essa troca por ate um segundo e um segundo de tile velho,
+  // servido com ETag velho. A regeracao no PROPRIO arquivo continua coberta de
+  // graca, porque cada statement roda em transacao de leitura nova.
+  const cache = _tileStmts.get(dbFilename);
+  const agora = Date.now();
+  if (cache && cache.db.open && agora - cache.conferidoEm < MS_ENTRE_CONFERENCIAS) {
+    return cache;
+  }
+
+  // Projeto sem piramide gerada nao tem arquivo. Este e o caminho normal para
+  // quem ainda nao recebeu a piramide: o cliente que leva 404 desenha o full.
   const info = statSync(caminho, { throwIfNoEntry: false });
   if (!info) {
     descartar(dbFilename);
     return null;
   }
 
-  const cache = _tileStmts.get(dbFilename);
   if (cache && cache.db.open && cache.mtimeMs === info.mtimeMs && cache.size === info.size) {
+    // O arquivo e o mesmo: renova o prazo em vez de refazer os statements.
+    cache.conferidoEm = agora;
     return cache;
   }
   if (cache) {
@@ -148,6 +177,7 @@ function tileStmts(dbFilename) {
       propria: aberta.propria,
       mtimeMs: info.mtimeMs,
       size: info.size,
+      conferidoEm: agora,
       pyramid: aberta.db.prepare(`
         SELECT photo_id, tile_size, max_level, width, height,
                quality, tile_count, total_bytes, built_at, ${colunaRazao}

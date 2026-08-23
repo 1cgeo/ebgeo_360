@@ -72,6 +72,45 @@ export function computeImageETag(uuid, quality, sizeBytes) {
 }
 
 /**
+ * Diz se o `If-None-Match` do pedido casa com o ETag que a rota produziria.
+ *
+ * POR QUE ESTA FUNCAO EXISTE. As rotas comparavam por
+ * `ifNoneMatch.replace(/"/g, '') === etag`, que so acerta a forma mais simples.
+ * Tres formas legitimas falhavam, e a falha era SILENCIOSA: a rota tomava vaga
+ * no semaforo, lia o BLOB e mandava bytes que o cliente ja tinha.
+ *
+ * Medido na bancada, com o ETag real da rota e 4.000 requisicoes: o validador
+ * `W/"<etag>"` devolveu 200 em 4.000 de 4.000 e transferiu 101,4 MiB, onde o
+ * forte transfere zero. Nao e hipotese de laboratorio: qualquer proxy que
+ * transforma a resposta enfraquece o ETag, e o navegador devolve exatamente o
+ * que recebeu.
+ *
+ * As tres formas que passam a casar:
+ *   - `W/"<etag>"`, o validador enfraquecido pelo proxy (RFC 9110, 8.8.3);
+ *   - `"<a>", "<b>"`, a lista que o cliente manda quando guarda variantes;
+ *   - `*`, que por definicao casa com qualquer representacao existente.
+ *
+ * A COMPARACAO E FRACA de proposito, e esta correta aqui. A RFC manda usar
+ * comparacao fraca em `If-None-Match`, e o ETag desta casa ja identifica os
+ * bytes: ele carrega o tamanho, ou o `total_bytes` da piramide.
+ *
+ * @param {string|undefined} ifNoneMatch - O cabecalho cru, se veio
+ * @param {string} etag - O ETag SEM aspas, como computeImageETag devolve
+ * @returns {boolean} true quando a resposta deve ser 304
+ */
+export function etagCasa(ifNoneMatch, etag) {
+  if (!ifNoneMatch) return false;
+  const cru = String(ifNoneMatch).trim();
+  if (cru === '*') return true;
+  // A virgula so separa entradas: o ETag desta casa nao a contem, porque ele e
+  // uuid, rotulo e digito. Vale conferir se um dia o formato mudar.
+  return cru.split(',').some((parte) => {
+    const limpa = parte.trim().replace(/^W\//, '').replace(/^"|"$/g, '');
+    return limpa === etag;
+  });
+}
+
+/**
  * Deriva um ETag barato para metadados mutaveis a partir de campos ja carregados.
  * Hash nao-criptografico (FNV-1a) sobre uma assinatura compacta dos dados que
  * afetam a resposta (calibracao da foto + targets). Permite 304 quando nada mudou.

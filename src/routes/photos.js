@@ -21,6 +21,7 @@ import {
   setMutableMetadataCacheHeaders,
   computeImageETag,
   computeMetadataETag,
+  etagCasa,
 } from '../middleware/cache.js';
 
 // Limitador simples de concorrencia para a rota de imagem. Cada request de imagem
@@ -154,7 +155,7 @@ export default async function photoRoutes(fastify) {
     const etag = computeMetadataETag(signature);
 
     const ifNoneMatch = request.headers['if-none-match'];
-    if (ifNoneMatch && ifNoneMatch.replace(/"/g, '') === etag) {
+    if (etagCasa(ifNoneMatch, etag)) {
       setMutableMetadataCacheHeaders(reply, etag);
       reply.code(304);
       return;
@@ -211,7 +212,18 @@ export default async function photoRoutes(fastify) {
   });
 
   // GET /api/v1/photos/:uuid/image?quality=full|preview — serve image from SQLite BLOB
-  fastify.get('/api/v1/photos/:uuid/image', async (request, reply) => {
+  // SEM O GANCHO DO COMPRESSOR nesta rota, e `false` faz o @fastify/compress
+  // nao instalar gancho nenhum aqui (ver o `onRoute` do plugin). O corpo e
+  // WebP, que ja vem comprimido: o plugin nunca comprimiu esta resposta, mas
+  // pagava o caminho de decidir a cada pedido. Com uma foto por request isso
+  // era invisivel; com 54 tiles por quadro, a bancada mediu ate 8,1% da vazao.
+  //
+  // O TILE VETORIAL NAO ENTRA NESTA REGRA. Ele e protobuf cru, e o pior tile z12
+  // do acervo cai de 860 KB para 378 KB. Quem comprime continua comprimindo: a
+  // excecao e so para corpo que ja nasce comprimido.
+  fastify.get('/api/v1/photos/:uuid/image', {
+    config: { compress: false },
+  }, async (request, reply) => {
     const { uuid } = request.params;
     const quality = request.query.quality === 'preview' ? 'preview' : 'full';
     const column = quality === 'preview' ? 'preview_webp' : 'full_webp';
@@ -232,7 +244,7 @@ export default async function photoRoutes(fastify) {
 
     // Short-circuit do 304 ANTES de tocar no BLOB: o caminho de cache-hit fica O(1).
     const ifNoneMatch = request.headers['if-none-match'];
-    if (ifNoneMatch && ifNoneMatch.replace(/"/g, '') === etag) {
+    if (etagCasa(ifNoneMatch, etag)) {
       setImageCacheHeaders(reply, etag);
       reply.header('Accept-Ranges', 'bytes');
       reply.code(304);

@@ -45,6 +45,7 @@ import {
   setMutableMetadataCacheHeaders,
   computeImageETag,
   computeMetadataETag,
+  etagCasa,
 } from '../middleware/cache.js';
 
 /**
@@ -78,6 +79,103 @@ const MAX_INFLIGHT_TILE_REQUESTS = 64;
 
 let _inflightTiles = 0;
 const _tileWaitQueue = [];
+
+/**
+ * Prazo do contexto de foto, em milissegundos.
+ *
+ * Casado com o MS_ENTRE_CONFERENCIAS de db/tiles-queries.js de proposito: os
+ * dois cobrem a mesma janela, entao uma regeracao de piramide aparece por
+ * inteiro no mesmo instante, em vez de a escada vir nova com a linha velha.
+ * @constant {number}
+ */
+const MS_CONTEXTO_FOTO = 1000;
+
+/**
+ * Quantas fotos o contexto guarda ao mesmo tempo.
+ *
+ * O contexto de uma foto pesa a linha de tile_pyramids mais a escada, algumas
+ * centenas de bytes. Duzentas fotos cabem em pouco mais de 100 KB, e o teto
+ * existe so para que uma varredura de robo nao cresca o mapa sem limite.
+ * @constant {number}
+ */
+const MAX_FOTOS_EM_CONTEXTO = 200;
+
+/**
+ * Contexto de uma foto: tudo que a rota de tile refaz e que NAO depende de
+ * level, x nem y.
+ *
+ * POR QUE ELE EXISTE. A rota fazia getPhotoById, isPhotoDeleted,
+ * getProjectByPhotoId, getTilePyramid e montarEscada por TILE. Nenhuma das
+ * cinco muda dentro de uma foto, e um quadro do frustum pede 54 tiles da MESMA
+ * foto. Medido na bancada, contra o acervo real: 32,97 us somados, repetidos 54
+ * vezes, ou 1,78 ms de uma rajada de 16 ms. Sao 11% do tempo de parede gasto
+ * respondendo cinco vezes a mesma pergunta.
+ *
+ * O PRAZO E CURTO porque este cache guarda dado MUTAVEL: a foto pode ser
+ * apagada, e a piramide pode ser regerada. Um segundo e a janela em que a rota
+ * serve o estado anterior, e ela e a mesma do statSync de tiles-queries.js.
+ *
+ * Map<uuid, {em: number, photo, project, dbFilename, piramide, escada}>
+ */
+const _contextoFoto = new Map();
+
+/**
+ * Monta ou reaproveita o contexto de uma foto.
+ *
+ * O MOTIVO DA AUSENCIA VOLTA JUNTO, e nao e detalhe. O contrato da rota separa
+ * "Photo not found", quando a foto sumiu ou foi apagada, de "Tile not found",
+ * quando a foto existe e o projeto ainda nao tem piramide. Os dois sao 404, mas
+ * o cliente le o corpo: o primeiro diz que nao adianta pedir, e o segundo diz
+ * para desenhar o full. Colapsar os dois reprovou dois testes, e com razao.
+ *
+ * A AUSENCIA TAMBEM SE GUARDA, senao uma rajada de 54 pedidos a uma foto sem
+ * piramide refaria as cinco consultas 54 vezes, que e o pior caso do defeito
+ * que este cache conserta.
+ *
+ * @param {string} uuid - UUID da foto
+ * @returns {{ok: true, photo: object, project: object, dbFilename: string,
+ *   piramide: object, escada: Array<object>}|{ok: false, erro: string}}
+ */
+function contextoDaFoto(uuid) {
+  const agora = Date.now();
+  const guardado = _contextoFoto.get(uuid);
+  if (guardado && agora - guardado.em < MS_CONTEXTO_FOTO) return guardado.ctx;
+
+  const montar = () => {
+    const photo = getPhotoById(uuid);
+    if (!photo || isPhotoDeleted(uuid)) return { ok: false, erro: 'Photo not found' };
+    const project = getProjectByPhotoId(uuid);
+    if (!project) return { ok: false, erro: 'Photo not found' };
+    const dbFilename = tilesDbFilenameFor(project.db_filename);
+    const piramide = getTilePyramid(dbFilename, uuid);
+    if (!piramide) return { ok: false, erro: 'Tile not found' };
+    return {
+      ok: true, photo, project, dbFilename, piramide, escada: escadaDaPiramide(piramide),
+    };
+  };
+
+  const ctx = montar();
+  // Reinserir move a chave para o fim da ordem do Map, que e o que faz o
+  // despejo abaixo tirar a mais antiga.
+  _contextoFoto.delete(uuid);
+  _contextoFoto.set(uuid, { em: agora, ctx });
+  while (_contextoFoto.size > MAX_FOTOS_EM_CONTEXTO) {
+    _contextoFoto.delete(_contextoFoto.keys().next().value);
+  }
+  return ctx;
+}
+
+/**
+ * Esquece os contextos guardados.
+ *
+ * Os testes constroem o app, trocam o dataDir por baixo e constroem de novo.
+ * Sem esta porta, o contexto de uma foto do banco anterior sobreviveria ao
+ * proximo `buildApp` dentro da janela de um segundo, e o teste veria a foto
+ * errada sem nenhum erro no caminho.
+ */
+export function resetContextoFoto() {
+  _contextoFoto.clear();
+}
 
 /**
  * Adquire uma vaga no limitador de concorrencia de tiles.
@@ -194,7 +292,7 @@ export default async function photoTileRoutes(fastify) {
     const etag = computeMetadataETag(signature);
 
     const ifNoneMatch = request.headers['if-none-match'];
-    if (ifNoneMatch && ifNoneMatch.replace(/"/g, '') === etag) {
+    if (etagCasa(ifNoneMatch, etag)) {
       setMutableMetadataCacheHeaders(reply, etag);
       reply.code(304);
       return;
@@ -284,7 +382,18 @@ export default async function photoTileRoutes(fastify) {
   // cliente ainda segura o descritor velho: recusar o token velho pintaria a
   // parede de buraco em vez de servir o tile bom. A resposta certa e sempre o
   // tile de hoje, com o ETag de hoje.
-  fastify.get('/api/v1/photos/:uuid/tiles/:level/:x/:y', async (request, reply) => {
+  // SEM O GANCHO DO COMPRESSOR nesta rota, e `false` faz o @fastify/compress
+  // nao instalar gancho nenhum aqui (ver o `onRoute` do plugin). O corpo e
+  // WebP, que ja vem comprimido: o plugin nunca comprimiu esta resposta, mas
+  // pagava o caminho de decidir a cada pedido. Com uma foto por request isso
+  // era invisivel; com 54 tiles por quadro, a bancada mediu ate 8,1% da vazao.
+  //
+  // O TILE VETORIAL NAO ENTRA NESTA REGRA. Ele e protobuf cru, e o pior tile z12
+  // do acervo cai de 860 KB para 378 KB. Quem comprime continua comprimindo: a
+  // excecao e so para corpo que ja nasce comprimido.
+  fastify.get('/api/v1/photos/:uuid/tiles/:level/:x/:y', {
+    config: { compress: false },
+  }, async (request, reply) => {
     const { uuid } = request.params;
 
     // A sintaxe do pedido se valida antes de tocar no banco. O ".webp" vem
@@ -297,30 +406,23 @@ export default async function photoTileRoutes(fastify) {
       return { error: 'Tile out of range' };
     }
 
-    const photo = getPhotoById(uuid);
-    if (!photo || isPhotoDeleted(uuid)) {
+    // UMA consulta por foto, e nao cinco por tile. Ver `contextoDaFoto`.
+    //
+    // A resposta continua a mesma nos tres casos de ausencia: foto apagada,
+    // projeto ausente e projeto sem piramide caiam todos em 404 antes, e caem
+    // agora. O que muda e quantas vezes a pergunta e feita.
+    const ctx = contextoDaFoto(uuid);
+    if (!ctx.ok) {
       reply.code(404);
-      return { error: 'Photo not found' };
+      return { error: ctx.erro };
     }
-
-    const project = getProjectByPhotoId(uuid);
-    if (!project) {
-      reply.code(404);
-      return { error: 'Photo not found' };
-    }
-
-    const dbFilename = tilesDbFilenameFor(project.db_filename);
-    const piramide = getTilePyramid(dbFilename, uuid);
-    if (!piramide) {
-      reply.code(404);
-      return { error: 'Tile not found' };
-    }
+    const { dbFilename, piramide } = ctx;
 
     // Fora da grade e 400, nao 404: o pedido esta errado, e responder "nao
     // achei" convidaria o cliente a tentar de novo com a mesma coordenada. A
     // faixa valida sai da MESMA escada que o descritor publicou, entao o que o
     // cliente leu la nunca vira 400 aqui.
-    const grade = escadaDaPiramide(piramide)[level] ?? null;
+    const grade = ctx.escada[level] ?? null;
     if (!grade || x >= grade.cols || y >= grade.rows) {
       reply.code(400);
       return { error: 'Tile out of range' };
@@ -334,7 +436,7 @@ export default async function photoTileRoutes(fastify) {
     // O 304 curto-circuita antes de ler o BLOB. A linha de tile_pyramids ja
     // esta em maos e custa um seek; o que se evita aqui e o tile.
     const ifNoneMatch = request.headers['if-none-match'];
-    if (ifNoneMatch && ifNoneMatch.replace(/"/g, '') === etag) {
+    if (etagCasa(ifNoneMatch, etag)) {
       setImageCacheHeaders(reply, etag);
       reply.code(304);
       return;

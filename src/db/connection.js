@@ -5,7 +5,7 @@
  */
 
 import Database from 'better-sqlite3';
-import { readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import config from '../config.js';
@@ -126,6 +126,42 @@ export function getIndexDb() {
 }
 
 /**
+ * Teto do `mmap_size`, em bytes.
+ *
+ * POR QUE ELE MUDOU DE 256 MB PARA CA. Aquele numero foi dimensionado para o
+ * `{slug}.db` de imagem. O banco de PIRAMIDE passou dele: os arquivos de
+ * producao vao de 0,5 a 21 GB, e 256 MB cobrem entre 1,2% e 51% do arquivo.
+ *
+ * Medido duas vezes, por caminhos independentes, no `faxinal_tiles.db` de
+ * 1124 MiB: com o mmap cobrindo o arquivo o seek cai de 29,3 para 19,0
+ * microssegundos, ou 54,7% mais rapido. No `aman_tiles.db` de 703 MiB o ganho
+ * foi de 55,6%. E a unica variante que sai da regua de ruido.
+ *
+ * O TETO EXISTE PORQUE O MAPA E ESPACO DE ENDERECAMENTO, e o servico abre uma
+ * conexao por projeto. Em Linux as paginas mapeadas sao cache de arquivo,
+ * recuperaveis sob pressao, e nao inflam o RSS: medido no proprio container,
+ * com cgroup de 512 MB e tres projetos quentes, o processo ficou em 34,5 MiB.
+ * Ainda assim o teto fica, para que um acervo com dezenas de bancos de 21 GB
+ * nao peca um mapa sem limite.
+ * @constant {number}
+ */
+const MMAP_TETO_BYTES = parseInt(process.env.SQLITE_MMAP_MAX || String(2 * 1024 * 1024 * 1024), 10);
+
+/**
+ * O `mmap_size` que um arquivo merece: o proprio tamanho dele, ate o teto.
+ *
+ * Mapear alem do fim do arquivo nao ajuda em nada, e mapear muito aquem deixa a
+ * leitura cair em `read()` justamente nos bancos grandes, que sao os que doem.
+ * @param {string} caminho - Caminho do arquivo SQLite
+ * @returns {number} Bytes a pedir em `PRAGMA mmap_size`
+ */
+export function mmapPara(caminho) {
+  const info = statSync(caminho, { throwIfNoEntry: false });
+  if (!info) return MMAP_TETO_BYTES;
+  return Math.min(info.size, MMAP_TETO_BYTES);
+}
+
+/**
  * Opens a per-project image database (lazy, cached).
  * @param {string} dbFilename - The database filename (e.g., "alegrete.db").
  * @returns {Database} The project database connection.
@@ -144,9 +180,13 @@ export function getProjectDb(dbFilename) {
   // journal_mode=WAL nao se aplica em conexao readonly (no-op): o modo ja vem
   // persistido do arquivo (definido em createProjectDb). Reforcamos query_only.
   db.pragma('query_only = true');
-  db.pragma('cache_size = -32000'); // 32 MB cache per project DB
+  // CACHE PEQUENO DE PROPOSITO. Os 32 MB anteriores eram inertes: medido no
+  // banco de tiles, 2 MB rendem o mesmo que 128 MB, porque a chave primaria
+  // deixa os tiles de um frustum adjacentes e a rajada toca poucas paginas.
+  // O que decide e o mmap, logo abaixo.
+  db.pragma('cache_size = -2000');
   db.pragma('busy_timeout = 5000'); // espera ate 5s em vez de falhar com SQLITE_BUSY
-  db.pragma('mmap_size = 268435456'); // 256 MB: le BLOBs via memory-map, reduz syscalls read()
+  db.pragma(`mmap_size = ${mmapPara(dbPath)}`);
 
   projectDbs.set(dbFilename, db);
   return db;
