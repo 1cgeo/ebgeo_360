@@ -21,7 +21,11 @@
  * 28 m de uma foto do projeto escolhido, com mediana de 3,5 m.
  *
  * Uso:
- *   node scripts/import-tracks.js [--data ./data] [--dry-run] [--docker]
+ *   node scripts/import-tracks.js [--data ./data] [--slug <a,b>] [--dry-run] [--docker]
+ *
+ * SEM `--slug` ele mexe em TODOS os projetos, e o que nao tem geojson em
+ * `_source_backup` tem o tracado reescrito pela geometria recortada dos tiles.
+ * Ao importar um lote novo, recorte pelos slugs daquele lote.
  */
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -167,9 +171,27 @@ db.pragma('journal_mode = WAL');
 // Garante a tabela em bancos criados antes dela.
 db.exec(readFileSync(resolve(new URL('../src/db/schema.sql', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), 'utf-8'));
 
-const projetos = db.prepare('SELECT id, slug FROM projects ORDER BY slug').all();
+// RECORTE POR PROJETO, e ele nao e conforto.
+//
+// Sem `--slug`, todo projeto que nao tem geojson em `_source_backup` cai na
+// Fonte 2 e tem o tracado REESCRITO a partir da geometria recortada dos tiles,
+// que perde vertice. Numa maquina onde o `_source_backup` esta incompleto (a
+// do chefe tinha 1 arquivo para 30 projetos), importar UM projeto novo
+// estragaria os outros 29 de tabela, sem dizer nada.
+//
+// O lote do serra_dourada contornou isso inserindo as linhas a mao. O recorte
+// resolve de vez: fora da lista, o projeto nao e lido nem apagado.
+const somenteSlugs = (getArg('slug', '') || '').split(',').map(s => s.trim()).filter(Boolean);
+const todos = db.prepare('SELECT id, slug FROM projects ORDER BY slug').all();
+const desconhecidos = somenteSlugs.filter(s => !todos.some(p => p.slug === s));
+if (desconhecidos.length) {
+  console.error(`slug inexistente no banco: ${desconhecidos.join(', ')}`);
+  process.exit(1);
+}
+const projetos = somenteSlugs.length ? todos.filter(p => somenteSlugs.includes(p.slug)) : todos;
 const idPorSlug = new Map(projetos.map(p => [p.slug, p.id]));
-console.log(`${projetos.length} projetos no index.db`);
+console.log(`${todos.length} projetos no index.db`);
+if (somenteSlugs.length) console.log(`  recorte por --slug: ${projetos.map(p => p.slug).join(', ')}`);
 
 const linhasPorSlug = new Map(); // slug -> [{coords, source}]
 const registrar = (slug, coords, source) => {
