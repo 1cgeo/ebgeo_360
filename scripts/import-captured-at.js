@@ -20,10 +20,21 @@
  * um contador de tempo.
  *
  * FONTES, nesta ordem de preferencia:
- *   - `fotos.geojson`  -> properties.nome_img + properties.time_img
- *   - `*.csv`          -> colunas nome_img/nome + time_img/time
- * Nos dois a hora e um epoch Unix. Os JSON por foto NAO tem hora (so id, img,
- * lon, lat, ele, heading), entao nao sao fonte.
+ *   - `<original_name>.json` -> campo `datetime`, o CARIMBO da camera
+ *   - `fotos.geojson`        -> properties.nome_img + properties.time_img
+ *   - `*.csv`                -> colunas nome_img/nome + time_img/time
+ *   - `--from-name`          -> reconstroi pelo nome mais a cadencia
+ *
+ * O CARIMBO VEM PRIMEIRO PORQUE E MEDIDA, e nao derivacao. O lote de Cascavel
+ * (2026-08) traz `datetime` em cada JSON por foto, em hora LOCAL, no formato
+ * `AAAA:MM:DD HH:MM:SS`. Conferido em 80 fotos das cinco OM: identico ao
+ * `DateTimeOriginal` que a camera gravou no EXIF, com zero segundo de diferenca.
+ * Por isso ele NAO leva o `DESVIO_FONTE_HORAS` nem conversao de fuso: nao e
+ * epoch de fonte externa, e a hora do relogio da camera.
+ *
+ * Nem todo lote tem esse campo. Os JSON do faxinal, do saica e do santiago
+ * trazem so id, img, lon, lat, ele e heading, e para esses o geojson e o csv
+ * seguem sendo a fonte.
  *
  * Uso:
  *   node scripts/import-captured-at.js --sources "<dir>[,<dir>...]" [--slug <slug>] [--dry-run]
@@ -51,11 +62,19 @@ const slugFiltro = getArg('slug', null);
 const dryRun = args.includes('--dry-run');
 const doNome = args.includes('--from-name');
 const fontes = (getArg('sources', '') || '').split(',').map(s => s.trim()).filter(Boolean);
+// A cadencia do timelapse MUDA por missao (4 s no faxinal, 2 s em Cascavel), e
+// so importa para `--from-name`, que reconstroi. Le o `interval` do `pro.prj`
+// da missao antes de usar.
+const cadencia = Number(getArg('cadencia', '4'));
 
 if (!fontes.length && !doNome) {
-  console.error('Uso: node scripts/import-captured-at.js [--sources "<dir>[,<dir>...]"] [--from-name] [--slug <slug>] [--dry-run]');
-  console.error('Fontes aceitas: fotos.geojson (nome_img/time_img), *.csv (nome_img|nome + time_img|time)');
-  console.error('e --from-name, que deduz a hora do proprio nome nos arquivos PIC_.');
+  console.error('Uso: node scripts/import-captured-at.js [--sources "<dir>[,<dir>...]"] [--from-name] [--cadencia <s>] [--slug <slug>] [--dry-run]');
+  console.error('Fontes aceitas: <original_name>.json (campo datetime), fotos.geojson (nome_img/time_img),');
+  console.error('*.csv (nome_img|nome + time_img|time), e --from-name, que reconstroi a hora pelo nome PIC_.');
+  process.exit(1);
+}
+if (!Number.isFinite(cadencia) || cadencia <= 0) {
+  console.error(`--cadencia invalida: ${getArg('cadencia', '4')}`);
   process.exit(1);
 }
 
@@ -206,9 +225,13 @@ async function lerArquivo(caminho, raiz) {
  * osorio/streetview/site/site_streetview/Metadados/fotos.geojson`, nivel 8. Com
  * o limite em 6 o projeto sumia inteiro do relatorio, sem erro nenhum.
  *
+ * O `.json` por foto entra aqui, e `extname` ja separa `.geojson` de `.json`,
+ * entao `fotos_linha.geojson` nao e recolhido por engano. Quem filtra de fato e
+ * o banco: so vale o `.json` cujo nome for o `original_name` de uma foto viva.
+ *
  * @param {string} raiz - Diretorio inicial
  * @param {number} [profMax] - Profundidade maxima
- * @returns {string[]} Caminhos de fotos.geojson e *.csv
+ * @returns {string[]} Caminhos de fotos.geojson, *.csv e *.json
  */
 function acharFontes(raiz, profMax = 10) {
   const achados = [];
@@ -222,9 +245,10 @@ function acharFontes(raiz, profMax = 10) {
     }
     for (const e of entradas) {
       const p = join(dir, e.name);
+      const ext = extname(e.name).toLowerCase();
       if (e.isDirectory()) {
         anda(p, prof + 1);
-      } else if (e.name === 'fotos.geojson' || extname(e.name).toLowerCase() === '.csv') {
+      } else if (e.name === 'fotos.geojson' || ext === '.csv' || ext === '.json') {
         achados.push(p);
       }
     }
@@ -314,6 +338,46 @@ function paresDoGeojson(texto) {
   return pares;
 }
 
+/**
+ * Menor e maior ano aceitos no carimbo da camera. Relogio zerado por bateria
+ * gasta volta para 1970 ou 2000, e essa hora casaria o sol com um ceu que nao
+ * existia. Fora da janela, o carimbo e recusado.
+ */
+const ANO_MIN = 2015;
+const ANO_MAX = 2035;
+
+/**
+ * Le o carimbo `datetime` de um JSON por foto.
+ *
+ * O formato e o do EXIF, `AAAA:MM:DD HH:MM:SS`, em hora LOCAL. Sai daqui ja no
+ * formato da coluna, sem passar por epoch: nao ha fuso nem desvio a aplicar,
+ * porque nao e hora de fonte externa, e o relogio da propria camera.
+ *
+ * @param {string} texto - Conteudo do arquivo
+ * @returns {string|null} `AAAA-MM-DDTHH:MM:SS` local, ou null
+ */
+function carimboDoJson(texto) {
+  let d;
+  try {
+    d = JSON.parse(texto);
+  } catch {
+    return null;
+  }
+  const bruto = d?.datetime;
+  if (typeof bruto !== 'string') return null;
+  const m = /^(\d{4})[:-](\d{2})[:-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(bruto.trim());
+  if (!m) return null;
+  const ano = Number(m[1]);
+  if (ano < ANO_MIN || ano > ANO_MAX) return null;
+  const mes = Number(m[2]);
+  const dia = Number(m[3]);
+  const hh = Number(m[4]);
+  const mm = Number(m[5]);
+  const ss = Number(m[6]);
+  if (mes < 1 || mes > 12 || dia < 1 || dia > 31 || hh > 23 || mm > 59 || ss > 59) return null;
+  return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`;
+}
+
 // ============================================================
 // Banco
 // ============================================================
@@ -357,8 +421,10 @@ console.log(`banco: ${doBanco.size} fotos vivas em ${projetos.length} projeto(s)
 // ============================================================
 
 const encontrado = new Map();   // original_name -> Map<epoch, número de fontes>
+const carimbos = new Map();     // original_name -> Map<hora local, número de fontes>
 let lidos = 0;
 let ignorados = 0;
+let jsonSemCarimbo = 0;
 
 for (const raiz of fontes) {
   const dir = resolve(raiz);
@@ -368,10 +434,31 @@ for (const raiz of fontes) {
   }
   const arquivos = acharFontes(dir);
   console.log(`\n${raiz}: ${arquivos.length} arquivo(s) candidato(s)`);
+  let carimbosAqui = 0;
   for (const caminho of arquivos) {
+    const nomeArq = basename(caminho);
+    const ext = extname(nomeArq).toLowerCase();
+
+    // Carimbo por foto: so vale o .json cujo nome e o de uma foto viva. Isso
+    // dispensa lista de padroes de nome e descarta sozinho config, planta e
+    // qualquer outro json que estiver na pasta.
+    if (ext === '.json') {
+      const nome = nomeArq.slice(0, -5);
+      if (!doBanco.has(nome)) { ignorados++; continue; }
+      const texto = await lerArquivo(caminho, dir);
+      if (texto === null) continue;
+      const hora = carimboDoJson(texto);
+      if (hora === null) { jsonSemCarimbo++; continue; }
+      let vistos = carimbos.get(nome);
+      if (!vistos) { vistos = new Map(); carimbos.set(nome, vistos); }
+      vistos.set(hora, (vistos.get(hora) ?? 0) + 1);
+      carimbosAqui++;
+      continue;
+    }
+
     const texto = await lerArquivo(caminho, dir);
     if (texto === null) continue;
-    const pares = basename(caminho) === 'fotos.geojson' ? paresDoGeojson(texto) : paresDoCsv(texto);
+    const pares = nomeArq === 'fotos.geojson' ? paresDoGeojson(texto) : paresDoCsv(texto);
     if (!pares.length) continue;
     let uteis = 0;
     for (const [nome, epoch] of pares) {
@@ -386,10 +473,17 @@ for (const raiz of fontes) {
       console.log(`  ${uteis.toString().padStart(6)} de ${pares.length.toString().padStart(6)}  ${caminho.slice(dir.length)}`);
     }
   }
+  if (carimbosAqui) {
+    lidos++;
+    console.log(`  ${carimbosAqui.toString().padStart(6)} carimbo(s) datetime em .json por foto`);
+  }
 }
 
 console.log(`\narquivos que contribuiram: ${lidos}`);
 console.log(`pares descartados por nao existirem no banco: ${ignorados}`);
+// Nao e defeito: o JSON por foto do faxinal, do saica e do santiago nao tem
+// `datetime`. Aparece para o numero nao passar por zero silencioso.
+if (jsonSemCarimbo) console.log(`json de foto sem campo datetime: ${jsonSemCarimbo}`);
 
 // Fontes que discordam sobre a mesma foto: a duplicacao de pastas no acervo faz
 // a mesma foto aparecer em varios arquivos, e copias divergentes existem.
@@ -407,17 +501,34 @@ for (const [nome, vistos] of encontrado) {
 console.log(`fotos com hora encontrada nas fontes: ${resolvido.size}`);
 console.log(`fotos em que as fontes discordam: ${conflitos}`);
 
-// O nome PIC_ carrega o inicio da captura, e a camera dispara a cada 4 s. Isso
-// da a hora de cada foto sem fonte externa nenhuma, a 2 s do EXIF real. Entra
-// so onde a fonte externa nao cobriu: o carimbo do instrumento tem precedencia.
+// Mesma regra do epoch para o carimbo: vence o mais frequente, empate no mais
+// antigo. Discordancia aqui vem de copia duplicada da pasta, nao da camera.
+let conflitosCarimbo = 0;
+const carimboResolvido = new Map();
+for (const [nome, vistos] of carimbos) {
+  if (vistos.size > 1) conflitosCarimbo++;
+  let melhor = null;
+  for (const [hora, n] of vistos) {
+    if (!melhor || n > melhor[1] || (n === melhor[1] && hora < melhor[0])) melhor = [hora, n];
+  }
+  carimboResolvido.set(nome, melhor[0]);
+}
+if (carimbos.size) {
+  console.log(`fotos com CARIMBO da camera (datetime do json): ${carimboResolvido.size}`);
+  console.log(`fotos em que os carimbos discordam: ${conflitosCarimbo}`);
+}
+
+// O nome PIC_ carrega o inicio da captura e o numero do quadro. Multiplicado
+// pela cadencia da missao, isso da a hora sem fonte externa nenhuma. E
+// RECONSTRUCAO: entra so onde carimbo e fonte externa nao cobriram.
 const doNomeMapa = new Map();
 if (doNome) {
   for (const [nome] of doBanco) {
-    if (resolvido.has(nome)) continue;
-    const hora = captureTimeFromName(nome);
+    if (carimboResolvido.has(nome) || resolvido.has(nome)) continue;
+    const hora = captureTimeFromName(nome, cadencia);
     if (hora) doNomeMapa.set(nome, hora);
   }
-  console.log(`fotos com hora deduzida do nome: ${doNomeMapa.size}`);
+  console.log(`fotos com hora reconstruida do nome (cadencia de ${cadencia} s): ${doNomeMapa.size}`);
 }
 
 // ============================================================
@@ -425,12 +536,18 @@ if (doNome) {
 // ============================================================
 
 /**
- * Hora final de uma foto: a fonte externa vence, o nome preenche o resto.
+ * Hora final de uma foto, na ordem MEDIDA antes de DERIVADA: o carimbo da
+ * camera vence, a fonte externa vem depois, o nome preenche o resto.
+ *
+ * O carimbo sai direto, sem `paraHoraLocal`: ele ja e hora local do relogio da
+ * camera, e nao epoch de fonte externa, entao nao leva desvio nem fuso.
  *
  * @param {string} nome - original_name
  * @returns {string|null} `AAAA-MM-DDTHH:MM:SS` local, ou null
  */
 function horaDe(nome) {
+  const carimbo = carimboResolvido.get(nome);
+  if (carimbo !== undefined) return carimbo;
   const epoch = resolvido.get(nome);
   if (epoch !== undefined) return paraHoraLocal(epoch, doBanco.get(nome)?.slug);
   return doNomeMapa.get(nome) ?? null;
@@ -439,20 +556,24 @@ function horaDe(nome) {
 const tabela = [];
 for (const p of projetos) {
   const linhas = porProjeto.get(p.slug);
+  let doCarimbo = 0;
   let daFonte = 0;
   let doNomeN = 0;
   let muda = 0;
   for (const l of linhas) {
     const hora = horaDe(l.original_name);
     if (hora === null) continue;
-    if (resolvido.has(l.original_name)) daFonte++; else doNomeN++;
+    if (carimboResolvido.has(l.original_name)) doCarimbo++;
+    else if (resolvido.has(l.original_name)) daFonte++;
+    else doNomeN++;
     if (l.captured_at !== hora) muda++;
   }
-  const com = daFonte + doNomeN;
+  const com = doCarimbo + daFonte + doNomeN;
   if (!com && slugFiltro === null) continue;
   tabela.push({
     projeto: p.slug,
     fotos: linhas.length,
+    doCarimbo,
     daFonte,
     doNome: doNomeN,
     cobertura: `${((100 * com) / Math.max(linhas.length, 1)).toFixed(0)}%`,

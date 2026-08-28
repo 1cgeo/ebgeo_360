@@ -57,11 +57,23 @@ const RE_PIC = /^PIC_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_\d{2}_\d{2}_\d{
 const RE_PIC_SINGLE = /^PIC_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_(\d{14})$/;
 
 /**
- * Intervalo do timelapse, em segundos.
+ * Intervalo do timelapse, em segundos. PADRAO, e nao constante da natureza.
  *
  * Fonte primaria: o `pro.prj` que a propria camera grava traz
  * `interval="4000" type="timelapse"`, unanime nos 163 arquivos das tres missoes
  * Insta360 (51 no faxinal, 41 no saica, 71 no santiago).
+ *
+ * **A CADENCIA MUDA POR MISSAO, e tratar isto como constante erra em silencio.**
+ * O lote de Cascavel (2026-08) traz `interval="2000"` nos 58 `pro.prj`, ou seja
+ * METADE. Medida contra o `datetime` que a camera carimba em cada foto, a
+ * cadencia real la fica entre 2,00 e 2,17 s por quadro nas 55 sessoes. Com o
+ * padrao de 4 s a hora reconstruida corre ADIANTE do real, e o erro cresce com o
+ * numero do quadro: mediana de 72 a 259 s por projeto, e 1.028 s no pior caso.
+ *
+ * Dezessete minutos movem o sol, entao isto envenena a calibracao solar sem
+ * produzir erro nenhum. Quem reconstroi hora de um lote novo LE o `interval` do
+ * `pro.prj` daquela missao e passa em `cadenciaS`, ou usa o carimbo por foto,
+ * que nao precisa reconstruir nada.
  */
 const INTERVALO_TIMELAPSE_S = 4;
 
@@ -123,15 +135,19 @@ export function parseCaptureRun(originalName) {
  *
  * O MULTICAPTURA nao tem hora no nome e devolve null: la o id da sessao e opaco.
  *
+ * ESTA E RECONSTRUCAO, e nao medida. Ela so acerta se `cadenciaS` for a da
+ * missao (ver `INTERVALO_TIMELAPSE_S`). Havendo carimbo por foto, use o carimbo.
+ *
  * @param {string} originalName - Nome do arquivo de origem
+ * @param {number} [cadenciaS] - Intervalo do timelapse da MISSAO, em segundos
  * @returns {string|null} `AAAA-MM-DDTHH:MM:SS` local, ou null
  */
-export function captureTimeFromName(originalName) {
+export function captureTimeFromName(originalName, cadenciaS = INTERVALO_TIMELAPSE_S) {
   const parsed = parseCaptureRun(originalName);
   // Disparo unico: a hora do disparo E o proprio nome, sem cadencia a somar.
   if (parsed?.shotAt) return parsed.shotAt;
   if (!parsed?.startedAt) return null;
-  const t = new Date(`${parsed.startedAt}Z`).getTime() + parsed.frame * INTERVALO_TIMELAPSE_S * 1000;
+  const t = new Date(`${parsed.startedAt}Z`).getTime() + parsed.frame * cadenciaS * 1000;
   return new Date(t).toISOString().slice(0, 19);
 }
 

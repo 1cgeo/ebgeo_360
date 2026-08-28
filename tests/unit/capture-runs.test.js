@@ -68,6 +68,29 @@ describe('captureTimeFromName', () => {
     assert.equal(captureTimeFromName('MULTICAPTURA_9468_005109'), null);
     assert.equal(captureTimeFromName('SEM_PADRAO.jpg'), null);
   });
+
+  // A CADENCIA MUDA POR MISSAO. O faxinal, o saica e o santiago gravam
+  // `interval="4000"`; o lote de Cascavel grava `interval="2000"` nos 58
+  // pro.prj. Com o padrao errado a hora corre adiante, e o erro cresce com o
+  // quadro: 1.028 s no pior caso medido, que move o sol e envenena a
+  // calibracao sem produzir erro nenhum.
+  it('aceita a cadencia da missao, em vez de assumir a do faxinal', () => {
+    const nome = 'PIC_20260427_100639_26_05_05_16_46_57_output_340';
+    assert.equal(captureTimeFromName(nome, 2), '2026-04-27T10:17:59');
+    assert.equal(captureTimeFromName(nome, 4), '2026-04-27T10:29:19');
+  });
+
+  it('mantem 4 s como padrao, para o acervo ja importado nao mudar', () => {
+    const nome = 'PIC_20260427_100639_26_05_05_16_46_57_output_340';
+    assert.equal(captureTimeFromName(nome), captureTimeFromName(nome, 4));
+  });
+
+  // Disparo unico nao tem quadro a somar, entao a cadencia nao o alcanca.
+  it('a cadencia nao move o disparo unico, que ja traz a hora no nome', () => {
+    const nome = 'PIC_20260520_104137_20260521163900';
+    assert.equal(captureTimeFromName(nome, 2), captureTimeFromName(nome, 4));
+    assert.equal(captureTimeFromName(nome, 2), '2026-05-20T10:41:37');
+  });
 });
 
 describe('runLabel', () => {
