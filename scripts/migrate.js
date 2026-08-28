@@ -13,6 +13,7 @@
  *   node scripts/migrate.js --metadata <METADATA_DIR> --images <IMG_DIR>
  *     [--output <DATA_DIR>] [--workers <N>] [--skip-images] [--skip-targets]
  *     [--multiplier <N>] [--max-targets <N>] [--sectors <N>] [--per-sector <N>]
+ *     [--tracks <fotos_linha.geojson|DIR>] [--track-tol <M>]
  */
 
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
@@ -22,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 import { resolveMeshRotation, quaternionToHeading } from './lib/orientation.js';
 import { parseFloor, defaultFloorLabel } from './lib/floors.js';
+import { carregarTracado } from './lib/tracks.js';
 
 
 // ============================================================
@@ -42,6 +44,10 @@ function parseArgs() {
     maxTargets: 6,     // max spatial targets per photo
     sectors: 4,        // number of angular sectors (360/4 = 90° each)
     perSector: 3,      // max targets per sector
+    // Guarda do tracado (scripts/lib/tracks.js). Sem `--tracks` nada muda, e a
+    // Fase 5 segue ligando so por proximidade, como sempre fez.
+    tracks: null,      // caminho do fotos_linha.geojson, ou pasta que o contenha
+    trackTol: 3,       // excesso maximo, em metros, para a conexao valer
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -56,12 +62,21 @@ function parseArgs() {
       case '--max-targets': opts.maxTargets = parseInt(args[++i], 10); break;
       case '--sectors': opts.sectors = parseInt(args[++i], 10); break;
       case '--per-sector': opts.perSector = parseInt(args[++i], 10); break;
+      case '--tracks': opts.tracks = args[++i]; break;
+      case '--track-tol': opts.trackTol = parseFloat(args[++i]); break;
     }
   }
 
   if (!opts.metadata || !opts.images) {
-    console.error('Usage: node migrate.js --metadata <METADATA_DIR> --images <IMG_DIR> [--output <DATA_DIR>] [--workers <N>] [--skip-images] [--skip-targets] [--multiplier <N>] [--max-targets <N>] [--sectors <N>] [--per-sector <N>]');
+    console.error('Usage: node migrate.js --metadata <METADATA_DIR> --images <IMG_DIR> [--output <DATA_DIR>] [--workers <N>] [--skip-images] [--skip-targets] [--multiplier <N>] [--max-targets <N>] [--sectors <N>] [--per-sector <N>] [--tracks <fotos_linha.geojson|DIR>] [--track-tol <M>]');
     process.exit(1);
+  }
+
+  // O tracado presente e ignorado em silencio seria o pior dos mundos: a Fase 5
+  // ligaria atraves de parede num lote que trouxe como nao fazer isso.
+  if (!opts.tracks && existsSync(join(opts.metadata, 'fotos_linha.geojson'))) {
+    console.warn('  AVISO: ha fotos_linha.geojson em --metadata e --tracks NAO foi passado.');
+    console.warn('         A Fase 5 vai ligar so por proximidade, sem a guarda do tracado.');
   }
 
   return opts;
@@ -72,6 +87,40 @@ function parseArgs() {
 // ============================================================
 
 const PROJECTS = [
+  // === Lote 2026-08: Missão Cascavel, cinco OM da 4ª Bda Inf Mec ===
+  //
+  // 1.747 panorâmicas em cinco quartéis do oeste do PR e do extremo oeste de SC,
+  // capturadas entre 28/07 e 04/08/2026 com UM rig só (Insta360 Pro2, série
+  // IP2E30FN7S8MDX), em timelapse de 2 s. Metadados e imagens na MESMA pasta.
+  //
+  // CINCO PROJETOS, E NÃO UM. Os centros distam de 89 km (14º RCMec para 16º Esq
+  // Cav) a 306 km. O raio de atribuição é de 50 km, então um projeto só deixaria
+  // quase tudo em `_unassigned_photos.csv`. Nenhum projeto do acervo está a menos
+  // de 188 km, e nenhum dos 1.747 nomes colide com as 99.190 fotos existentes.
+  //
+  // RODAR COM `--tracks`, apontando o `fotos_linha.geojson` da pasta. A Fase 5
+  // com raio adaptativo de 52 a 65 m abre de 548 a 5.096 pares candidatos, dos
+  // quais 87,6% a 92,4% NÃO seguem o traçado: em quartel, 40 m em linha reta
+  // atravessa pavilhão. A guarda de `lib/tracks.js` preserva 100% do grafo
+  // entregue e corta de 47,2% a 68,6% dos candidatos.
+  //
+  // NÃO usar `--skip-targets`: três dos cinco chegam com o grafo partido (14º
+  // RCMec 287+32, 34º BI Mec 182+70+33, Cmd 4ª Bda 63+43), e aqui tudo é campanha
+  // de um dia só ao ar livre, sem o risco de época misturada do serra_dourada.
+  //
+  // A foto de entrada é, em cada um, a cabeça da maior cadeia `next` DENTRO do
+  // componente principal. Cabeça fora do componente principal foi a armadilha do
+  // lote do faxinal.
+  //
+  // A localidade saiu das coordenadas, e o centro é a média das fotos do projeto.
+  // As 1.747 vêm com `mesh_rotation_y = 60` fixo, ou seja SEM calibração: o
+  // levantamento não mediu rumo. Ver a skill `calibrar-orientacao-360`.
+  { name: '14º Regimento de Cavalaria Mecanizado', slug: '14o_rcmec', description: 'Imagens panorâmicas do 14º Regimento de Cavalaria Mecanizado', capture_date: '2026-07-28', location: 'São Miguel do Oeste, SC', lat: -26.753680, lon: -53.504556, entryPhoto: 'PIC_20260728_134647_26_08_11_14_11_31_output_063' },
+  { name: 'Comando da 4ª Brigada de Infantaria Mecanizada', slug: 'cmd_4a_bda_inf', description: 'Imagens panorâmicas do Comando da 4ª Brigada de Infantaria Mecanizada', capture_date: '2026-07-29', location: 'Cascavel, PR', lat: -24.963988, lon: -53.445917, entryPhoto: 'PIC_20260729_132220_26_08_13_09_58_09_output_001' },
+  { name: '15ª Companhia de Infantaria Motorizada', slug: '15a_ciainfmot', description: 'Imagens panorâmicas da 15ª Companhia de Infantaria Motorizada', capture_date: '2026-07-30', location: 'Guaíra, PR', lat: -24.086892, lon: -54.272847, entryPhoto: 'PIC_20260730_094844_26_08_19_14_30_45_output_012' },
+  { name: '34º Batalhão de Infantaria Mecanizado', slug: '34o_bimec', description: 'Imagens panorâmicas do 34º Batalhão de Infantaria Mecanizado', capture_date: '2026-07-31', location: 'Foz do Iguaçu, PR', lat: -25.528312, lon: -54.581972, entryPhoto: 'PIC_20260731_142240_26_08_21_11_43_31_output_04' },
+  { name: '16º Esquadrão de Cavalaria Mecanizado', slug: '16o_esqcav', description: 'Imagens panorâmicas do 16º Esquadrão de Cavalaria Mecanizado', capture_date: '2026-08-04', location: 'Francisco Beltrão, PR', lat: -26.060727, lon: -53.053567, entryPhoto: 'PIC_20260804_132409_26_08_13_14_36_47_output_006' },
+
   // === Lote 2026-08: Serra Dourada, entrega do 2º CGEO ===
   //
   // 150 panorâmicas do entorno do Estádio Serra Dourada, em Goiânia. Metadados
@@ -654,12 +703,15 @@ function buildAdaptiveGrid(photoList, radius) {
  * @param {Map<string, Array<{bearing: number}>>} originalBearingsMap - name → [{bearing}]
  * @param {number} radius - Search radius in meters
  * @param {Object} opts - {maxTargets, sectors, perSector}
- * @returns {Map<string, Array<{targetName, distance, bearing}>>}
+ * @param {?{tracado: Object, tol: number}} guarda - guarda do tracado, ou null
+ * @returns {{targets: Map<string, Array<{targetName, distance, bearing}>>, reprovados: number, avaliados: number}}
  */
-function generateSpatialTargetsForProject(projectPhotos, originalTargetMap, originalBearingsMap, radius, opts) {
+function generateSpatialTargetsForProject(projectPhotos, originalTargetMap, originalBearingsMap, radius, opts, guarda = null) {
   const { grid, cellLatDeg, cellLonDeg } = buildAdaptiveGrid(projectPhotos, radius);
   const sectorSize = 360 / opts.sectors;
   const result = new Map();
+  let reprovados = 0;
+  let avaliados = 0;
 
   for (const photo of projectPhotos) {
     const existingTargetNames = originalTargetMap.get(photo.name) || new Set();
@@ -689,6 +741,16 @@ function generateSpatialTargetsForProject(projectPhotos, originalTargetMap, orig
           const dist = haversine(photo.lat, photo.lon, c.lat, c.lon);
           if (dist > radius) continue;
 
+          // Guarda do tracado: a conexao tem de poder ser ANDADA. Sem ela a
+          // proximidade liga foto a foto atraves de pavilhao.
+          if (guarda) {
+            avaliados++;
+            if (guarda.tracado.excesso(photo.lat, photo.lon, c.lat, c.lon) > guarda.tol) {
+              reprovados++;
+              continue;
+            }
+          }
+
           const bear = bearing(photo.lat, photo.lon, c.lat, c.lon);
           const sector = Math.floor(bear / sectorSize) % opts.sectors;
 
@@ -717,7 +779,7 @@ function generateSpatialTargetsForProject(projectPhotos, originalTargetMap, orig
     }
   }
 
-  return result;
+  return { targets: result, reprovados, avaliados };
 }
 
 function adaptiveSpatialAnalysis(photos, photoUUIDs, opts, assignments, projects) {
@@ -761,11 +823,19 @@ function adaptiveSpatialAnalysis(photos, photoUUIDs, opts, assignments, projects
     originalBearingsMap.set(name, bearings);
   }
 
+  // Guarda do tracado, quando o levantamento a trouxe. Ver scripts/lib/tracks.js.
+  let tracado = null;
+  if (opts.tracks) {
+    const carga = carregarTracado(opts.tracks);
+    tracado = carga.tracado;
+    console.log(`  Tracado: ${carga.arquivos.length} arquivo(s), ${tracado.segmentos.length} segmentos, tolerancia de ${opts.trackTol} m.`);
+  }
+
   const spatialTargets = new Map(); // originalName → [{targetName, distance, bearing}]
   let totalNew = 0;
 
-  console.log('  Project                   | Photos | Median NN (m) | Radius (m) | Spatial');
-  console.log('  --------------------------|--------|---------------|------------|--------');
+  console.log('  Project                   | Photos | Median NN (m) | Radius (m) | Spatial | Tracado');
+  console.log('  --------------------------|--------|---------------|------------|---------|--------');
 
   for (const [slug, projectPhotos] of projectPhotoLists) {
     if (projectPhotos.length < 2) continue;
@@ -773,10 +843,24 @@ function adaptiveSpatialAnalysis(photos, photoUUIDs, opts, assignments, projects
     const medianNN = computeMedianNearestDist(projectPhotos);
     if (medianNN == null) continue;
 
+    // O tracado de um projeto nao cobre outro. Sem cobertura a guarda sai, em
+    // vez de reprovar tudo em silencio.
+    let guarda = null;
+    let nota = '-';
+    if (tracado) {
+      if (tracado.cobre(projectPhotos)) guarda = { tracado, tol: opts.trackTol };
+      else nota = 'sem cobertura';
+    }
+
     const radius = Math.round(medianNN * opts.multiplier);
-    const projectSpatial = generateSpatialTargetsForProject(
-      projectPhotos, originalTargetMap, originalBearingsMap, radius, opts
+    const { targets: projectSpatial, reprovados, avaliados } = generateSpatialTargetsForProject(
+      projectPhotos, originalTargetMap, originalBearingsMap, radius, opts, guarda
     );
+
+    if (guarda) {
+      const pc = avaliados > 0 ? (100 * reprovados / avaliados).toFixed(1) : '0.0';
+      nota = `-${reprovados} (${pc}%)`;
+    }
 
     // Merge into global map
     let projectNew = 0;
@@ -791,7 +875,8 @@ function adaptiveSpatialAnalysis(photos, photoUUIDs, opts, assignments, projects
       `${String(projectPhotos.length).padStart(6)} | ` +
       `${medianNN.toFixed(1).padStart(13)} | ` +
       `${String(radius).padStart(10)} | ` +
-      `${String(projectNew).padStart(6)}`
+      `${String(projectNew).padStart(7)} | ` +
+      `${nota}`
     );
   }
 

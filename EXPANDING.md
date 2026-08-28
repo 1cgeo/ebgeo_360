@@ -206,6 +206,53 @@ node scripts/migrate.js \
 | `--max-targets` | — | Teto de alvos espaciais por foto |
 | `--sectors` | 4 | Setores angulares usados na selecao de alvos |
 | `--per-sector` | 3 | Maximo de alvos por setor |
+| `--tracks` | — | `fotos_linha.geojson` (ou pasta que o contenha) que guarda a Fase 5 |
+| `--track-tol` | 3 | Excesso maximo, em metros, para a conexao valer |
+
+### A guarda do tracado (`--tracks`)
+
+A Fase 5 liga foto a foto por PROXIMIDADE, e proximidade nao sabe onde ha
+parede. Num quartel duas fotos a 40 m podem estar em ruas paralelas separadas
+por um pavilhao: a reta entre elas atravessa o predio, e o visualizador ganha um
+marcador que manda o operador andar para dentro da alvenaria.
+
+Quando o levantamento entrega `fotos_linha.geojson`, passe `--tracks`. A Fase 5
+passa a exigir que a conexao possa ser ANDADA. Se o `fotos_linha.geojson` estiver
+na pasta de `--metadata` e a opcao nao vier, a migracao AVISA, em vez de ignorar
+o arquivo em silencio.
+
+**A regua nao e o afastamento bruto, e por medida.** No lote de Cascavel as
+fotos ficam sobre a linha (p99 de 0,0 m), porque o tracado nasce dos proprios
+pontos. Entao afastamento absoluto mede a foto, e nao o caminho. O que decide e
+o EXCESSO: quanto a corda A-B se afasta do tracado ALEM do que os proprios
+extremos ja estao afastados. Cruzamento legitimo sobrevive de proposito, porque
+ali a corda corre por cima do tracado e o excesso fica em zero. Filtrar por
+"mesma faixa" mataria esse caso, e por isso nao e o criterio.
+
+**O limite de 3 m saiu de medida.** O grafo ENTREGUE dos cinco projetos de
+Cascavel (1.768 conexoes desenhadas pelo levantamento, que sao a verdade de campo
+do que e conexao legitima) tem excesso 0,0 m no p99 e 1,6 m no maximo. Os
+candidatos que so a proximidade cria tem excesso mediano de 2,7 a 6,4 m e cauda
+ate 31,6 m.
+
+Medido nos cinco projetos, com `--skip-images`:
+
+| Projeto | Alvos sem a guarda | Com a guarda | Candidatos reprovados | Componentes |
+|---|---|---|---|---|
+| `14o_rcmec` | 1.580 | 1.035 | 57,6% | 1 antes e 1 depois |
+| `15a_ciainfmot` | 3.969 | 2.949 | 51,8% | 1 antes e 1 depois |
+| `16o_esqcav` | 982 | 538 | 67,9% | 1 antes e 1 depois |
+| `34o_bimec` | 1.377 | 1.009 | 46,4% | 1 antes e 1 depois |
+| `cmd_4a_bda_inf` | 487 | 293 | 58,0% | 1 antes e 1 depois |
+
+A conferencia que podia reprovar e a ultima coluna: o grafo continua em UM
+componente nos cinco, com zero foto isolada. Cortar conexao demais partiria o
+projeto, e nao partiu.
+
+Projeto cujo tracado nao veio NAO e filtrado por tracado alheio. A `Tracado.cobre`
+pergunta antes se a nuvem de fotos esta sobre a linha, e a guarda sai da frente
+quando nao esta, em vez de reprovar tudo em silencio. A coluna `Tracado` da tabela
+da Fase 5 imprime `sem cobertura` nesse caso.
 
 Um projeto pode ainda trazer `skipTargets: true` na propria entrada de `PROJECTS`,
 que pula a geracao automatica so daquele projeto (distinto do `--skip-targets`,
