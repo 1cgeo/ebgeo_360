@@ -20,7 +20,8 @@
     "import-captured-at": "node scripts/import-captured-at.js",
     "bench": "node --env-file-if-exists=.env --expose-gc bench/banco.js",
     "bench:http": "node --env-file-if-exists=.env bench/http.js",
-    "bench:cliente": "node --env-file-if-exists=.env bench/cliente.js"
+    "bench:cliente": "node --env-file-if-exists=.env bench/cliente.js",
+    "exportar-projeto": "node scripts/exportar-projeto.js"
   },
   "dependencies": {
     "@fastify/compress": "^8.3.1",
