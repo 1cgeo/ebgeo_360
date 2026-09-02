@@ -87,6 +87,39 @@ function parseArgs() {
 // ============================================================
 
 const PROJECTS = [
+  // === Lote 2026-08: EXPOEX 2026, no Cais Mauá ===
+  //
+  // 101 panorâmicas da Exposição do Exército, no Cais Mauá em Porto Alegre,
+  // capturadas em 2026-08-23 entre 13:11 e 14:46 com Insta360 Pro2 (série
+  // IP2E30FN7S8MDX, a mesma de Cascavel). Área pequena: 230 m de diagonal, com
+  // mediana de 5,1 m entre vizinhas. Metadados e imagens na MESMA pasta, que é
+  // PREPARADA e não a da entrega. Ver docs/migracao-expoex-2026.md.
+  //
+  // A ENTREGA TRAZ A COORDENADA ERRADA, e por isso a pasta é preparada. O
+  // posicionamento foi ajustado à mão no QGIS, mas só a GEOMETRIA do
+  // `imagens_processadas.gpkg` andou: os atributos `long_img`/`lat_img`, de onde
+  // os JSON nasceram, ficaram na posição anterior. Diferença medida em 82 das
+  // 101 fotos, mediana de 3,06 m e máximo de 15,65 m, contra 5,1 m entre
+  // vizinhas. Quem manda é a geometria, e a prova é o traçado: os 101 pontos
+  // dela coincidem com vértices do `fotos_linha.geojson` na precisão cheia
+  // (101 de 101, contra 17 de 101 pelo atributo).
+  //
+  // RODAR COM `--tracks`. Aqui o `fotos_linha.geojson` NÃO é caminho andado, é a
+  // própria camada de conexões que a equipe desenhou, uma linha por ligação.
+  // Serve de guarda do mesmo jeito, e com a coordenada corrigida cada foto fica
+  // a 0,00 m dela.
+  //
+  // O grafo preparado é a UNIÃO de duas fontes que divergiam: as 215 conexões
+  // dos JSON e as 180 da camada de linha, que tinha 10 que os JSON não trazem
+  // (de 9,8 m a 56,6 m, ou seja fora do alcance da Fase 5). Ficam 225.
+  //
+  // A foto de entrada é a de maior grau (17 conexões), na área de barracas.
+  //
+  // As 101 vêm com `mesh_rotation_y = 60` fixo e `gyro_stabilized: false`, ou
+  // seja SEM calibração de rumo. O levantamento foi a PÉ, então a inclinação
+  // muda foto a foto e não há rajada de acelerômetro no JSON.
+  { name: 'EXPOEX 2026', slug: 'expoex_2026', description: 'Imagens panorâmicas da Exposição do Exército (EXPOEX) 2026, no Cais Mauá', capture_date: '2026-08-23', location: 'Porto Alegre, RS', lat: -30.032221, lon: -51.240292, entryPhoto: 'PIC_20260823_131404_26_08_23_15_59_07_output_1' },
+
   // === Lote 2026-08: Missão Cascavel, cinco OM da 4ª Bda Inf Mec ===
   //
   // 1.747 panorâmicas em cinco quartéis do oeste do PR e do extremo oeste de SC,
@@ -115,11 +148,11 @@ const PROJECTS = [
   // A localidade saiu das coordenadas, e o centro é a média das fotos do projeto.
   // As 1.747 vêm com `mesh_rotation_y = 60` fixo, ou seja SEM calibração: o
   // levantamento não mediu rumo. Ver a skill `calibrar-orientacao-360`.
-  { name: '14º Regimento de Cavalaria Mecanizado', slug: '14o_rcmec', description: 'Imagens panorâmicas do 14º Regimento de Cavalaria Mecanizado', capture_date: '2026-07-28', location: 'São Miguel do Oeste, SC', lat: -26.753680, lon: -53.504556, entryPhoto: 'PIC_20260728_134647_26_08_11_14_11_31_output_063' },
-  { name: 'Comando da 4ª Brigada de Infantaria Mecanizada', slug: 'cmd_4a_bda_inf', description: 'Imagens panorâmicas do Comando da 4ª Brigada de Infantaria Mecanizada', capture_date: '2026-07-29', location: 'Cascavel, PR', lat: -24.963988, lon: -53.445917, entryPhoto: 'PIC_20260729_132220_26_08_13_09_58_09_output_001' },
-  { name: '15ª Companhia de Infantaria Motorizada', slug: '15a_ciainfmot', description: 'Imagens panorâmicas da 15ª Companhia de Infantaria Motorizada', capture_date: '2026-07-30', location: 'Guaíra, PR', lat: -24.086892, lon: -54.272847, entryPhoto: 'PIC_20260730_094844_26_08_19_14_30_45_output_012' },
-  { name: '34º Batalhão de Infantaria Mecanizado', slug: '34o_bimec', description: 'Imagens panorâmicas do 34º Batalhão de Infantaria Mecanizado', capture_date: '2026-07-31', location: 'Foz do Iguaçu, PR', lat: -25.528312, lon: -54.581972, entryPhoto: 'PIC_20260731_142240_26_08_21_11_43_31_output_04' },
-  { name: '16º Esquadrão de Cavalaria Mecanizado', slug: '16o_esqcav', description: 'Imagens panorâmicas do 16º Esquadrão de Cavalaria Mecanizado', capture_date: '2026-08-04', location: 'Francisco Beltrão, PR', lat: -26.060727, lon: -53.053567, entryPhoto: 'PIC_20260804_132409_26_08_13_14_36_47_output_006' },
+  // { name: '14º Regimento de Cavalaria Mecanizado', slug: '14o_rcmec', description: 'Imagens panorâmicas do 14º Regimento de Cavalaria Mecanizado', capture_date: '2026-07-28', location: 'São Miguel do Oeste, SC', lat: -26.753680, lon: -53.504556, entryPhoto: 'PIC_20260728_134647_26_08_11_14_11_31_output_063' },
+  // { name: 'Comando da 4ª Brigada de Infantaria Mecanizada', slug: 'cmd_4a_bda_inf', description: 'Imagens panorâmicas do Comando da 4ª Brigada de Infantaria Mecanizada', capture_date: '2026-07-29', location: 'Cascavel, PR', lat: -24.963988, lon: -53.445917, entryPhoto: 'PIC_20260729_132220_26_08_13_09_58_09_output_001' },
+  // { name: '15ª Companhia de Infantaria Motorizada', slug: '15a_ciainfmot', description: 'Imagens panorâmicas da 15ª Companhia de Infantaria Motorizada', capture_date: '2026-07-30', location: 'Guaíra, PR', lat: -24.086892, lon: -54.272847, entryPhoto: 'PIC_20260730_094844_26_08_19_14_30_45_output_012' },
+  // { name: '34º Batalhão de Infantaria Mecanizado', slug: '34o_bimec', description: 'Imagens panorâmicas do 34º Batalhão de Infantaria Mecanizado', capture_date: '2026-07-31', location: 'Foz do Iguaçu, PR', lat: -25.528312, lon: -54.581972, entryPhoto: 'PIC_20260731_142240_26_08_21_11_43_31_output_04' },
+  // { name: '16º Esquadrão de Cavalaria Mecanizado', slug: '16o_esqcav', description: 'Imagens panorâmicas do 16º Esquadrão de Cavalaria Mecanizado', capture_date: '2026-08-04', location: 'Francisco Beltrão, PR', lat: -26.060727, lon: -53.053567, entryPhoto: 'PIC_20260804_132409_26_08_13_14_36_47_output_006' },
 
   // === Lote 2026-08: Serra Dourada, entrega do 2º CGEO ===
   //
@@ -139,7 +172,7 @@ const PROJECTS = [
   //
   // O lote mistura CINCO campanhas: 2015-08 (3), 2017-02 (6), 2018-10 (12),
   // 2018-11 (49) e 2019-04 (80). O `capture_date` traz a mais recente.
-  { name: 'Estádio Serra Dourada', slug: 'serra_dourada', description: 'Imagens panorâmicas do entorno do Estádio Serra Dourada', capture_date: '2019-04-01', location: 'Goiânia, GO', lat: -16.698887, lon: -49.234559, entryPhoto: 'goiania-goias_2018-11_z5_LeUhNMDBpvH3', skipTargets: true },
+  // { name: 'Estádio Serra Dourada', slug: 'serra_dourada', description: 'Imagens panorâmicas do entorno do Estádio Serra Dourada', capture_date: '2019-04-01', location: 'Goiânia, GO', lat: -16.698887, lon: -49.234559, entryPhoto: 'goiania-goias_2018-11_z5_LeUhNMDBpvH3', skipTargets: true },
 
   // === Lote 2026-08: Beira-Rio, o primeiro projeto COM ANDARES ===
   //
@@ -155,14 +188,14 @@ const PROJECTS = [
   // A foto de entrada e cabeca de cadeia `next` com 11 passos, no andar 1,
   // DENTRO do componente principal (330 de 350) e com heading medido. Cabeca de
   // cadeia fora do componente principal foi a armadilha do lote do faxinal.
-  { name: 'Beira-Rio', slug: 'beira_rio', description: 'Imagens panorâmicas do Estádio Beira-Rio', capture_date: '2026-05-20', location: 'Porto Alegre, RS', lat: -30.065515, lon: -51.236004, entryPhoto: 'PIC_20260520_104137_20260521163900' },
+  // { name: 'Beira-Rio', slug: 'beira_rio', description: 'Imagens panorâmicas do Estádio Beira-Rio', capture_date: '2026-05-20', location: 'Porto Alegre, RS', lat: -30.065515, lon: -51.236004, entryPhoto: 'PIC_20260520_104137_20260521163900' },
 
   // === Lote 2026-07 (fonte D:\dados_ebgeo) ===
   // AMAN: substituição do projeto antigo (5.312 fotos) pelo lote streetviewaman
   // (11.756). Rodar com --metadata apontando para a pasta PREPARADA — os JSONs
   // da fonte não têm `next` e trazem 166 targets longos redundantes.
   // Ver docs/migracao-aman.md.
-  { name: 'Academia Militar das Agulhas Negras', slug: 'aman', description: 'Imagens panorâmicas da Academia Militar das Agulhas Negras', capture_date: '2025-11-06', location: 'Resende, RJ', lat: -22.439251, lon: -44.380062, entryPhoto: 'MULTICAPTURA_7674_000990' },
+  // { name: 'Academia Militar das Agulhas Negras', slug: 'aman', description: 'Imagens panorâmicas da Academia Militar das Agulhas Negras', capture_date: '2025-11-06', location: 'Resende, RJ', lat: -22.439251, lon: -44.380062, entryPhoto: 'MULTICAPTURA_7674_000990' },
 
   // DCMun — JÁ IMPORTADO em 2026-07-26 (1.235 fotos). Ver docs/migracao-dcmun.md.
   // { name: 'Depósito Central de Munição', slug: 'dcmun', description: 'Imagens panorâmicas do Depósito Central de Munição', capture_date: '2026-06-23', location: 'Paracambi, RJ', lat: -22.660976, lon: -43.714590, entryPhoto: 'MULTICAPTURA_0000_000154' },
