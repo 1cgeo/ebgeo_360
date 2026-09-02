@@ -224,7 +224,91 @@ e o minimapa no Cais Embarcadero.
   nesta máquina, e a poda é decisão à parte.
 - **Deploy no servidor.** O que está descrito aqui foi feito na cópia de teste.
 
-## Calibração: o que a medida diz
+## A calibração, feita em 2026-09-02
+
+O lote chegou com `mesh_rotation_y = 60` fixo nas 101 e `gyro_stabilized: false`.
+O chefe calibrou à mão a foto de entrada no visualizador (`y = 331,9`, `x = 2,8`,
+`z = 1,0`), aplicou o valor ao projeto e disse que teria de ser corrigido foto a
+foto. A medida confirmou, e deu o número.
+
+### O bruto da missão tem os gyro.mp4
+
+A pasta do bruto do Insta360 fica na chave `MISSAO_EXPOEX_DIR` do `.env` do
+vault. São 137 pastas de sessão, uma por parada, cada uma com `gyro.mp4`, os
+`origin_<disparo>_<lente>_*.jpg` e o `pro.prj`. As 101 fotos do lote casam uma a
+uma com a sua pasta, pelos 19 primeiros caracteres do nome.
+
+A raiz do bruto não tem JSON nenhum, porque a entrega processada mora em outra
+pasta. O `fase_rajadas` do `calibrar.py` passou a tirar os nomes do `index.db`
+quando não acha JSON na raiz.
+
+### Um valor único de guinada está errado por construção
+
+O azimute do sol MEDIDO nas imagens espalha pela circunferência inteira (p50 de
+93° em torno da média), enquanto o azimute PREVISTO varia só 22,3° na missão
+toda. Contra o 331,9 aplicado ao projeto, a guinada que o sol pede difere em
+96,4° na mediana, e 95% das fotos ficam a mais de 3°.
+
+O `derive-runs.js` já dizia isso por outro caminho: 101 faixas de uma foto cada.
+
+### O método: sol para o rumo, acelerômetro para a vertical
+
+Uma foto dá UMA observação do sol, que são 2 vínculos para 3 graus de liberdade.
+O terceiro vem da vertical do acelerômetro, e as duas direções bastam para
+resolver a rotação por foto.
+
+Os eixos do IMU se ligam ao frame do panorama por UMA rotação para o projeto
+todo, ajustada pelo ângulo ZENITAL do sol, que a efeméride sabe e que não depende
+da resposta. Sobra de 0,89° na mediana e 2,96° no p90, com 82 de 86 fotos
+dentro. Como o ajuste não usa o gabarito, o gabarito fica livre para conferir.
+
+### O resultado
+
+| medida | valor |
+|---|---|
+| sol detectado | 86 de 101 (85,1%) |
+| resolvidas | 82 |
+| gravadas | 81 (a de entrada ficou como o chefe deixou) |
+| inclinação contra a vertical | p50 3,63°, p90 4,69°, máximo 6,61° |
+| guinada gravada | de 0,1° a 359,8° |
+| gabarito, fora do ajuste | d_y = -7,30°, d_x = +0,17°, d_z = +2,22° |
+
+Releitura do banco depois de gravar: 81 de 81 conferem campo a campo.
+
+### A prova de produto: o marcador cai onde se anda
+
+O ajuste usou o disco do sol, o acelerômetro e a efeméride. NÃO usou a posição
+das fotos nem o grafo. O azimute da foto vizinha, que sai só da geometria, é
+medida de fora: com o ângulo certo a coluna correspondente do panorama mostra a
+passagem por onde se chega lá.
+
+    py provar_marcador.py --slug expoex_2026
+
+Seis fotos sorteadas ao longo da sequência, seis vistas em passagem: um portão
+aberto, um pátio, a rua de pedestres, a esplanada do cais, um calçadão e uma rua.
+Nenhuma parede, barraca de lado ou viatura.
+
+### 19 fotos ficam para a mão
+
+15 sem sol detectado e 4 recusadas por sobra alta, que é detecção falsa. Sem sol
+não há guinada, e interpolar da vizinha não vale aqui, porque cada foto é uma
+pose. Elas ficam com `calibration_source` nulo:
+
+EXPOEX_2026_0006, 0007, 0008, 0009, 0018, 0021, 0023, 0024, 0028, 0029, 0030,
+0031, 0037, 0039, 0045, 0047, 0073, 0074 e 0098.
+
+### A armadilha do botão "aplicar ao projeto"
+
+O `batchUpdateMeshRotationY` escreve `calibration_source = 'manual'` em TODAS as
+fotos do projeto. A marca existe para proteger a foto que uma pessoa mediu, e um
+valor de lote não é isso: ela ficou nas 101 e faria o ajuste pular o projeto
+inteiro. Foi limpa nas 100 que só receberam o valor de lote, mantida na foto de
+entrada, que é a única com `calibration_reviewed = 1`.
+
+O conserto durável seria o batch escrever outra marca, algo como `'lote'`, para
+o ajuste distinguir uma da outra.
+
+## Anexo: o levantamento da calibração, antes de rodar
 
 O lote chega com `mesh_rotation_y = 60` fixo nas 101 e `gyro_stabilized: false`,
 ou seja sem calibração de rumo.
