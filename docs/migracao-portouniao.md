@@ -138,7 +138,39 @@ O lote chegou com `mesh_rotation_y = 60` fixo. Ver a skill
   pela correção (`grafo+visao`, 35 e 50), as demais a constante (`proj+visao`,
   98 e 31). Releitura 214 de 214, e o `provar_marcador.py` põe as 12 vistas em
   rua ou passagem. Com o `y = 60` de lote o marcador errava de 47° a 108°.
-- **`cimh`**: ver abaixo.
+- **`cimh`**: o ramo do sol passou nos portões (856 com sol, sobra de 2,05° na
+  elevação, apoio de 12,6%), mas só 1 das 13 faixas virou âncora e as outras
+  herdaram o `y = 333,43` pela proximidade no tempo. Dois juízes cegos, 51 vistas
+  nas 13 faixas: os dias 12 e 13 fecham (mediana de -2° a +6° fora da foto 0) e
+  as 4 faixas do dia 14 caem todas a cerca de -36°. A montagem mudou de um dia
+  para o outro. O dia 14 ficou com 297,4, confirmado por 37 vistas NOVAS
+  (medianas de -1° a +1°).
+
+### O heading da entrega vinha invertido em 1.158 fotos da CIMH
+
+O juiz do dia 14 achou 4 vistas olhando para TRÁS, com carro de frente na
+própria mão. A causa: o `heading` delas aponta para a foto ANTERIOR. Medido nas
+5.151, comparando o heading com o rumo para a foto anterior e para a seguinte na
+ordem do tempo (base de 3 a 40 m; os dois acima de 135° é invertida):
+
+| projeto | certas | invertidas | ambíguas (curva) | sem base |
+|---|---|---|---|---|
+| `5o_becmb` | 122 | 0 | 10 | 1 |
+| `5o_rcc` | 81 | 0 | 0 | 0 |
+| `cimh` | 3.678 | 1.158 | 57 | 44 |
+
+As invertidas são fotos isoladas, em blocos de 1 a 8, nas 13 faixas, com o
+heading a 179° a 180° do sentido de marcha. As 4 vistas de tráfego para trás
+eram 4 das invertidas, sem caso contrário. Em estrada de terra reta o juiz não
+distingue frente de trás, e por isso a régua é a geométrica. Conserto no
+`index.db` (o JSON da pasta preparada ficou como veio): `heading + 180` nas
+1.158, com backup, releitura 1.158 de 1.158 e nenhuma outra foto alterada; a
+reclassificação dá zero invertidas. Redesenhadas depois do conserto, as 4 vistas
+e 4 controles saíram TODAS para a frente, com 0° a 2° de desvio.
+
+Gravado com `gravar_y.py`: 4.028 fotos a 333,43 (`sol+visao`) e 909 a 297,4
+(`proj+visao`), releitura 4.937 de 4.937. O `provar_marcador.py` põe as 6 vistas
+em estrada ou rua.
 
 ## Transplante para a produção
 
@@ -156,3 +188,17 @@ Por projeto, com o serviço no ar e restart no fim:
 alvos, 43 traçados, R-tree completo, 36 projetos antigos intocados. Projeto,
 miniatura, foto, descritor, tile, marcador (as 81 fotos do RCC no tile 12/1481/2355),
 traçado e `nearest` respondem pelo nginx.
+
+cimh em produção no mesmo dia, com backup NOVO do `index.db` de produção antes
+(38 projetos, 101.252 fotos): 4.937 fotos, 88.866 campos, 30.177 alvos, 703
+traçados, 13 faixas, R-tree completo, os 38 anteriores intocados, pirâmide de
+14,3 GB com md5 conferido. O serviço lista 39 projetos.
+
+## Pacote para outra instância
+
+A pasta de transferência leva um `index_portouniao.db` ENXUTO (só os três
+projetos, 14,9 MB), as pirâmides, as miniaturas, os `<slug>.db` opcionais para
+serviço anterior à pirâmide, o `conferir_deploy.cjs`, o `md5.txt` e um LEIA-ME
+com o passo a passo pelo `transplantar-projeto.js`. Provado antes de enviar: o
+transplante a partir dele numa cópia de um banco de 36 projetos confere 5.151
+fotos, 92.718 campos e 31.260 alvos.
