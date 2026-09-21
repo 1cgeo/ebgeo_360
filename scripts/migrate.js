@@ -118,7 +118,36 @@ const PROJECTS = [
   // As 101 vêm com `mesh_rotation_y = 60` fixo e `gyro_stabilized: false`, ou
   // seja SEM calibração de rumo. O levantamento foi a PÉ, então a inclinação
   // muda foto a foto e não há rajada de acelerômetro no JSON.
-  { name: 'EXPOEX 2026', slug: 'expoex_2026', description: 'Imagens panorâmicas da Exposição do Exército (EXPOEX) 2026, no Cais Mauá', capture_date: '2026-08-23', location: 'Porto Alegre, RS', lat: -30.032221, lon: -51.240292, entryPhoto: 'PIC_20260823_131404_26_08_23_15_59_07_output_1' },
+  // { name: 'EXPOEX 2026', slug: 'expoex_2026', description: 'Imagens panorâmicas da Exposição do Exército (EXPOEX) 2026, no Cais Mauá', capture_date: '2026-08-23', location: 'Porto Alegre, RS', lat: -30.032221, lon: -51.240292, entryPhoto: 'PIC_20260823_131404_26_08_23_15_59_07_output_1' },
+
+  // === Lote 2026-08: Missão Porto União, três projetos ===
+  //
+  // 5.151 panorâmicas de 7680x3840, Insta360 Pro2 (série IP2E30FN7S8MDX), em
+  // viatura: 5º BE Cmb Bld (133, 2026-08-17), 5º RCC (81, 2026-08-15) e CIMH
+  // (4.937, de 2026-08-12 a 14). Metadados e imagens na MESMA pasta, que é
+  // PREPARADA e não a da entrega. Centros a 49 km (RCC para CIMH), 81 km e
+  // 129 km uns dos outros; cada foto fica a menos de 17 km do próprio centro.
+  //
+  // A CIMH É PREPARADA por dois motivos:
+  //   1. 12 fotos têm a coordenada anterior ao ajuste do QGIS (0,9 a 13,1 m), o
+  //      mesmo defeito da ExpoEx. A geometria do fotos.geojson manda: ela cai no
+  //      vértice do traçado. Câmera, os 45 alvos que apontam para elas e o
+  //      heading de 16 fotos (pelo DELTA do rumo ao `next`) foram corrigidos.
+  //   2. De 2424 a 2475 da sessão PIC_20260812_145732 a exposição travou em
+  //      1/8192 s (a 2475 em 1/1727 s): 52 fotos entram CLAREADAS, só com o que
+  //      a câmera gravou (média local, ganho linear pelo EXIF, sombra levantada,
+  //      tapa-nadir reaplicado), sem cor inventada no chão. Decisão do chefe.
+  //
+  // RODAR COM `--tracks`, apontando o `fotos_linha.geojson` de cada pasta. O
+  // grafo da CIMH chega em 16 componentes, todos a 1,0-17,7 m de outro: é
+  // ligação faltando, não área separada.
+  //
+  // A foto de entrada é a cabeça da maior cadeia `next` dentro do componente
+  // principal, menos na CIMH: a cabeça (0714) é contraluz escura, então entra
+  // a seguinte, 0715. Todas vêm com `mesh_rotation_y = 60`, sem calibração.
+  { name: '5º Batalhão de Engenharia de Combate Blindado', slug: '5o_becmb', description: 'Imagens panorâmicas do 5º Batalhão de Engenharia de Combate Blindado', capture_date: '2026-08-17', location: 'Porto União, SC', lat: -26.257573, lon: -51.066813, entryPhoto: 'PIC_20260817_112429_26_08_21_09_33_34_output_0001' },
+  { name: '5º Regimento de Carros de Combate', slug: '5o_rcc', description: 'Imagens panorâmicas do 5º Regimento de Carros de Combate', capture_date: '2026-08-15', location: 'Rio Negro, PR', lat: -26.107569, lon: -49.786847, entryPhoto: 'PIC_20260815_145103_26_08_21_09_18_04_output_001' },
+  { name: 'CIMH', slug: 'cimh', description: 'Imagens panorâmicas do Campo de Instrução Marechal Hermes', capture_date: '2026-08-12', location: 'Três Barras, SC', lat: -26.214575, lon: -50.26347, entryPhoto: 'PIC_20260813_095508_26_08_20_18_11_22_output_0715' },
 
   // === Lote 2026-08: Missão Cascavel, cinco OM da 4ª Bda Inf Mec ===
   //
